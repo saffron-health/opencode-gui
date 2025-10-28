@@ -211,8 +211,8 @@ body {
 
 .message--user .message-content {
   width: 100%;
-  padding: 6px;
-  background-color: var(--vscode-input-background);
+  padding: 4px;
+  background-color: color-mix(in oklab, var(--vscode-input-background) 50%, transparent);
   border: 1px solid var(--vscode-input-border);
   border-radius: 4px;
   color: var(--vscode-input-foreground);
@@ -220,17 +220,23 @@ body {
   word-wrap: break-word;
   white-space: pre-wrap;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .message--assistant .message-content {
   width: 100%;
-  padding: 6px;
+  padding: 4px;
   background-color: transparent;
   color: var(--vscode-foreground);
   line-height: 1.6;
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .message-content a {
@@ -526,33 +532,39 @@ body.vscode-high-contrast {
 
 .session-switcher-button {
   width: 100%;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 8px;
-  border: 1px solid var(--vscode-input-border);
-  border-radius: 4px;
-  background-color: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
+  gap: 4px;
+  padding: 4px 10px;
+  height: 27px;
+  border: 1px solid color-mix(in srgb, var(--vscode-panel-border) 50%, transparent);
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-sideBar-background));
+  color: color-mix(in srgb, var(--vscode-foreground) 80%, transparent);
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
+  font-weight: 500;
   cursor: pointer;
   text-align: left;
-  transition: background-color 0.15s, border-color 0.15s;
+  user-select: none;
+  transition: all 0.15s;
 }
 
 .session-switcher-button:hover:not(:disabled) {
-  background-color: var(--vscode-list-hoverBackground);
+  background-color: color-mix(in srgb, var(--vscode-foreground) 8%, var(--vscode-sideBar-background));
+  color: var(--vscode-foreground);
+  border-color: color-mix(in srgb, var(--vscode-panel-border) 75%, transparent);
 }
 
 .session-switcher-button:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .session-switcher-button:focus-visible {
   outline: none;
-  border-color: var(--vscode-focusBorder);
   box-shadow: 0 0 0 1px var(--vscode-focusBorder);
 }
 
@@ -618,26 +630,33 @@ body.vscode-high-contrast {
 
 /* New Session Button */
 .new-session-button {
-  padding: 6px 12px;
-  border: none;
-  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
   background-color: transparent;
-  color: var(--vscode-input-foreground);
+  color: color-mix(in srgb, var(--vscode-foreground) 80%, transparent);
   font-family: var(--vscode-font-family);
-  font-size: 16px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.15s, background-color 0.15s;
+  user-select: none;
   flex-shrink: 0;
   line-height: 1;
+  transition: none;
 }
 
 .new-session-button:hover {
-  opacity: 1;
-  background-color: var(--vscode-list-hoverBackground);
+  background-color: color-mix(in srgb, var(--vscode-foreground) 5%, transparent);
+  color: var(--vscode-foreground);
+  border-color: transparent;
 }
 
 .new-session-button:focus-visible {
-  outline: 2px solid var(--vscode-focusBorder);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
 }
