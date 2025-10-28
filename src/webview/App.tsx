@@ -39,6 +39,7 @@ function App() {
   const [isReady, setIsReady] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const updateTimeoutRef = useRef<number | null>(null);
 
   const hasMessages = messages.some(
     (m) => m.type === "user" || m.type === "assistant"
@@ -69,7 +70,7 @@ function App() {
           }
           break;
         case "part-update": {
-          // Streaming part update - update message in real-time
+          // Streaming part update - throttle updates to avoid excessive re-renders
           const { part, delta } = message;
           console.log('[Webview] part-update received:', {
             partId: part.id,
@@ -78,55 +79,56 @@ function App() {
             hasDelta: !!delta
           });
           
-          setMessages((prev) => {
-            // Filter out thinking messages
-            const filtered = prev.filter((m) => m.id !== "thinking");
-            
-            // Find or create the message for this part
-            const messageIndex = filtered.findIndex((m) => m.id === part.messageID);
-            
-            if (messageIndex === -1) {
-              // New message - create it
-              console.log('[Webview] Creating new message:', part.messageID);
-              return [
-                ...filtered,
-                {
-                  id: part.messageID,
-                  type: "assistant",
-                  parts: [part],
-                },
-              ];
-            } else {
-              // Update existing message
-              const updated = [...filtered];
-              const msg = { ...updated[messageIndex] };
-              const parts = msg.parts || [];
-              const partIndex = parts.findIndex((p) => p.id === part.id);
+          // Clear any pending update
+          if (updateTimeoutRef.current) {
+            clearTimeout(updateTimeoutRef.current);
+          }
+          
+          // Throttle updates - batch rapid changes and only update every 100ms
+          updateTimeoutRef.current = window.setTimeout(() => {
+            setMessages((prev) => {
+              // Filter out thinking messages
+              const filtered = prev.filter((m) => m.id !== "thinking");
               
-              if (partIndex === -1) {
-                // New part - append it
-                console.log('[Webview] Adding new part to message:', part.id);
-                msg.parts = [...parts, part];
+              // Find or create the message for this part
+              const messageIndex = filtered.findIndex((m) => m.id === part.messageID);
+              
+              if (messageIndex === -1) {
+                // New message - create it
+                console.log('[Webview] Creating new message:', part.messageID);
+                return [
+                  ...filtered,
+                  {
+                    id: part.messageID,
+                    type: "assistant",
+                    parts: [part],
+                  },
+                ];
               } else {
-                // Update existing part
-                console.log('[Webview] Updating existing part:', part.id);
-                msg.parts = [...parts];
-                msg.parts[partIndex] = part;
+                // Update existing message
+                const updated = [...filtered];
+                const msg = { ...updated[messageIndex] };
+                const parts = msg.parts || [];
+                const partIndex = parts.findIndex((p) => p.id === part.id);
                 
-                // Handle text deltas for streaming text
-                if (delta && part.type === "text") {
-                  msg.parts[partIndex] = {
-                    ...part,
-                    text: (msg.parts[partIndex].text || "") + delta,
-                  };
+                if (partIndex === -1) {
+                  // New part - append it
+                  console.log('[Webview] Adding new part to message:', part.id);
+                  msg.parts = [...parts, part];
+                } else {
+                  // Update existing part - just replace it
+                  // The server sends the full accumulated text, not deltas
+                  console.log('[Webview] Updating existing part:', part.id);
+                  msg.parts = [...parts];
+                  msg.parts[partIndex] = part;
                 }
+                
+                updated[messageIndex] = msg;
+                console.log('[Webview] Message now has', msg.parts.length, 'parts');
+                return updated;
               }
-              
-              updated[messageIndex] = msg;
-              console.log('[Webview] Message now has', msg.parts.length, 'parts');
-              return updated;
-            }
-          });
+            });
+          }, 100); // Update at most every 100ms
           break;
         }
         case "message-update": {
