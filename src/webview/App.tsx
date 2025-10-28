@@ -1,6 +1,7 @@
 /* @jsxImportSource solid-js */
-import { createSignal, createEffect, onMount, onCleanup, For, Show } from "solid-js";
+import { createSignal, createEffect, For, Show } from "solid-js";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
+import { useVsCodeBridge, type MessagePart, type Agent } from "./hooks/useVsCodeBridge";
 
 interface ToolState {
   status: "pending" | "running" | "completed" | "error";
@@ -14,36 +15,12 @@ interface ToolState {
   };
 }
 
-interface MessagePart {
-  id: string;
-  type: "text" | "reasoning" | "tool" | "file" | "step-start" | "step-finish";
-  text?: string;
-  tool?: string;
-  state?: ToolState;
-  snapshot?: string;
-}
-
 interface Message {
   id: string;
   type: "user" | "assistant";
   text?: string;
   parts?: MessagePart[];
 }
-
-interface Agent {
-  name: string;
-  description?: string;
-  mode: "subagent" | "primary" | "all";
-  builtIn: boolean;
-  options?: {
-    color?: string;
-    [key: string]: unknown;
-  };
-}
-
-// Get VS Code API
-declare const acquireVsCodeApi: any;
-const vscode = acquireVsCodeApi();
 
 function App() {
   const [input, setInput] = createSignal("");
@@ -59,156 +36,141 @@ function App() {
   const hasMessages = () =>
     messages().some((m) => m.type === "user" || m.type === "assistant");
 
-  onMount(() => {
-    // Listen for messages from extension
-    const messageHandler = (event: MessageEvent) => {
-      const message = event.data;
+  // Setup VS Code message bridge
+  const { send } = useVsCodeBridge({
+    onInit: (ready) => {
+      setIsReady(ready);
+    },
 
-      switch (message.type) {
-        case "init":
-          setIsReady(message.ready);
-          break;
-        case "agentList":
-          setAgents(message.agents || []);
-          // Select first agent by default if none selected
-          if (!selectedAgent() && message.agents && message.agents.length > 0) {
-            setSelectedAgent(message.agents[0].name);
-          }
-          break;
-        case "thinking":
-          setIsThinking(message.isThinking);
-          break;
-        case "part-update": {
-          // Streaming part update - SolidJS handles rapid updates efficiently
-          const { part } = message;
-          console.log('[Webview] part-update received:', {
-            partId: part.id,
-            partType: part.type,
-            messageID: part.messageID,
-          });
-          
-          setMessages((prev) => {
-            // Find or create the message for this part
-            const messageIndex = prev.findIndex((m) => m.id === part.messageID);
-            
-            if (messageIndex === -1) {
-              // New message - create it
-              console.log('[Webview] Creating new message:', part.messageID);
-              return [
-                ...prev,
-                {
-                  id: part.messageID,
-                  type: "assistant" as const,
-                  parts: [part],
-                },
-              ];
-            } else {
-              // Update existing message
-              const updated = [...prev];
-              const msg = { ...updated[messageIndex] };
-              const parts = msg.parts || [];
-              const partIndex = parts.findIndex((p) => p.id === part.id);
-              
-              if (partIndex === -1) {
-                // New part - append it
-                console.log('[Webview] Adding new part to message:', part.id);
-                msg.parts = [...parts, part];
-              } else {
-                // Update existing part - just replace it
-                // The server sends the full accumulated text, not deltas
-                console.log('[Webview] Updating existing part:', part.id);
-                msg.parts = [...parts];
-                msg.parts[partIndex] = part;
-              }
-              
-              updated[messageIndex] = msg;
-              console.log('[Webview] Message now has', msg.parts.length, 'parts');
-              return updated;
-            }
-          });
-          break;
-        }
-        case "message-update": {
-          // Message metadata update
-          const { message: finalMessage } = message;
-          
-          console.log('[Webview] message-update received:', {
-            id: finalMessage.id,
-            role: finalMessage.role,
-            hasParts: !!(finalMessage.parts && finalMessage.parts.length > 0)
-          });
-          
-          setMessages((prev) => {
-            const index = prev.findIndex((m) => m.id === finalMessage.id);
-            
-            if (index === -1) {
-              // New message - create it
-              // If it has parts, use them, otherwise create empty message that will be populated by part-update
-              console.log('[Webview] Creating message from message-update');
-              return [
-                ...prev,
-                {
-                  id: finalMessage.id,
-                  type: finalMessage.role === "user" ? "user" as const : "assistant" as const,
-                  parts: finalMessage.parts || [],
-                  text: finalMessage.text,
-                },
-              ];
-            } else {
-              // Update existing message
-              const updated = [...prev];
-              const currentMsg = { ...updated[index] };
-              
-              // Update role if provided
-              if (finalMessage.role) {
-                currentMsg.type = finalMessage.role === "user" ? "user" as const : "assistant" as const;
-              }
-              
-              // Only update parts if the new message has parts
-              // This preserves streaming content built up from part-update events
-              if (finalMessage.parts && finalMessage.parts.length > 0) {
-                currentMsg.parts = finalMessage.parts;
-              }
-              
-              updated[index] = currentMsg;
-              return updated;
-            }
-          });
-          break;
-        }
-        case "response":
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              type: "assistant" as const,
-              text: message.text,
-              parts: message.parts,
-            },
-          ]);
-          break;
-        case "error":
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              type: "assistant" as const,
-              text: `Error: ${message.message}`,
-            },
-          ]);
-          break;
+    onAgentList: (agentList) => {
+      setAgents(agentList);
+      // Select first agent by default if none selected
+      if (!selectedAgent() && agentList.length > 0) {
+        setSelectedAgent(agentList[0].name);
       }
-    };
+    },
 
-    window.addEventListener("message", messageHandler);
+    onThinking: (thinking) => {
+      setIsThinking(thinking);
+    },
 
-    // Tell extension we're ready
-    vscode.postMessage({ type: "ready" });
+    onPartUpdate: (part) => {
+      // Streaming part update - SolidJS handles rapid updates efficiently
+      console.log('[Webview] part-update received:', {
+        partId: part.id,
+        partType: part.type,
+        messageID: part.messageID,
+      });
+      
+      setMessages((prev) => {
+        // Find or create the message for this part
+        const messageIndex = prev.findIndex((m) => m.id === part.messageID);
+        
+        if (messageIndex === -1) {
+          // New message - create it
+          console.log('[Webview] Creating new message:', part.messageID);
+          return [
+            ...prev,
+            {
+              id: part.messageID,
+              type: "assistant" as const,
+              parts: [part],
+            },
+          ];
+        } else {
+          // Update existing message
+          const updated = [...prev];
+          const msg = { ...updated[messageIndex] };
+          const parts = msg.parts || [];
+          const partIndex = parts.findIndex((p) => p.id === part.id);
+          
+          if (partIndex === -1) {
+            // New part - append it
+            console.log('[Webview] Adding new part to message:', part.id);
+            msg.parts = [...parts, part];
+          } else {
+            // Update existing part - just replace it
+            // The server sends the full accumulated text, not deltas
+            console.log('[Webview] Updating existing part:', part.id);
+            msg.parts = [...parts];
+            msg.parts[partIndex] = part;
+          }
+          
+          updated[messageIndex] = msg;
+          console.log('[Webview] Message now has', msg.parts.length, 'parts');
+          return updated;
+        }
+      });
+    },
 
-    // Request agent list
-    vscode.postMessage({ type: "getAgents" });
+    onMessageUpdate: (finalMessage) => {
+      // Message metadata update
+      console.log('[Webview] message-update received:', {
+        id: finalMessage.id,
+        role: finalMessage.role,
+        hasParts: !!(finalMessage.parts && finalMessage.parts.length > 0)
+      });
+      
+      setMessages((prev) => {
+        const index = prev.findIndex((m) => m.id === finalMessage.id);
+        
+        if (index === -1) {
+          // New message - create it
+          // If it has parts, use them, otherwise create empty message that will be populated by part-update
+          console.log('[Webview] Creating message from message-update');
+          return [
+            ...prev,
+            {
+              id: finalMessage.id,
+              type: finalMessage.role === "user" ? "user" as const : "assistant" as const,
+              parts: finalMessage.parts || [],
+              text: finalMessage.text,
+            },
+          ];
+        } else {
+          // Update existing message
+          const updated = [...prev];
+          const currentMsg = { ...updated[index] };
+          
+          // Update role if provided
+          if (finalMessage.role) {
+            currentMsg.type = finalMessage.role === "user" ? "user" as const : "assistant" as const;
+          }
+          
+          // Only update parts if the new message has parts
+          // This preserves streaming content built up from part-update events
+          if (finalMessage.parts && finalMessage.parts.length > 0) {
+            currentMsg.parts = finalMessage.parts;
+          }
+          
+          updated[index] = currentMsg;
+          return updated;
+        }
+      });
+    },
 
-    onCleanup(() => window.removeEventListener("message", messageHandler));
+    onResponse: (payload) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          type: "assistant" as const,
+          text: payload.text,
+          parts: payload.parts,
+        },
+      ]);
+    },
+
+    onError: (errorMessage) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          type: "assistant" as const,
+          text: `Error: ${errorMessage}`,
+        },
+      ]);
+    },
   });
 
   // Auto-scroll to bottom when messages change
@@ -247,7 +209,7 @@ function App() {
     }
 
     // Send to extension - the user message will be added via SSE stream
-    vscode.postMessage({
+    send({
       type: "sendPrompt",
       text: input(),
       agent: selectedAgent(),
@@ -273,7 +235,7 @@ function App() {
       running: "▶️",
       completed: "✅",
       error: "❌",
-    }[state.status];
+    }[state.status as string] || "❓";
 
     const statusLabel = state.title || tool || "Tool";
 

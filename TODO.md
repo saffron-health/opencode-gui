@@ -76,12 +76,6 @@
   - **Details**: Reduced button spacing from 8px to 4px for tighter layout. Added flex-direction to input-container and used column-reverse for has-messages state, so buttons appear above the textarea when input is at bottom. More ergonomic layout with buttons easily accessible above input field.
   - **Documentation**: See [docs/todos/button-spacing-positioning.md](docs/todos/button-spacing-positioning.md)
 
-- [ ] Markdown support in assistant messages
-- [ ] @-mention support
-- [ ] New session button
-- [ ] Session switcher
-- [ ] Better tool calls
-
 ## App.tsx Refactoring (Oracle Review)
 
 ### 1. Remove "thinking" pseudo-message pattern
@@ -90,32 +84,23 @@
 - [x] Create `src/webview/components/ThinkingIndicator.tsx` component
 - [x] Add `<ThinkingIndicator when={isThinking()} />` at bottom of message list
 - [x] Simplifies message update logic by eliminating repeated filtering and special-case handling
+
   - **Status**: Completed - thinking indicator extracted to standalone component
   - **Details**: Created ThinkingIndicator component that uses `<Show>` to conditionally render. Removed "thinking" from Message type union. Eliminated all `.filter((m) => m.id !== "thinking")` calls from part-update, message-update, response, and error handlers. Simplified message rendering to remove if/else branching for thinking messages.
   - **Benefits**: ~50 lines of code removed, cleaner message state management, no special-case filtering needed
 
-### 2. Create useVsCodeBridge composable
+- [x] Create useVsCodeBridge composable
 
-- [ ] Create `src/webview/hooks/useVsCodeBridge.ts`
-- [ ] Move window message listener setup into the composable
-- [ ] Accept callbacks for each message type: init, agentList, thinking, partUpdate, messageUpdate, response, error
-- [ ] Return `{ send }` function for posting messages to extension host
-- [ ] Wire up in App.tsx to replace current switch-case message handling
-      Benefits: Separates transport from state orchestration, reduces App.tsx complexity
+  - **Status**: Completed - message bridge successfully extracted into reusable hook
+  - **Details**: Created `src/webview/hooks/useVsCodeBridge.ts` with callback-based API for all 7 message types (init, agentList, thinking, partUpdate, messageUpdate, response, error). Updated App.tsx to use the hook, removing ~50 lines of direct window message handling code. Exports MessagePart and Agent types for reuse. Returns `send` function for outgoing messages.
+  - **Benefits**: Clean separation between transport layer and UI state management, better testability, improved type safety, App.tsx more focused on orchestration
+  - **Documentation**: See [docs/todos/useVsCodeBridge.md](docs/todos/useVsCodeBridge.md)
 
-Example signature:
-
-```typescript
-function useVsCodeBridge(on: {
-  init: (ready: boolean) => void,
-  agentList: (agents: Agent[]) => void,
-  thinking: (isThinking: boolean) => void,
-  partUpdate: (part: MessagePart & { messageID: string }) => void,
-  messageUpdate: (msg: { id: string; role?: "user"|"assistant"; text?: string; parts?: MessagePart[] }) => void,
-  response: (payload: { text?: string; parts?: MessagePart[] }) => void,
-  error: (message: string) => void,
-}) { ... }
-```
+- [ ] Markdown support in assistant messages
+- [ ] @-mention support
+- [ ] New session button
+- [ ] Session switcher
+- [ ] Better tool calls
 
 ### 3. Extract message update helpers
 
