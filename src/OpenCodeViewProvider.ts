@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { OpenCodeService } from './OpenCodeService';
+import type { Event } from '@opencode-ai/sdk';
 
 export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'opencode.chatView';
@@ -56,28 +57,12 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         sessionId = await this._openCodeService.createSession();
       }
 
-      // Send the prompt
-      const response = await this._openCodeService.sendPrompt(text);
-
-      // Get the full messages including tool calls
-      const messages = await this._openCodeService.getMessages(sessionId);
-      const lastMessage = messages[messages.length - 1];
-      
-      // Log for debugging
-      console.log('Last message parts:', JSON.stringify(lastMessage?.parts, null, 2));
-
-      // Use parts from the full message if available, otherwise fall back to response
-      const parts = lastMessage?.parts || response.parts || [];
-
-      // Extract text from the response for backward compatibility
-      const responseText = this._extractResponseText({ parts });
-
-      // Send response back to webview with both text and parts
-      this._sendMessage({
-        type: 'response',
-        text: responseText,
-        parts: parts
-      });
+      // Send the prompt with streaming
+      await this._openCodeService.sendPromptStreaming(
+        text,
+        (event) => this._handleStreamEvent(event),
+        sessionId
+      );
 
       this._sendMessage({ type: 'thinking', isThinking: false });
     } catch (error) {
@@ -88,6 +73,29 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       });
       this._sendMessage({ type: 'thinking', isThinking: false });
     }
+  }
+
+  private _handleStreamEvent(event: Event) {
+    console.log('Stream event:', event.type, event);
+    
+    if (event.type === 'message.part.updated') {
+      // Forward part updates to webview for real-time display
+      this._sendMessage({
+        type: 'part-update',
+        part: event.properties.part,
+        delta: event.properties.delta
+      });
+    } else if (event.type === 'message.updated') {
+      // Full message update (can use for final state)
+      this._sendMessage({
+        type: 'message-update',
+        message: event.properties.info
+      });
+    } else if (event.type === 'session.idle') {
+      // Session finished processing
+      console.log('Session idle - streaming complete');
+    }
+    // Add more event handlers as needed
   }
 
   private _extractResponseText(response: { parts: Array<{ type: string; text?: string }> }): string {

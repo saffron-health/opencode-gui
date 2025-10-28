@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { createOpencode, type OpencodeClient } from '@opencode-ai/sdk';
-import type { Session, Config } from '@opencode-ai/sdk';
+import type { Session, Config, Event } from '@opencode-ai/sdk';
 
 interface OpencodeInstance {
   client: OpencodeClient;
@@ -193,6 +193,82 @@ export class OpenCodeService {
     }
 
     return result.data as { parts: Array<{ type: string; text?: string }> };
+  }
+
+  async sendPromptStreaming(
+    text: string,
+    onEvent: (event: Event) => void,
+    sessionId?: string
+  ): Promise<void> {
+    if (!this.opencode) {
+      throw new Error('OpenCode not initialized');
+    }
+
+    const sid = sessionId || this.currentSessionId;
+    if (!sid) {
+      throw new Error('No active session');
+    }
+
+    // Get config for model
+    const configResult = await this.opencode.client.config.get();
+    if (configResult.error) {
+      throw new Error(`Failed to get config: ${JSON.stringify(configResult.error)}`);
+    }
+
+    const config = configResult.data;
+    const model = config?.model || 'anthropic/claude-3-5-sonnet-20241022';
+    const [providerID, modelID] = model.split('/');
+
+    // Send the prompt (non-blocking)
+    const promptPromise = this.opencode.client.session.prompt({
+      path: { id: sid },
+      body: {
+        model: { providerID, modelID },
+        parts: [{ type: 'text', text }],
+      },
+    });
+
+    // Subscribe to SSE events
+    const sseResult = await this.opencode.client.event.subscribe({
+      query: { directory: process.cwd() }
+    });
+
+    // Process events from the stream
+    try {
+      for await (const event of sseResult.stream) {
+        // Filter for events related to our session
+        const typedEvent = event as Event;
+        
+        // Check if event has properties with sessionID
+        if ('properties' in typedEvent && typedEvent.properties && typeof typedEvent.properties === 'object') {
+          const props = typedEvent.properties as { sessionID?: string };
+          if (props.sessionID) {
+            // Only process events for our session
+            if (props.sessionID === sid) {
+              onEvent(typedEvent);
+              
+              // Stop streaming when session goes idle
+              if (typedEvent.type === 'session.idle') {
+                break;
+              }
+            }
+            continue;
+          }
+        }
+        
+        // Forward global events (installation.updated, etc.)
+        onEvent(typedEvent);
+      }
+    } catch (error) {
+      console.error('SSE streaming error:', error);
+      throw error;
+    }
+
+    // Wait for the prompt to complete
+    const result = await promptPromise;
+    if (result.error) {
+      throw new Error(`Prompt failed: ${JSON.stringify(result.error)}`);
+    }
   }
 
   async getCurrentSession(): Promise<string | null> {

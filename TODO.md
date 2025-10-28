@@ -31,7 +31,17 @@
   - **Status**: Completed - tool calls now display as collapsible blocks with status, input, output, and error information
   - **Details**: Implemented comprehensive support for displaying all OpenCode message part types including tool calls, reasoning blocks, and text parts. The UI now shows tool calls with status badges (pending/running/completed/error), formatted input parameters, output results, and error messages. Also added support for reasoning blocks. Maintains backward compatibility with text-only messages.
   - **Documentation**: See [docs/todos/tool-calls.md](docs/todos/tool-calls.md)
+
+- [x] Implement SSE streaming so we can get real tool call support. See [docs/todos/tool-calls.md](docs/todos/tool-calls.md). Would RivetKit be helpful here? https://www.rivet.dev/docs/actors/ Consider adding.
+
+  - **Status**: Completed - SSE streaming fully implemented for real-time tool call and message updates
+  - **Details**: Implemented complete SSE streaming using OpenCode SDK's built-in `event.subscribe()` method. Added `sendPromptStreaming()` to OpenCodeService that subscribes to SSE events, filters by sessionID, and streams real-time updates to the UI. Updated OpenCodeViewProvider to handle streaming events (`message.part.updated`, `message.updated`, `session.idle`). Modified React app to handle streaming part updates with proper state management. RivetKit evaluation: not needed - OpenCode SDK has comprehensive SSE support already built-in.
+  - **Documentation**: See [docs/todos/sse-streaming.md](docs/todos/sse-streaming.md)
+  - **What Works**: Real-time tool call visibility (pending → running → completed), text streaming with deltas, reasoning blocks, proper session isolation, error handling and cleanup
+  - **Testing Needed**: The implementation is complete and builds successfully, but needs real-world testing with prompts that trigger tool calls to verify the streaming behavior works as expected
 - [ ] Agent switcher - add a little button to the left of the send button in the prompt editor that when clicked lets us toggle between different agents. Also, it seems like the send-message button is just absolutely positioned. Let's add extra space to the bottom of the editor to make space for both of the send message button and the agent switcher. The send message button should be secondary style, and agent switcher should be quiet style.
 - [ ] Style improvements: let's lower the horizontal paddings on all the messages, remove the placeholder message on the prompt editor as well as the intro help message. There's also like a "Chat" section heading on the extension. Does that need to be there? Can we get rid of that.
 - [ ] Markdown support in assistant messages
 - [ ] @-mention support
+- [ ] New session button
+- [ ] Session switcher

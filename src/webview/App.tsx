@@ -68,6 +68,86 @@ function App() {
             setMessages((prev) => prev.filter((m) => m.id !== "thinking"));
           }
           break;
+        case "part-update": {
+          // Streaming part update - update message in real-time
+          const { part, delta } = message;
+          
+          setMessages((prev) => {
+            // Filter out thinking messages
+            const filtered = prev.filter((m) => m.id !== "thinking");
+            
+            // Find or create the message for this part
+            const messageIndex = filtered.findIndex((m) => m.id === part.messageID);
+            
+            if (messageIndex === -1) {
+              // New message - create it
+              return [
+                ...filtered,
+                {
+                  id: part.messageID,
+                  type: "assistant",
+                  parts: [part],
+                },
+              ];
+            } else {
+              // Update existing message
+              const updated = [...filtered];
+              const msg = { ...updated[messageIndex] };
+              const parts = msg.parts || [];
+              const partIndex = parts.findIndex((p) => p.id === part.id);
+              
+              if (partIndex === -1) {
+                // New part - append it
+                msg.parts = [...parts, part];
+              } else {
+                // Update existing part
+                msg.parts = [...parts];
+                msg.parts[partIndex] = part;
+                
+                // Handle text deltas for streaming text
+                if (delta && part.type === "text") {
+                  msg.parts[partIndex] = {
+                    ...part,
+                    text: (msg.parts[partIndex].text || "") + delta,
+                  };
+                }
+              }
+              
+              updated[messageIndex] = msg;
+              return updated;
+            }
+          });
+          break;
+        }
+        case "message-update": {
+          // Final message state - use this to ensure consistency
+          const { message: finalMessage } = message;
+          
+          setMessages((prev) => {
+            const filtered = prev.filter((m) => m.id !== "thinking");
+            const index = filtered.findIndex((m) => m.id === finalMessage.id);
+            
+            if (index === -1) {
+              return [
+                ...filtered,
+                {
+                  id: finalMessage.id,
+                  type: "assistant",
+                  parts: finalMessage.parts,
+                },
+              ];
+            } else {
+              const updated = [...filtered];
+              updated[index] = {
+                id: finalMessage.id,
+                type: "assistant",
+                parts: finalMessage.parts,
+              };
+              return updated;
+            }
+          });
+          break;
+        }
         case "response":
           setMessages((prev) => {
             const filtered = prev.filter((m) => m.id !== "thinking");
