@@ -214,17 +214,17 @@ body {
 /* Tool Call Styles */
 .tool-call {
   margin: 8px 0;
-  padding: 0;
-  border: 1px solid var(--vscode-panel-border);
+  padding: 8px 12px;
+  border: 1px solid var(--vscode-input-border);
   border-radius: 4px;
-  background-color: var(--vscode-editor-background);
+  background-color: var(--vscode-sideBar-background);
 }
 
 .tool-call summary {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 0;
   cursor: pointer;
   list-style: none;
   color: var(--vscode-foreground);
@@ -256,8 +256,8 @@ body {
 }
 
 .tool-details {
-  padding: 0 12px 12px 12px;
-  border-top: 1px solid var(--vscode-panel-border);
+  padding-top: 8px;
+  padding-left: 22px;
 }
 
 .tool-section {
@@ -337,6 +337,28 @@ body {
 
 .message-text {
   margin: 4px 0;
+}
+
+/* Step Indicator */
+.step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin: 4px 0;
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 4px;
+  background-color: var(--vscode-sideBar-background);
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.step-icon {
+  font-size: 14px;
+}
+
+.step-text {
+  font-style: italic;
 }
 
 /* Theme-specific adjustments */

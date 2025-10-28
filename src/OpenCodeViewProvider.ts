@@ -59,14 +59,24 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       // Send the prompt
       const response = await this._openCodeService.sendPrompt(text);
 
+      // Get the full messages including tool calls
+      const messages = await this._openCodeService.getMessages(sessionId);
+      const lastMessage = messages[messages.length - 1];
+      
+      // Log for debugging
+      console.log('Last message parts:', JSON.stringify(lastMessage?.parts, null, 2));
+
+      // Use parts from the full message if available, otherwise fall back to response
+      const parts = lastMessage?.parts || response.parts || [];
+
       // Extract text from the response for backward compatibility
-      const responseText = this._extractResponseText(response);
+      const responseText = this._extractResponseText({ parts });
 
       // Send response back to webview with both text and parts
       this._sendMessage({
         type: 'response',
         text: responseText,
-        parts: response.parts || []
+        parts: parts
       });
 
       this._sendMessage({ type: 'thinking', isThinking: false });

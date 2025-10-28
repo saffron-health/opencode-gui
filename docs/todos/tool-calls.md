@@ -174,12 +174,27 @@ Tool calls should be styled as collapsible `<details>` blocks similar to thinkin
 - Text parts render normally
 - Backward compatible with messages that only have `text` field
 
+### Important Discovery
+
+**Tool calls are compacted by default in OpenCode's persisted message history.**
+
+The OpenCode SDK's `session.messages()` endpoint returns compacted history (step-start, text, step-finish) without individual tool call details. Tool calls are emitted in real-time via the SSE (Server-Sent Events) stream during execution, but are not persisted in the message parts by default.
+
+This is by design - tool calls are considered operational telemetry and are compacted into steps for storage efficiency.
+
+**Current Implementation:**
+- Shows "🔧 Using tools..." indicator when step-start appears
+- This lets users know tools were used during that step
+- The actual tool call details (input/output) are not available in the persisted history
+
 ### Next Steps (Optional Enhancements)
-1. Test with actual tool calls to verify display works correctly
+1. **Implement SSE streaming** to show real-time tool calls as they execute:
+   - Subscribe to session SSE events when sending a prompt
+   - Listen for tool-call events and display them live
+   - Close stream when step finishes
 2. Add syntax highlighting for JSON in tool inputs/outputs
-3. Consider streaming support for tool state updates
-4. Add file part rendering (currently not implemented)
-5. Add step-start/step-finish indicators
+3. Add file part rendering (currently not implemented)
+4. Investigate if newer OpenCode versions have a config option to persist tool calls in history
 
 ## Technical Notes
 
