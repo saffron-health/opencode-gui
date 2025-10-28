@@ -59,13 +59,14 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       // Send the prompt
       const response = await this._openCodeService.sendPrompt(text);
 
-      // Extract text from the response
+      // Extract text from the response for backward compatibility
       const responseText = this._extractResponseText(response);
 
-      // Send response back to webview
+      // Send response back to webview with both text and parts
       this._sendMessage({
         type: 'response',
-        text: responseText
+        text: responseText,
+        parts: response.parts || []
       });
 
       this._sendMessage({ type: 'thinking', isThinking: false });
@@ -80,7 +81,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   }
 
   private _extractResponseText(response: { parts: Array<{ type: string; text?: string }> }): string {
-    // The response contains parts, extract text from them
+    // The response contains parts, extract text from them for backward compatibility
     if (response?.parts && Array.isArray(response.parts)) {
       return response.parts
         .filter((part) => part.type === 'text' && part.text)

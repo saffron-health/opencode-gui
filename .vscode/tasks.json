@@ -3,6 +3,12 @@
   "tasks": [
     {
       "type": "npm",
+      "script": "build",
+      "problemMatcher": [],
+      "label": "npm: build"
+    },
+    {
+      "type": "npm",
       "script": "watch",
       "problemMatcher": {
         "owner": "typescript",

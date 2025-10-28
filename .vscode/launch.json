@@ -10,7 +10,8 @@
       ],
       "outFiles": [
         "${workspaceFolder}/dist/**/*.js"
-      ]
+      ],
+      "preLaunchTask": "npm: build"
     },
     {
       "name": "Run Extension (with Watch)",
