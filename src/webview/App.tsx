@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
 interface Message {
   id: string;
-  type: 'user' | 'assistant';
+  type: 'user' | 'assistant' | 'thinking';
   text: string;
 }
 
@@ -17,6 +17,8 @@ function App() {
   const [isReady, setIsReady] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  const hasMessages = messages.some(m => m.type === 'user' || m.type === 'assistant');
 
   useEffect(() => {
     // Listen for messages from extension
@@ -29,20 +31,35 @@ function App() {
           break;
         case 'thinking':
           setIsThinking(message.isThinking);
+          if (message.isThinking) {
+            setMessages(prev => [...prev, {
+              id: 'thinking',
+              type: 'thinking',
+              text: 'Thinking...'
+            }]);
+          } else {
+            setMessages(prev => prev.filter(m => m.id !== 'thinking'));
+          }
           break;
         case 'response':
-          setMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            type: 'assistant',
-            text: message.text
-          }]);
+          setMessages(prev => {
+            const filtered = prev.filter(m => m.id !== 'thinking');
+            return [...filtered, {
+              id: Date.now().toString(),
+              type: 'assistant',
+              text: message.text
+            }];
+          });
           break;
         case 'error':
-          setMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            type: 'assistant',
-            text: `Error: ${message.message}`
-          }]);
+          setMessages(prev => {
+            const filtered = prev.filter(m => m.id !== 'thinking');
+            return [...filtered, {
+              id: Date.now().toString(),
+              type: 'assistant',
+              text: `Error: ${message.message}`
+            }];
+          });
           break;
       }
     };
@@ -91,37 +108,34 @@ function App() {
     }
   };
 
-  return (
-    <div className="app">
-      <form className="input-container" onSubmit={handleSubmit}>
-        <div className="textarea-wrapper">
-          <textarea
-            ref={inputRef}
-            className="prompt-input"
-            placeholder={isReady ? "Ask OpenCode anything..." : "Initializing OpenCode..."}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={!isReady || isThinking}
-            rows={1}
-          />
-          <button 
-            type="submit" 
-            className="shortcut-button"
-            disabled={!isReady || isThinking || !input.trim()}
-            aria-label="Submit (Cmd+Enter)"
-          >
-            ⌘⏎
-          </button>
-        </div>
-      </form>
+  const renderInput = () => (
+    <form className="input-container" onSubmit={handleSubmit}>
+      <div className="textarea-wrapper">
+        <textarea
+          ref={inputRef}
+          className="prompt-input"
+          placeholder={isReady ? "Ask OpenCode anything..." : "Initializing OpenCode..."}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={!isReady || isThinking}
+          rows={1}
+        />
+        <button 
+          type="submit" 
+          className="shortcut-button"
+          disabled={!isReady || isThinking || !input.trim()}
+          aria-label="Submit (Cmd+Enter)"
+        >
+          ⌘⏎
+        </button>
+      </div>
+    </form>
+  );
 
-      {isThinking && (
-        <div className="thinking-indicator">
-          <span className="thinking-icon">▸</span>
-          <span>Thinking</span>
-        </div>
-      )}
+  return (
+    <div className={`app ${hasMessages ? 'app--has-messages' : ''}`}>
+      {!hasMessages && renderInput()}
 
       <div className="messages-container">
         {messages.length === 0 && !isThinking && (
@@ -130,14 +144,29 @@ function App() {
           </div>
         )}
         
-        {messages.map((message) => (
-          <div key={message.id} className={`message ${message.type}`}>
-            <div className="message-content">{message.text}</div>
-          </div>
-        ))}
+        {messages.map((message) => {
+          if (message.type === 'thinking') {
+            return (
+              <details key={message.id} className="message message--thinking" open>
+                <summary>
+                  <span className="thinking-icon"></span>
+                  <span>Thinking...</span>
+                </summary>
+              </details>
+            );
+          }
+          
+          return (
+            <div key={message.id} className={`message message--${message.type}`}>
+              <div className="message-content">{message.text}</div>
+            </div>
+          );
+        })}
         
         <div ref={messagesEndRef} />
       </div>
+
+      {hasMessages && renderInput()}
     </div>
   );
 }
