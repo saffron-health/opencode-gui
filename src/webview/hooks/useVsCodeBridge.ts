@@ -1,5 +1,5 @@
 import { onMount, onCleanup } from "solid-js";
-import type { MessagePart, Agent, IncomingMessage } from "../types";
+import type { MessagePart, Agent, IncomingMessage, WebviewMessage } from "../types";
 
 declare const acquireVsCodeApi: any;
 const vscode = acquireVsCodeApi();
@@ -66,7 +66,7 @@ export function useVsCodeBridge(callbacks: VsCodeBridgeCallbacks) {
     onCleanup(() => window.removeEventListener("message", messageHandler));
   });
 
-  const send = (message: any) => {
+  const send = (message: WebviewMessage) => {
     vscode.postMessage(message);
   };
 

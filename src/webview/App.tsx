@@ -83,10 +83,17 @@ function App() {
   });
 
   const handleSubmit = () => {
+    const text = input().trim();
+    if (!text) return;
+    
+    const agent = agents().some(a => a.name === selectedAgent()) 
+      ? selectedAgent() 
+      : null;
+    
     send({
       type: "sendPrompt",
-      text: input(),
-      agent: selectedAgent(),
+      text,
+      agent,
     });
     setInput("");
   };

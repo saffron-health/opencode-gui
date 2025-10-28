@@ -58,7 +58,7 @@ export function applyMessageUpdate(
     currentMsg.type = incoming.role === "user" ? "user" : "assistant";
   }
 
-  if (incoming.parts && incoming.parts.length > 0) {
+  if (incoming.parts !== undefined) {
     currentMsg.parts = incoming.parts;
   }
 
