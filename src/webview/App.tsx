@@ -386,9 +386,7 @@ function App() {
           ref={inputRef!}
           class="prompt-input"
           style={{ "padding-bottom": "32px" }}
-          placeholder={
-            isReady() ? "Ask OpenCode anything..." : "Initializing OpenCode..."
-          }
+          placeholder=""
           value={input()}
           onInput={(e) => setInput(e.currentTarget.value)}
           onKeyDown={handleKeyDown}
@@ -418,15 +416,6 @@ function App() {
       </Show>
 
       <div class="messages-container">
-        <Show when={messages().length === 0 && !isThinking()}>
-          <div class="welcome-message">
-            <p>
-              Hello! I'm OpenCode, ready to help you with your OpenCode VSCode
-              extension. What would you like to work on?
-            </p>
-          </div>
-        </Show>
-
         <For each={messages()}>
           {(message) => {
             if (message.type === "thinking") {

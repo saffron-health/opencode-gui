@@ -52,16 +52,11 @@
   - **Documentation**: See [docs/todos/agent-switcher.md](docs/todos/agent-switcher.md)
   - **Known Limitations**: OpenCode Agent API doesn't provide color property, so color customization from agent config is not available. Agent selection doesn't persist across extension reloads. No visual indicator of which agent responded.
 
-- [ ] Style improvements: let's lower the horizontal paddings on all the messages, remove the placeholder message on the prompt editor as well as the intro help message. There's also like a "Chat" section heading on the extension. Does that need to be there? Can we get rid of that. I like Amp's style. Here's some random class names I copied from their extension CSS we can copy. We don't use Tailwind, but we can re-build it in CSS.
-      Tool call card outer:
-      class="action-element max-w-[100%] w-full rounded-md overflow-hidden border border-border/80"
-      Tool call card inner:
-      flex flex-col gap-1.5 font-normal bg-card/60 p-1.5
+- [x] Style improvements: let's lower the horizontal paddings on all the messages, remove the placeholder message on the prompt editor as well as the intro help message. There's also like a "Chat" section heading on the extension. Does that need to be there? Can we get rid of that. I like Amp's style. Here's some random class names I copied from their extension CSS we can copy. We don't use Tailwind, but we can re-build it in CSS.
 
-Main scoll pane:
-overflow-auto relative h-full max-h-full scroll-p-2 p-2
-
-Use the corresponding css units for these tailwind classes and use them in the extension. Find opportunities for alignment. Ask oracle to review the css file afterward to find opportunities for improvement.
+  - **Status**: Completed - all Amp-style improvements implemented with Oracle review and enhancements
+  - **Details**: Reduced padding throughout (messages 16px→8px, input 12px→8px), removed placeholder text and welcome message, removed "Chat" heading from package.json. Converted Tailwind classes to CSS for tool calls and scroll pane. Oracle reviewed and recommended 20+ additional improvements which were all implemented: standardized spacing to 8px scale, unified border radius to 4px, added proper theme tokens for focus/links/hover, added content-visibility for performance, improved accessibility with :focus-visible and prefers-reduced-motion, added link styling and code block styling, improved text wrapping, and added interactive hover states to all summary elements.
+  - **Documentation**: See [docs/todos/style-improvements-amp-style.md](docs/todos/style-improvements-amp-style.md)
 
 - [ ] Markdown support in assistant messages
 - [ ] @-mention support

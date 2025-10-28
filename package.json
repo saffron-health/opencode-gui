@@ -27,7 +27,7 @@
         {
           "type": "webview",
           "id": "opencode.chatView",
-          "name": "Chat"
+          "name": ""
         }
       ]
     }
