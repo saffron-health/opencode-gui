@@ -95,12 +95,14 @@ function App() {
               
               if (messageIndex === -1) {
                 // New message - create it
+                // Determine if this is a user or assistant message from the part's sessionID
+                // User messages come before assistant messages in the stream
                 console.log('[Webview] Creating new message:', part.messageID);
                 return [
                   ...filtered,
                   {
                     id: part.messageID,
-                    type: "assistant",
+                    type: "assistant", // Will be corrected by message.updated if it's a user message
                     parts: [part],
                   },
                 ];
@@ -132,37 +134,49 @@ function App() {
           break;
         }
         case "message-update": {
-          // Message metadata update - ignore if it doesn't have parts
-          // The message.updated SSE events don't include the parts array,
-          // so we shouldn't overwrite our streaming state
+          // Message metadata update
           const { message: finalMessage } = message;
           
-          // Only update if the message includes parts data
-          if (!finalMessage.parts || finalMessage.parts.length === 0) {
-            console.log('[Webview] Ignoring message-update without parts');
-            break;
-          }
+          console.log('[Webview] message-update received:', {
+            id: finalMessage.id,
+            role: finalMessage.role,
+            hasParts: !!(finalMessage.parts && finalMessage.parts.length > 0)
+          });
           
           setMessages((prev) => {
             const filtered = prev.filter((m) => m.id !== "thinking");
             const index = filtered.findIndex((m) => m.id === finalMessage.id);
             
             if (index === -1) {
+              // New message - create it
+              // If it has parts, use them, otherwise create empty message that will be populated by part-update
+              console.log('[Webview] Creating message from message-update');
               return [
                 ...filtered,
                 {
                   id: finalMessage.id,
-                  type: "assistant",
-                  parts: finalMessage.parts,
+                  type: finalMessage.role === "user" ? "user" : "assistant",
+                  parts: finalMessage.parts || [],
+                  text: finalMessage.text,
                 },
               ];
             } else {
+              // Update existing message
               const updated = [...filtered];
-              updated[index] = {
-                id: finalMessage.id,
-                type: "assistant",
-                parts: finalMessage.parts,
-              };
+              const currentMsg = updated[index];
+              
+              // Update role if provided
+              if (finalMessage.role) {
+                currentMsg.type = finalMessage.role === "user" ? "user" : "assistant";
+              }
+              
+              // Only update parts if the new message has parts
+              // This preserves streaming content built up from part-update events
+              if (finalMessage.parts && finalMessage.parts.length > 0) {
+                currentMsg.parts = finalMessage.parts;
+              }
+              
+              updated[index] = currentMsg;
               return updated;
             }
           });
@@ -234,17 +248,7 @@ function App() {
       return;
     }
 
-    // Add user message
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        type: "user",
-        text: input,
-      },
-    ]);
-
-    // Send to extension
+    // Send to extension - the user message will be added via SSE stream
     vscode.postMessage({
       type: "sendPrompt",
       text: input,
