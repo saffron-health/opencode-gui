@@ -45,6 +45,15 @@ function App() {
     (m) => m.type === "user" || m.type === "assistant"
   );
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     // Listen for messages from extension
     const messageHandler = (event: MessageEvent) => {
@@ -70,7 +79,7 @@ function App() {
           }
           break;
         case "part-update": {
-          // Streaming part update - throttle updates to avoid excessive re-renders
+          // Streaming part update
           const { part, delta } = message;
           console.log('[Webview] part-update received:', {
             partId: part.id,
@@ -79,13 +88,11 @@ function App() {
             hasDelta: !!delta
           });
           
-          // Clear any pending update
-          if (updateTimeoutRef.current) {
-            clearTimeout(updateTimeoutRef.current);
-          }
+          // Only throttle text updates (rapid streaming)
+          // Tool/reasoning/other updates should be immediate
+          const shouldThrottle = part.type === "text" && delta;
           
-          // Throttle updates - batch rapid changes and only update every 100ms
-          updateTimeoutRef.current = window.setTimeout(() => {
+          const updateMessage = () => {
             setMessages((prev) => {
               // Filter out thinking messages
               const filtered = prev.filter((m) => m.id !== "thinking");
@@ -95,14 +102,12 @@ function App() {
               
               if (messageIndex === -1) {
                 // New message - create it
-                // Determine if this is a user or assistant message from the part's sessionID
-                // User messages come before assistant messages in the stream
                 console.log('[Webview] Creating new message:', part.messageID);
                 return [
                   ...filtered,
                   {
                     id: part.messageID,
-                    type: "assistant", // Will be corrected by message.updated if it's a user message
+                    type: "assistant",
                     parts: [part],
                   },
                 ];
@@ -130,7 +135,18 @@ function App() {
                 return updated;
               }
             });
-          }, 100); // Update at most every 100ms
+          };
+          
+          if (shouldThrottle) {
+            // Throttle text updates
+            if (updateTimeoutRef.current) {
+              clearTimeout(updateTimeoutRef.current);
+            }
+            updateTimeoutRef.current = window.setTimeout(updateMessage, 100);
+          } else {
+            // Immediate update for tool calls and other non-text parts
+            updateMessage();
+          }
           break;
         }
         case "message-update": {
