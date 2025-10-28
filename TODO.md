@@ -58,7 +58,14 @@
   - **Details**: Reduced padding throughout (messages 16px→8px, input 12px→8px), removed placeholder text and welcome message, removed "Chat" heading from package.json. Converted Tailwind classes to CSS for tool calls and scroll pane. Oracle reviewed and recommended 20+ additional improvements which were all implemented: standardized spacing to 8px scale, unified border radius to 4px, added proper theme tokens for focus/links/hover, added content-visibility for performance, improved accessibility with :focus-visible and prefers-reduced-motion, added link styling and code block styling, improved text wrapping, and added interactive hover states to all summary elements.
   - **Documentation**: See [docs/todos/style-improvements-amp-style.md](docs/todos/style-improvements-amp-style.md)
 
+- [x] Additional style refinements: Remove absolute positioning from input buttons, unify backgrounds to sideBar-background, remove empty state divider, add 20px line-height to prompt and user messages, fix message text margins, use color-mix for tool call backgrounds
+
+  - **Status**: Completed - all layout and spacing refinements implemented
+  - **Details**: Refactored input buttons to use document flow instead of absolute positioning, removed wrapper div and inline padding styles. Unified all backgrounds to sideBar-background for consistency. Removed border/divider in empty state. Added 20px line-height to prompt input and user messages for better readability. Added first-child/last-child margin removal for message text. Updated tool call background to use `color-mix(in oklab, var(--vscode-editor-background) 60%, transparent)` for subtle semi-transparent effect.
+  - **Documentation**: See [docs/todos/style-refinements-round-2.md](docs/todos/style-refinements-round-2.md)
+
 - [ ] Markdown support in assistant messages
 - [ ] @-mention support
 - [ ] New session button
 - [ ] Session switcher
+- [ ] Better tool calls

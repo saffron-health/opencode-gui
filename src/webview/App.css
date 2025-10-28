@@ -3,7 +3,7 @@ body {
   margin: 0;
   padding: 0;
   color: var(--vscode-foreground);
-  background-color: var(--vscode-editor-background);
+  background-color: var(--vscode-sideBar-background);
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
   overflow: hidden;
@@ -19,19 +19,12 @@ body {
 /* Input Container */
 .input-container {
   padding: 8px;
-  border-bottom: 1px solid var(--vscode-panel-border);
   background-color: var(--vscode-sideBar-background);
   flex-shrink: 0;
 }
 
 .app--has-messages .input-container {
-  border-bottom: none;
   border-top: 1px solid var(--vscode-panel-border);
-}
-
-.textarea-wrapper {
-  position: relative;
-  width: 100%;
 }
 
 .prompt-input {
@@ -39,13 +32,13 @@ body {
   min-height: 36px;
   max-height: 120px;
   padding: 8px 12px;
-  padding-right: 48px;
   border: 1px solid var(--vscode-input-border);
   border-radius: 4px;
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
+  line-height: 20px;
   resize: none;
   outline: none;
   box-sizing: border-box;
@@ -71,16 +64,13 @@ body {
   color: var(--vscode-input-placeholderForeground);
 }
 
-/* Button row at bottom of input */
+/* Button row below input */
 .input-buttons {
-  position: absolute;
-  bottom: 4px;
-  left: 4px;
-  right: 4px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+  margin-top: 8px;
 }
 
 .shortcut-button {
@@ -218,6 +208,7 @@ body {
   border: 1px solid var(--vscode-input-border);
   border-radius: 4px;
   color: var(--vscode-input-foreground);
+  line-height: 20px;
   word-wrap: break-word;
   white-space: pre-wrap;
   box-sizing: border-box;
@@ -292,7 +283,7 @@ body {
   border: 1px solid var(--vscode-panel-border);
   border-radius: 4px;
   overflow: hidden;
-  background-color: var(--vscode-sideBar-background);
+  background-color: color-mix(in oklab, var(--vscode-editor-background) 60%, transparent);
   content-visibility: auto;
   contain-intrinsic-size: 0 120px;
 }
@@ -438,6 +429,14 @@ body {
 
 .message-text {
   margin: 4px 0;
+}
+
+.message-text:first-child {
+  margin-top: 0;
+}
+
+.message-text:last-child {
+  margin-bottom: 0;
 }
 
 /* Step Indicator */

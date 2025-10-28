@@ -381,30 +381,27 @@ function App() {
 
   const renderInput = () => (
     <form class="input-container" onSubmit={handleSubmit}>
-      <div class="textarea-wrapper">
-        <textarea
-          ref={inputRef!}
-          class="prompt-input"
-          style={{ "padding-bottom": "32px" }}
-          placeholder=""
-          value={input()}
-          onInput={(e) => setInput(e.currentTarget.value)}
-          onKeyDown={handleKeyDown}
-          disabled={!isReady() || isThinking()}
-        />
-        <div class="input-buttons">
-          <Show when={agents().length > 0}>
-            <AgentSwitcher />
-          </Show>
-          <button
-            type="submit"
-            class="shortcut-button shortcut-button--secondary"
-            disabled={!isReady() || isThinking() || !input().trim()}
-            aria-label="Submit (Cmd+Enter)"
-          >
-            ⌘⏎
-          </button>
-        </div>
+      <textarea
+        ref={inputRef!}
+        class="prompt-input"
+        placeholder=""
+        value={input()}
+        onInput={(e) => setInput(e.currentTarget.value)}
+        onKeyDown={handleKeyDown}
+        disabled={!isReady() || isThinking()}
+      />
+      <div class="input-buttons">
+        <Show when={agents().length > 0}>
+          <AgentSwitcher />
+        </Show>
+        <button
+          type="submit"
+          class="shortcut-button shortcut-button--secondary"
+          disabled={!isReady() || isThinking() || !input().trim()}
+          aria-label="Submit (Cmd+Enter)"
+        >
+          ⌘⏎
+        </button>
       </div>
     </form>
   );
