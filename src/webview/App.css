@@ -552,7 +552,7 @@ body.vscode-high-contrast {
 }
 
 .session-switcher-button:hover:not(:disabled) {
-  background-color: var(--vscode-list-hoverBackground);
+  background-color: color-mix(in oklab, var(--vscode-list-hoverBackground) 30%, transparent);
   border-color: var(--vscode-panel-border);
 }
 
@@ -635,9 +635,9 @@ body.vscode-high-contrast {
   width: 26px;
   height: 26px;
   padding: 0;
-  border: 1px solid var(--vscode-panel-border);
+  border: 1px solid transparent;
   border-radius: 4px;
-  background-color: var(--vscode-input-background);
+  background-color: transparent;
   color: var(--vscode-input-foreground);
   font-family: var(--vscode-font-family);
   font-size: 14px;
@@ -646,12 +646,13 @@ body.vscode-high-contrast {
   user-select: none;
   flex-shrink: 0;
   line-height: 1;
-  transition: none;
+  opacity: 0.7;
+  transition: all 0.15s;
 }
 
 .new-session-button:hover {
   background-color: var(--vscode-list-hoverBackground);
-  border-color: var(--vscode-panel-border);
+  opacity: 1;
 }
 
 .new-session-button:focus-visible {
