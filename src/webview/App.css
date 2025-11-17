@@ -23,7 +23,7 @@ body {
 
 /* Input Container */
 .input-container {
-  padding: 6px;
+  padding: 4px 8px;
   background-color: color-mix(in oklab, white 8%, var(--vscode-sideBar-background));
   border: 1px solid var(--vscode-input-border);
   border-radius: 4px;
@@ -51,7 +51,7 @@ body {
   width: 100%;
   min-height: 36px;
   max-height: 120px;
-  padding: 6px;
+  padding: 0;
   border: none;
   border-radius: 0;
   background-color: transparent;
@@ -156,17 +156,18 @@ body {
   max-height: 100%;
   scroll-padding: 8px;
   padding: 8px;
+  overscroll-behavior: contain;
+}
+
+.messages-content {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overscroll-behavior: contain;
 }
 
 /* Message Styles */
 .message {
   width: 100%;
-  content-visibility: auto;
-  contain-intrinsic-size: 0 120px;
 }
 
 .message--user .message-content {
