@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { OpenCodeService } from './OpenCodeService';
 import type { Event } from '@opencode-ai/sdk';
+import { getLogger } from './extension';
 
 export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'opencode.chatView';
