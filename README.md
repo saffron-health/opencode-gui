@@ -168,6 +168,16 @@ opencode-vscode-2/
 - Session persistence
 - Undo/redo functionality
 
+## Publishing
+
+To publish a new version to the VS Code Marketplace:
+
+1. Bump the version in `package.json`
+2. Build and package: `npm run build && npx vsce package`
+3. Publish: `npx vsce publish`
+
+**Azure DevOps PAT**: The publisher uses Azure DevOps at https://dev.azure.com/tanishqk/. If your PAT expires, create a new one there with "Marketplace (Manage)" scope, then run `npx vsce login TanishqKancharla` with the new token.
+
 ## Troubleshooting
 
 **"Failed to start OpenCode"**
