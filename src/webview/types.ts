@@ -77,6 +77,12 @@ export interface ContextInfo {
   percentage: number;
 }
 
+export interface FileChangesInfo {
+  fileCount: number;
+  additions: number;
+  deletions: number;
+}
+
 export type HostMessage =
   | { type: "init"; ready: boolean; workspaceRoot?: string; currentSessionId?: string | null; currentSessionTitle?: string; currentSessionMessages?: IncomingMessage[] }
   | { type: "agentList"; agents: Agent[] }
@@ -88,7 +94,8 @@ export type HostMessage =
   | { type: "session-list"; sessions: Session[] }
   | { type: "session-switched"; sessionId: string; title: string; messages?: IncomingMessage[] }
   | { type: "permission-required"; permission: Permission }
-  | { type: "context-update"; contextInfo: ContextInfo };
+  | { type: "context-update"; contextInfo: ContextInfo }
+  | { type: "file-changes-update"; fileChanges: FileChangesInfo };
 
 export type WebviewMessage =
   | { type: "ready" }
@@ -97,4 +104,5 @@ export type WebviewMessage =
   | { type: "load-sessions" }
   | { type: "switch-session"; sessionId: string }
   | { type: "create-session"; title?: string }
-  | { type: "permission-response"; sessionId: string; permissionId: string; response: "once" | "always" | "reject" };
+  | { type: "permission-response"; sessionId: string; permissionId: string; response: "once" | "always" | "reject" }
+  | { type: "cancel-session" };

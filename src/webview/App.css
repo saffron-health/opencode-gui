@@ -129,6 +129,27 @@ body {
   background-color: var(--vscode-button-secondaryHoverBackground);
 }
 
+.shortcut-button--stop {
+  border: none;
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  opacity: 0.8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+}
+
+.shortcut-button--stop:hover {
+  opacity: 1;
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.shortcut-button--stop svg {
+  width: 8px;
+  height: 8px;
+}
+
 /* Loading Indicator */
 .loading-indicator {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -658,15 +679,40 @@ body.vscode-high-contrast {
   box-shadow: 0 0 0 1px var(--vscode-focusBorder);
 }
 
+/* Input Status Row */
+.input-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 0;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+/* File Changes Summary */
+.file-changes-summary {
+  font-family: var(--vscode-font-family);
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  user-select: none;
+  line-height: 12px;
+}
+
+.file-changes-summary__additions {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #89d185);
+}
+
+.file-changes-summary__deletions {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #f48771);
+}
+
 /* Context Indicator */
 .context-indicator {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 6px;
-  padding: 6px 8px 0 8px;
-  margin: 0 8px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .context-indicator__ring {

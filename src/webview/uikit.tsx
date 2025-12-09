@@ -5,7 +5,8 @@ import { InputBar } from "./components/InputBar";
 import { MessageList } from "./components/MessageList";
 import { TopBar } from "./components/TopBar";
 import { ContextIndicator } from "./components/ContextIndicator";
-import type { Message, Agent, Session, Permission, ContextInfo } from "./types";
+import { FileChangesSummary } from "./components/FileChangesSummary";
+import type { Message, Agent, Session, Permission, ContextInfo, FileChangesInfo } from "./types";
 import "./uikit.css"; // VSCode theme variable fallbacks for browser
 import "./App.css";
 
@@ -167,6 +168,13 @@ function UIKit() {
     usedTokens: 85000,
     limitTokens: 200000,
     percentage: 42.5,
+  });
+
+  // File changes for testing
+  const [fileChanges, setFileChanges] = createSignal<FileChangesInfo>({
+    fileCount: 4,
+    additions: 127,
+    deletions: 43,
   });
   
   // Pending permissions tracked separately from tool parts
@@ -387,7 +395,10 @@ function UIKit() {
         {hasMessages() && (
           <>
             <div class="input-divider" />
-            <ContextIndicator contextInfo={contextInfo()} />
+            <div class="input-status-row">
+              <FileChangesSummary fileChanges={fileChanges()} />
+              <ContextIndicator contextInfo={contextInfo()} />
+            </div>
             <InputBar
               value={input()}
               onInput={setInput}

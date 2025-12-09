@@ -61,6 +61,9 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
           case 'permission-response':
             await this._handlePermissionResponse(message.sessionId, message.permissionId, message.response);
             return;
+          case 'cancel-session':
+            await this._handleCancelSession();
+            return;
         }
       }
     );
@@ -137,7 +140,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   private async _handleSwitchSession(sessionId: string) {
     try {
       this._activeSessionId = sessionId;
-      await this._openCodeService.switchSession(sessionId);
+      const session = await this._openCodeService.switchSession(sessionId);
       
       // Load messages from the session
       const messages = await this._openCodeService.getMessages(sessionId);
@@ -148,6 +151,36 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         title: this._openCodeService.getCurrentSessionTitle(),
         messages
       });
+
+      // Send file changes summary if available
+      if (session.summary?.diffs) {
+        const diffs = session.summary.diffs;
+        const fileCount = diffs.length;
+        const additions = diffs.reduce((sum: number, d: any) => sum + (d.additions || 0), 0);
+        const deletions = diffs.reduce((sum: number, d: any) => sum + (d.deletions || 0), 0);
+        
+        this._sendMessage({
+          type: 'file-changes-update',
+          fileChanges: {
+            fileCount,
+            additions,
+            deletions
+          }
+        });
+      }
+
+      // Find last assistant message to restore context info
+      const lastAssistantMsg = [...messages].reverse().find((m: any) => {
+        const info = m.info || m;
+        return info.role === 'assistant' && info.tokens;
+      });
+      
+      if (lastAssistantMsg) {
+        const info: any = lastAssistantMsg.info || lastAssistantMsg;
+        if (info.tokens) {
+          this._updateContextInfo(info.tokens, info.modelID, info.providerID);
+        }
+      }
     } catch (error) {
       console.error('Error switching session:', error);
       this._sendMessage({
@@ -187,6 +220,27 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       this._sendMessage({
         type: 'error',
         message: `Failed to respond to permission: ${(error as Error).message}`
+      });
+    }
+  }
+
+  private async _handleCancelSession() {
+    const sessionId = this._activeSessionId || this._openCodeService.getCurrentSessionId();
+    if (!sessionId) {
+      console.log('[ViewProvider] No active session to cancel');
+      return;
+    }
+
+    try {
+      console.log('[ViewProvider] Cancelling session:', sessionId);
+      await this._openCodeService.abortSession(sessionId);
+      this._sendMessage({ type: 'thinking', isThinking: false });
+      console.log('[ViewProvider] Session cancelled successfully');
+    } catch (error) {
+      console.error('[ViewProvider] Error cancelling session:', error);
+      this._sendMessage({
+        type: 'error',
+        message: `Failed to cancel: ${(error as Error).message}`
       });
     }
   }
@@ -303,6 +357,26 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     } else if (event.type === 'session.idle') {
       // Session finished processing
       console.log('[ViewProvider] Session idle - streaming complete');
+    } else if (event.type === 'session.updated') {
+      const session = event.properties.info;
+      console.log('[ViewProvider] Session updated:', session.id);
+      
+      // Send file changes summary if available
+      if (session.summary?.diffs) {
+        const diffs = session.summary.diffs;
+        const fileCount = diffs.length;
+        const additions = diffs.reduce((sum: number, d: any) => sum + (d.additions || 0), 0);
+        const deletions = diffs.reduce((sum: number, d: any) => sum + (d.deletions || 0), 0);
+        
+        this._sendMessage({
+          type: 'file-changes-update',
+          fileChanges: {
+            fileCount,
+            additions,
+            deletions
+          }
+        });
+      }
     }
     // Add more event handlers as needed
   }
@@ -329,6 +403,12 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
       // Calculate total tokens used (input + output + cache read)
       const usedTokens = (tokens.input || 0) + (tokens.output || 0) + (tokens.cache?.read || 0);
+      
+      // Skip update if no tokens yet (still streaming)
+      if (usedTokens === 0) {
+        return;
+      }
+      
       const percentage = Math.min(100, (usedTokens / this._currentModelContextLimit) * 100);
 
       this._sendMessage({

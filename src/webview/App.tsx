@@ -4,9 +4,10 @@ import { InputBar } from "./components/InputBar";
 import { MessageList } from "./components/MessageList";
 import { TopBar } from "./components/TopBar";
 import { ContextIndicator } from "./components/ContextIndicator";
+import { FileChangesSummary } from "./components/FileChangesSummary";
 import { useVsCodeBridge } from "./hooks/useVsCodeBridge";
 import { applyPartUpdate, applyMessageUpdate } from "./utils/messageUtils";
-import type { Message, Agent, Session, Permission, ContextInfo } from "./types";
+import type { Message, Agent, Session, Permission, ContextInfo, FileChangesInfo } from "./types";
 
 const DEBUG = false;
 
@@ -22,6 +23,7 @@ function App() {
   const [currentSessionTitle, setCurrentSessionTitle] = createSignal<string>("New Session");
   const [workspaceRoot, setWorkspaceRoot] = createSignal<string | undefined>(undefined);
   const [contextInfo, setContextInfo] = createSignal<ContextInfo | null>(null);
+  const [fileChanges, setFileChanges] = createSignal<FileChangesInfo | null>(null);
   
   // Pending permissions are tracked separately from tool parts
   // Key is either callID (preferred) or permissionID as fallback
@@ -139,6 +141,9 @@ function App() {
     onSessionSwitched: (sessionId, title, incomingMessages) => {
       setCurrentSessionId(sessionId);
       setCurrentSessionTitle(title);
+      // Reset - backend will send updated values via file-changes-update and context-update
+      setFileChanges(null);
+      setContextInfo(null);
       
       // Load messages from the session
       if (incomingMessages && incomingMessages.length > 0) {
@@ -186,6 +191,10 @@ function App() {
     onContextUpdate: (context: ContextInfo) => {
       setContextInfo(context);
     },
+
+    onFileChangesUpdate: (changes: FileChangesInfo) => {
+      setFileChanges(changes);
+    },
   });
 
   onMount(() => {
@@ -215,6 +224,10 @@ function App() {
   const handleNewSession = () => {
     send({ type: "create-session" });
     // The session-switched event handler will update the UI state
+  };
+
+  const handleCancel = () => {
+    send({ type: "cancel-session" });
   };
 
   const handlePermissionResponse = (permissionId: string, response: "once" | "always" | "reject") => {
@@ -286,7 +299,9 @@ function App() {
           value={input()}
           onInput={setInput}
           onSubmit={handleSubmit}
-          disabled={!isReady() || isThinking()}
+          onCancel={handleCancel}
+          disabled={!isReady()}
+          isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}
           onAgentChange={setSelectedAgent}
@@ -297,12 +312,17 @@ function App() {
 
       <Show when={hasMessages()}>
         <div class="input-divider" />
-        <ContextIndicator contextInfo={contextInfo()} />
+        <div class="input-status-row">
+          <FileChangesSummary fileChanges={fileChanges()} />
+          <ContextIndicator contextInfo={contextInfo()} />
+        </div>
         <InputBar
           value={input()}
           onInput={setInput}
           onSubmit={handleSubmit}
-          disabled={!isReady() || isThinking()}
+          onCancel={handleCancel}
+          disabled={!isReady()}
+          isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}
           onAgentChange={setSelectedAgent}

@@ -188,7 +188,7 @@ export class OpenCodeService {
     return response.data || [];
   }
 
-  async switchSession(sessionId: string): Promise<void> {
+  async switchSession(sessionId: string): Promise<Session> {
     if (!this.opencode) {
       throw new Error("OpenCode not initialized");
     }
@@ -206,6 +206,7 @@ export class OpenCodeService {
     const session = response.data as Session;
     this.currentSessionId = session.id;
     this.currentSessionTitle = session.title;
+    return session;
   }
 
   async createNewSession(title?: string): Promise<string> {
@@ -439,6 +440,29 @@ export class OpenCodeService {
     }
 
     debugLog('[respondToPermission] Success');
+  }
+
+  async abortSession(sessionId?: string): Promise<void> {
+    if (!this.opencode) {
+      throw new Error("OpenCode not initialized");
+    }
+
+    const sid = sessionId || this.currentSessionId;
+    if (!sid) {
+      throw new Error("No active session to abort");
+    }
+
+    debugLog(`[abortSession] Aborting session ${sid}`);
+
+    const result = await this.opencode.client.session.abort({
+      path: { id: sid },
+    });
+
+    if (result.error) {
+      throw new Error(`Failed to abort session: ${JSON.stringify(result.error)}`);
+    }
+
+    debugLog(`[abortSession] Session ${sid} aborted successfully`);
   }
 
   async dispose(): Promise<void> {

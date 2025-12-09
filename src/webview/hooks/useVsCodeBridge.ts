@@ -1,5 +1,5 @@
 import { onMount, onCleanup } from "solid-js";
-import type { MessagePart, Agent, IncomingMessage, WebviewMessage, Session, Permission, ContextInfo } from "../types";
+import type { MessagePart, Agent, IncomingMessage, WebviewMessage, Session, Permission, ContextInfo, FileChangesInfo } from "../types";
 
 declare const acquireVsCodeApi: any;
 const vscode = acquireVsCodeApi();
@@ -16,6 +16,7 @@ export interface VsCodeBridgeCallbacks {
   onSessionSwitched: (sessionId: string, title: string, messages?: IncomingMessage[]) => void;
   onPermissionRequired: (permission: Permission) => void;
   onContextUpdate: (contextInfo: ContextInfo) => void;
+  onFileChangesUpdate: (fileChanges: FileChangesInfo) => void;
 }
 
 export function useVsCodeBridge(callbacks: VsCodeBridgeCallbacks) {
@@ -74,6 +75,10 @@ export function useVsCodeBridge(callbacks: VsCodeBridgeCallbacks) {
 
         case "context-update":
           callbacks.onContextUpdate(message.contextInfo);
+          break;
+
+        case "file-changes-update":
+          callbacks.onFileChangesUpdate(message.fileChanges);
           break;
       }
     };

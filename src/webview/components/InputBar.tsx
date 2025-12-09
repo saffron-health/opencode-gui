@@ -1,5 +1,5 @@
 /* @jsxImportSource solid-js */
-import { createEffect, Show } from "solid-js";
+import { createEffect, onMount, Show } from "solid-js";
 import type { Agent } from "../types";
 import { AgentSwitcher } from "./AgentSwitcher";
 
@@ -7,7 +7,9 @@ interface InputBarProps {
   value: string;
   onInput: (value: string) => void;
   onSubmit: () => void;
+  onCancel: () => void;
   disabled: boolean;
+  isThinking: boolean;
   selectedAgent: string | null;
   agents: Agent[];
   onAgentChange: (agentName: string) => void;
@@ -31,8 +33,16 @@ export function InputBar(props: InputBarProps) {
     adjustTextareaHeight();
   });
 
+  onMount(() => {
+    inputRef?.focus();
+  });
+
   const handleSubmit = (e: Event) => {
     e.preventDefault();
+    if (props.isThinking) {
+      props.onCancel();
+      return;
+    }
     if (!props.value.trim() || props.disabled) {
       return;
     }
@@ -40,6 +50,11 @@ export function InputBar(props: InputBarProps) {
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape" && props.isThinking) {
+      e.preventDefault();
+      props.onCancel();
+      return;
+    }
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleSubmit(e);
@@ -47,8 +62,6 @@ export function InputBar(props: InputBarProps) {
   };
 
   const handleContainerClick = (e: MouseEvent) => {
-    // Focus the textarea when clicking anywhere in the container
-    // except on interactive elements (buttons)
     const target = e.target as HTMLElement;
     if (
       !target.closest("button") &&
@@ -68,24 +81,39 @@ export function InputBar(props: InputBarProps) {
         value={props.value}
         onInput={(e) => props.onInput(e.currentTarget.value)}
         onKeyDown={handleKeyDown}
-        disabled={props.disabled}
       />
       <div class="input-buttons">
-        <Show when={props.agents.length > 0}>
+        <Show when={props.agents.length > 0 && !props.isThinking}>
           <AgentSwitcher
             agents={props.agents}
             selectedAgent={props.selectedAgent}
             onAgentChange={props.onAgentChange}
           />
         </Show>
-        <button
-          type="submit"
-          class="shortcut-button shortcut-button--secondary"
-          disabled={props.disabled || !props.value.trim()}
-          aria-label="Submit (Cmd+Enter)"
+        <Show
+          when={props.isThinking}
+          fallback={
+            <button
+              type="submit"
+              class="shortcut-button shortcut-button--secondary"
+              disabled={props.disabled || !props.value.trim()}
+              aria-label="Submit (Cmd+Enter)"
+            >
+              ⌘⏎
+            </button>
+          }
         >
-          ⌘⏎
-        </button>
+          <button
+            type="button"
+            class="shortcut-button shortcut-button--stop"
+            onClick={() => props.onCancel()}
+            aria-label="Stop (Escape)"
+          >
+            <svg viewBox="0 0 10 10" fill="currentColor">
+              <rect width="10" height="10" rx="2" />
+            </svg>
+          </button>
+        </Show>
       </div>
     </form>
   );
