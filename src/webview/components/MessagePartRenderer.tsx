@@ -9,12 +9,13 @@ interface MessagePartRendererProps {
   workspaceRoot?: string;
   pendingPermissions?: Map<string, Permission>;
   onPermissionResponse?: (permissionId: string, response: "once" | "always" | "reject") => void;
+  isStreaming?: boolean;
 }
 
 export function MessagePartRenderer(props: MessagePartRendererProps) {
   switch (props.part.type) {
     case "text":
-      return <TextBlock part={props.part} />;
+      return <TextBlock part={props.part} isStreaming={props.isStreaming} />;
     case "reasoning":
       return <ReasoningBlock part={props.part} />;
     case "tool":

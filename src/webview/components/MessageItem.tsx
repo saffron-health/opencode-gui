@@ -8,6 +8,7 @@ interface MessageItemProps {
   workspaceRoot?: string;
   pendingPermissions?: Map<string, Permission>;
   onPermissionResponse?: (permissionId: string, response: "once" | "always" | "reject") => void;
+  isStreaming?: boolean;
 }
 
 export function MessageItem(props: MessageItemProps) {
@@ -16,7 +17,7 @@ export function MessageItem(props: MessageItemProps) {
       <div class="message-content">
         <Show when={props.message.parts} fallback={props.message.text}>
           <For each={props.message.parts}>
-            {(part) => <MessagePartRenderer part={part} workspaceRoot={props.workspaceRoot} pendingPermissions={props.pendingPermissions} onPermissionResponse={props.onPermissionResponse} />}
+            {(part) => <MessagePartRenderer part={part} workspaceRoot={props.workspaceRoot} pendingPermissions={props.pendingPermissions} onPermissionResponse={props.onPermissionResponse} isStreaming={props.isStreaming} />}
           </For>
         </Show>
       </div>

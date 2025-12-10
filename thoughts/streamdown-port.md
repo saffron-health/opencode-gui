@@ -38,12 +38,16 @@ Tests:
 3. Markdown component renders HAST to Solid JSX
 4. Streamdown component combines everything with static/streaming modes
 
+## Completed
+
+1. ✅ Integration into TextBlock component - uses Streamdown with streaming mode detection
+2. ✅ CSS styling for rendered markdown elements - comprehensive styles in App.css
+3. ✅ isStreaming prop passed through MessageList → MessageItem → MessagePartRenderer → TextBlock
+
 ## Not Yet Done
 
-1. Integration into TextBlock component (`src/webview/components/parts/TextBlock.tsx`)
-2. Code block syntax highlighting with Shiki
-3. Mermaid diagram support
-4. CSS styling for rendered markdown elements
+1. Code block syntax highlighting with Shiki
+2. Mermaid diagram support
 
 ## Usage
 
