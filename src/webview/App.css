@@ -3,6 +3,10 @@
   box-sizing: border-box;
 }
 
+:root {
+  color-scheme: light dark;
+}
+
 /* Use VSCode theme variables */
 body {
   margin: 0;
@@ -24,7 +28,7 @@ body {
 /* Input Container */
 .input-container {
   padding: 6px;
-  background-color: color-mix(in oklab, white 8%, var(--vscode-sideBar-background));
+  background-color: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border);
   border-radius: 4px;
   flex-shrink: 0;
@@ -36,6 +40,10 @@ body {
 }
 
 .input-container:focus-within {
+  background-color: light-dark(
+    color-mix(in oklab, black 2%, var(--vscode-input-background)),
+    color-mix(in oklab, white 2%, var(--vscode-input-background))
+  );
   border-color: color-mix(in oklab, var(--vscode-foreground) 30%, var(--vscode-input-border));
 }
 
@@ -518,9 +526,9 @@ body.vscode-high-contrast {
   justify-content: space-between;
   gap: 4px;
   padding: 4px 6px;
-  border: 1px solid color-mix(in oklab,var(--vscode-input-border) 60%, var(--vscode-sideBar-background));
+  border: 1px solid var(--vscode-input-border);
   border-radius: 4px;
-  background-color: color-mix(in oklab, white 4%, var(--vscode-sideBar-background));
+  background-color: var(--vscode-input-background);
   color: color-mix(in oklab, var(--vscode-foreground) 80%, var(--vscode-sideBar-background));
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
@@ -532,7 +540,10 @@ body.vscode-high-contrast {
 }
 
 .session-switcher-button:hover:not(:disabled) {
-  background-color: color-mix(in oklab, white 6%, var(--vscode-sideBar-background));
+  background-color: light-dark(
+    color-mix(in oklab, black 2%, var(--vscode-input-background)),
+    color-mix(in oklab, white 2%, var(--vscode-input-background))
+  );
   color: var(--vscode-foreground);
   border-color: var(--vscode-input-border);
 }
@@ -676,6 +687,10 @@ body.vscode-high-contrast {
 }
 
 .context-indicator__ring-bg {
+  stroke: light-dark(
+    color-mix(in oklab, black 8%, var(--vscode-sideBar-background)),
+    color-mix(in oklab, white 8%, var(--vscode-sideBar-background))
+  );
 }
 
 .context-indicator__ring-progress {
@@ -715,7 +730,7 @@ body.vscode-high-contrast {
 .message-text h5,
 .message-text h6 {
   margin: 1em 0 0.5em 0;
-  font-weight: 600;
+  font-weight: 560;
   line-height: 1.3;
 }
 
@@ -729,7 +744,7 @@ body.vscode-high-contrast {
 .message-text ul,
 .message-text ol {
   margin: 0.5em 0;
-  padding-left: 1.5em;
+  padding-left: 1.1em;
 }
 
 .message-text li {
@@ -801,7 +816,7 @@ body.vscode-high-contrast {
 }
 
 .message-text strong {
-  font-weight: 600;
+  font-weight: 560;
 }
 
 .message-text em {

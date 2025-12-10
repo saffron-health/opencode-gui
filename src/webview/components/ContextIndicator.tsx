@@ -28,7 +28,6 @@ export function ContextIndicator(props: ContextIndicatorProps) {
             cx="50"
             cy="50"
             r="42"
-            stroke="color-mix(in oklab, white 8%, var(--vscode-sideBar-background))"
             stroke-width="16"
             fill="none"
           />

@@ -1,5 +1,6 @@
 /* @jsxImportSource solid-js */
-import { JSX, splitProps, mergeProps } from "solid-js";
+import { JSX } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import type { Element, Text, Root, Comment, Doctype, ElementContent } from "hast";
 
 export type HastNode = Element | Text | Root | Comment | Doctype;
@@ -96,8 +97,7 @@ function renderNode(
     }
     
     // Use Dynamic for standard HTML elements
-    const Tag = tagName as any;
-    return <Tag {...props}>{children}</Tag>;
+    return <Dynamic component={tagName} {...props}>{children}</Dynamic>;
   }
   
   if (isRoot(node as HastNode)) {
