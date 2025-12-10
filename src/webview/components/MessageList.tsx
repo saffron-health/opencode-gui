@@ -123,7 +123,11 @@ export function MessageList(props: MessageListProps) {
     <div class="messages-container" ref={containerRef!}>
       <div class="messages-content" ref={contentRef!}>
         <For each={props.messages}>
-          {(message) => <MessageItem message={message} workspaceRoot={props.workspaceRoot} pendingPermissions={props.pendingPermissions} onPermissionResponse={props.onPermissionResponse} />}
+          {(message, index) => {
+            const isLastMessage = () => index() === props.messages.length - 1;
+            const isStreaming = () => isLastMessage() && props.isThinking && message.type === "assistant";
+            return <MessageItem message={message} workspaceRoot={props.workspaceRoot} pendingPermissions={props.pendingPermissions} onPermissionResponse={props.onPermissionResponse} isStreaming={isStreaming()} />;
+          }}
         </For>
 
         <ThinkingIndicator when={props.isThinking} />
