@@ -74,53 +74,20 @@ export class OpenCodeService {
         process.chdir(workspaceRoot as string);
       }
 
-      // Retry logic with exponential backoff
-      const maxRetries = 3;
-      let lastError: Error | null = null;
+      console.log("Starting OpenCode server...");
 
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          console.log(
-            attempt > 1
-              ? `Retry attempt ${attempt}/${maxRetries} to start OpenCode server...`
-              : "Starting OpenCode server..."
-          );
+      // Create OpenCode instance with server and client
+      // Don't pass config here - let OpenCode load it from the workspace directory
+      this.opencode = await createOpencode({
+        hostname: "127.0.0.1",
+        port: 0, // Let it choose a random available port
+        timeout: 15000, // Give server 15 seconds to start (default is 5s)
+      });
 
-          // Create OpenCode instance with server and client
-          // Don't pass config here - let OpenCode load it from the workspace directory
-          this.opencode = await createOpencode({
-            hostname: "127.0.0.1",
-            port: 0, // Let it choose a random available port
-            timeout: 15000, // Give server 15 seconds to start (default is 5s)
-          });
+      console.log(`OpenCode server started at ${this.opencode.server.url}`);
 
-          console.log(`OpenCode server started at ${this.opencode.server.url}`);
-
-          // Log the active config after server starts
-          await this.logActiveConfig();
-
-          // Success! Exit retry loop
-          return;
-        } catch (error) {
-          lastError = error as Error;
-          console.warn(
-            `Attempt ${attempt}/${maxRetries} failed:`,
-            (error as Error).message
-          );
-
-          // If this is not the last attempt, wait before retrying
-          if (attempt < maxRetries) {
-            const delayMs = 1000 * attempt; // 1s, 2s for retries
-            console.log(`Waiting ${delayMs}ms before retrying...`);
-            await new Promise((resolve) => setTimeout(resolve, delayMs));
-          }
-        }
-      }
-
-      // All retries failed
-      throw new Error(
-        `Failed to start OpenCode after ${maxRetries} attempts. Last error: ${lastError?.message}`
-      );
+      // Log the active config after server starts
+      await this.logActiveConfig();
     } catch (error) {
       console.error("Failed to initialize OpenCode:", error);
       vscode.window.showErrorMessage(
