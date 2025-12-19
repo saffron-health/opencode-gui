@@ -10,14 +10,14 @@ import { applyPartUpdate, applyMessageUpdate } from "./utils/messageUtils";
 import type { Message, Agent, Session, Permission, ContextInfo, FileChangesInfo } from "./types";
 
 const DEBUG = false;
+const NEW_SESSION_KEY = "__new__";
 
 function App() {
-  const [input, setInput] = createSignal("");
   const [messages, setMessages] = createSignal<Message[]>([]);
   const [isThinking, setIsThinking] = createSignal(false);
   const [isReady, setIsReady] = createSignal(false);
   const [agents, setAgents] = createSignal<Agent[]>([]);
-  const [selectedAgent, setSelectedAgent] = createSignal<string | null>(null);
+  const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
   const [sessions, setSessions] = createSignal<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(null);
   const [currentSessionTitle, setCurrentSessionTitle] = createSignal<string>("New Session");
@@ -25,9 +25,40 @@ function App() {
   const [contextInfo, setContextInfo] = createSignal<ContextInfo | null>(null);
   const [fileChanges, setFileChanges] = createSignal<FileChangesInfo | null>(null);
   
+  // Per-session drafts and agent selection
+  // Key is session ID or NEW_SESSION_KEY for new sessions
+  const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
+  const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
+  
   // Pending permissions are tracked separately from tool parts
   // Key is either callID (preferred) or permissionID as fallback
   const [pendingPermissions, setPendingPermissions] = createSignal<Map<string, Permission>>(new Map());
+
+  // Get the current session key for drafts/agents
+  const sessionKey = () => currentSessionId() || NEW_SESSION_KEY;
+
+  // Current input for the active session
+  const input = () => drafts().get(sessionKey()) || "";
+  const setInput = (value: string) => {
+    const key = sessionKey();
+    setDrafts((prev) => {
+      const next = new Map(prev);
+      next.set(key, value);
+      return next;
+    });
+  };
+
+  // Current agent for the active session
+  const selectedAgent = () => sessionAgents().get(sessionKey()) || defaultAgent();
+  const setSelectedAgent = (agent: string | null) => {
+    if (!agent) return;
+    const key = sessionKey();
+    setSessionAgents((prev) => {
+      const next = new Map(prev);
+      next.set(key, agent);
+      return next;
+    });
+  };
 
   const hasMessages = createMemo(() =>
     messages().some((m) => m.type === "user" || m.type === "assistant")
@@ -46,7 +77,9 @@ function App() {
       // Restore active session state from backend if it exists
       if (sessionId) {
         setCurrentSessionId(sessionId);
-        setCurrentSessionTitle(sessionTitle || "New Session");
+        // If it's a default timestamp title, show "New Session" instead
+        const isDefaultTitle = sessionTitle && /^(New session|Child session) - \d{4}-\d{2}-\d{2}T/.test(sessionTitle);
+        setCurrentSessionTitle(isDefaultTitle ? "New Session" : (sessionTitle || "New Session"));
         
         // Load messages from the active session
         if (incomingMessages && incomingMessages.length > 0) {
@@ -72,14 +105,33 @@ function App() {
             };
           });
           setMessages(messages);
+          
+          // Extract agent from the last user message for this session
+          const lastUserMsg = [...incomingMessages].reverse().find((raw: any) => {
+            const m = raw?.info ?? raw;
+            return m?.role === "user";
+          });
+          if (lastUserMsg) {
+            const info = lastUserMsg?.info ?? lastUserMsg;
+            if (info?.agent) {
+              setSessionAgents((prev) => {
+                const next = new Map(prev);
+                next.set(sessionId, info.agent);
+                return next;
+              });
+            }
+          }
         }
       }
     },
 
-    onAgentList: (agentList) => {
+    onAgentList: (agentList, persistedDefault) => {
       setAgents(agentList);
-      if (!selectedAgent() && agentList.length > 0) {
-        setSelectedAgent(agentList[0].name);
+      // Set the default agent for new sessions
+      if (persistedDefault && agentList.some(a => a.name === persistedDefault)) {
+        setDefaultAgent(persistedDefault);
+      } else if (agentList.length > 0) {
+        setDefaultAgent(agentList[0].name);
       }
     },
 
@@ -140,11 +192,9 @@ function App() {
 
     onSessionSwitched: (sessionId, title, incomingMessages) => {
       setCurrentSessionId(sessionId);
-      // Only update title if it's not a default timestamp title (avoid flash)
+      // If it's a default timestamp title, show "New Session" instead
       const isDefaultTitle = /^(New session|Child session) - \d{4}-\d{2}-\d{2}T/.test(title);
-      if (!isDefaultTitle) {
-        setCurrentSessionTitle(title);
-      }
+      setCurrentSessionTitle(isDefaultTitle ? "New Session" : title);
       // Reset - backend will send updated values via file-changes-update and context-update
       setFileChanges(null);
       setContextInfo(null);
@@ -173,6 +223,24 @@ function App() {
           };
         });
         setMessages(messages);
+        
+        // Extract agent from the last user message for this session
+        // Messages come from newest to oldest, so find the first user message
+        const lastUserMsg = [...incomingMessages].reverse().find((raw: any) => {
+          const m = raw?.info ?? raw;
+          return m?.role === "user";
+        });
+        if (lastUserMsg) {
+          const info = lastUserMsg?.info ?? lastUserMsg;
+          if (info?.agent) {
+            // Set this session's agent to the last used agent
+            setSessionAgents((prev) => {
+              const next = new Map(prev);
+              next.set(sessionId, info.agent);
+              return next;
+            });
+          }
+        }
       } else {
         setMessages([]);
       }
@@ -246,6 +314,15 @@ function App() {
 
   const handleCancel = () => {
     send({ type: "cancel-session" });
+  };
+
+  const handleAgentChange = (agent: string | null) => {
+    setSelectedAgent(agent);
+    // Only persist as the global default if this is a new session (no ID yet)
+    // For existing sessions, the agent is just stored per-session in memory
+    if (agent && !currentSessionId()) {
+      send({ type: "agent-changed", agent });
+    }
   };
 
   const handlePermissionResponse = (permissionId: string, response: "once" | "always" | "reject") => {
@@ -322,7 +399,7 @@ function App() {
           isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}
-          onAgentChange={setSelectedAgent}
+          onAgentChange={handleAgentChange}
         />
       </Show>
 
@@ -343,7 +420,7 @@ function App() {
           isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}
-          onAgentChange={setSelectedAgent}
+          onAgentChange={handleAgentChange}
         />
       </Show>
     </div>

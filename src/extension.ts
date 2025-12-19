@@ -37,7 +37,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const provider = new OpenCodeViewProvider(
     context.extensionUri,
-    openCodeService
+    openCodeService,
+    context.globalState
   );
 
   context.subscriptions.push(

@@ -6,7 +6,7 @@ const vscode = acquireVsCodeApi();
 
 export interface VsCodeBridgeCallbacks {
   onInit: (ready: boolean, workspaceRoot?: string, currentSessionId?: string | null, currentSessionTitle?: string, messages?: IncomingMessage[]) => void;
-  onAgentList: (agents: Agent[]) => void;
+  onAgentList: (agents: Agent[], defaultAgent?: string) => void;
   onThinking: (isThinking: boolean) => void;
   onPartUpdate: (part: MessagePart & { messageID: string }) => void;
   onMessageUpdate: (message: IncomingMessage) => void;
@@ -31,7 +31,7 @@ export function useVsCodeBridge(callbacks: VsCodeBridgeCallbacks) {
           break;
 
         case "agentList":
-          callbacks.onAgentList(message.agents || []);
+          callbacks.onAgentList(message.agents || [], message.defaultAgent);
           break;
 
         case "thinking":

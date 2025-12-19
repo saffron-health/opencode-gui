@@ -1,5 +1,7 @@
 /* CSS Reset */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
@@ -10,93 +12,190 @@
    * falling back to light-dark() for browser UIKit
    * Light values from VS Code Light Default, Dark from VS Code Dark Default
    * =========================================== */
-  
+
   /* Core Colors */
   --foreground: var(--vscode-foreground, light-dark(#3b3b3b, #cccccc));
-  --description-foreground: var(--vscode-descriptionForeground, light-dark(#3b3b3b, #9d9d9d));
+  --description-foreground: var(
+    --vscode-descriptionForeground,
+    light-dark(#3b3b3b, #9d9d9d)
+  );
   --error-foreground: var(--vscode-errorForeground, #f85149);
   --focus-border: var(--vscode-focusBorder, light-dark(#005fb8, #0078d4));
-  
+
   /* Sidebar */
-  --sidebar-background: var(--vscode-sideBar-background, light-dark(#f8f8f8, #181818));
-  
+  --sidebar-background: var(
+    --vscode-sideBar-background,
+    light-dark(#f8f8f8, #181818)
+  );
+
   /* Editor */
-  --editor-background: var(--vscode-editor-background, light-dark(#ffffff, #1e1e1e));
-  
+  --editor-background: var(
+    --vscode-editor-background,
+    light-dark(#ffffff, #1e1e1e)
+  );
+
   /* Input */
-  --input-foreground: var(--vscode-input-foreground, light-dark(#3b3b3b, #cccccc));
-  --input-border: var(--vscode-input-border, light-dark(#cecece, #3c3c3c));
-  --input-placeholder-foreground: var(--vscode-input-placeholderForeground, light-dark(#767676, #989898));
-  --input-validation-error-background: var(--vscode-inputValidation-errorBackground, light-dark(#f2dede, #5a1d1d));
-  --input-validation-error-border: var(--vscode-inputValidation-errorBorder, #be1100);
-  
+  --input-foreground: var(
+    --vscode-input-foreground,
+    light-dark(#3b3b3b, #cccccc)
+  );
+  --input-border: var(
+    --vscode-editorWidget-border,
+    light-dark(#c8c8c8, #454545)
+  );
+  --input-placeholder-foreground: var(
+    --vscode-input-placeholderForeground,
+    light-dark(#767676, #989898)
+  );
+  --input-validation-error-background: var(
+    --vscode-inputValidation-errorBackground,
+    light-dark(#f2dede, #5a1d1d)
+  );
+  --input-validation-error-border: var(
+    --vscode-inputValidation-errorBorder,
+    #be1100
+  );
+
   /* Button */
-  --button-secondary-background: var(--vscode-button-secondaryBackground, light-dark(#e5e5e5, #313131));
-  --button-secondary-foreground: var(--vscode-button-secondaryForeground, light-dark(#3b3b3b, #cccccc));
-  --button-secondary-hover-background: var(--vscode-button-secondaryHoverBackground, light-dark(#cccccc, #3c3c3c));
-  
+  --button-secondary-background: var(
+    --vscode-button-secondaryBackground,
+    light-dark(#e5e5e5, #313131)
+  );
+  --button-secondary-foreground: var(
+    --vscode-button-secondaryForeground,
+    light-dark(#3b3b3b, #cccccc)
+  );
+  --button-secondary-hover-background: var(
+    --vscode-button-secondaryHoverBackground,
+    light-dark(#cccccc, #3c3c3c)
+  );
+
   /* Panel */
   --panel-border: var(--vscode-panel-border, light-dark(#e5e5e5, #2b2b2b));
-  
+
   /* Text */
-  --text-link-foreground: var(--vscode-textLink-foreground, light-dark(#005fb8, #4daafc));
-  --text-link-active-foreground: var(--vscode-textLink-activeForeground, light-dark(#005fb8, #4daafc));
-  --text-code-block-background: var(--vscode-textCodeBlock-background, light-dark(#f8f8f8, #2b2b2b));
-  --text-blockquote-border: var(--vscode-textBlockQuote-border, light-dark(#e5e5e5, #616161));
-  --text-blockquote-foreground: var(--vscode-textBlockQuote-foreground, light-dark(#3b3b3b, #cccccc));
-  --text-blockquote-background: var(--vscode-textBlockQuote-background, light-dark(#f8f8f8, #2b2b2b));
-  
-  /* Editor */
-  --editor-font-family: var(--vscode-editor-font-family, "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace);
-  --editor-line-number-foreground: var(--vscode-editorLineNumber-foreground, #6e7681);
-  
-  /* Diff */
-  --diff-inserted-line-background: var(--vscode-diffEditor-insertedLineBackground, rgba(155, 185, 85, 0.2));
-  --diff-removed-line-background: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
-  
-  /* Git Decorations */
-  --git-added-foreground: var(--vscode-gitDecoration-addedResourceForeground, light-dark(#587c0c, #89d185));
-  --git-deleted-foreground: var(--vscode-gitDecoration-deletedResourceForeground, light-dark(#ad0707, #f48771));
-  
-  /* Scrollbar */
-  --scrollbar-slider-background: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
-  --scrollbar-slider-hover-background: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
-  --scrollbar-slider-active-background: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
-  
-  /* Card background - slightly darker than sidebar for tool calls etc */
-  --card-background: light-dark(
-    color-mix(in oklch, var(--sidebar-background) 98%, black),
-    color-mix(in oklch, var(--sidebar-background) 95%, white)
+  --text-link-foreground: var(
+    --vscode-textLink-foreground,
+    light-dark(#005fb8, #4daafc)
   );
-  
+  --text-link-active-foreground: var(
+    --vscode-textLink-activeForeground,
+    light-dark(#005fb8, #4daafc)
+  );
+  --text-code-block-background: var(
+    --vscode-textCodeBlock-background,
+    light-dark(#f8f8f8, #2b2b2b)
+  );
+  --text-blockquote-border: var(
+    --vscode-textBlockQuote-border,
+    light-dark(#e5e5e5, #616161)
+  );
+  --text-blockquote-foreground: var(
+    --vscode-textBlockQuote-foreground,
+    light-dark(#3b3b3b, #cccccc)
+  );
+  --text-blockquote-background: var(
+    --vscode-textBlockQuote-background,
+    light-dark(#f8f8f8, #2b2b2b)
+  );
+
+  /* Editor */
+  --editor-font-family: var(
+    --vscode-editor-font-family,
+    "SF Mono",
+    Monaco,
+    "Cascadia Code",
+    "Roboto Mono",
+    Consolas,
+    "Courier New",
+    monospace
+  );
+  --editor-line-number-foreground: var(
+    --vscode-editorLineNumber-foreground,
+    #6e7681
+  );
+
+  /* Diff */
+  --diff-inserted-line-background: var(
+    --vscode-diffEditor-insertedLineBackground,
+    rgba(155, 185, 85, 0.2)
+  );
+  --diff-removed-line-background: var(
+    --vscode-diffEditor-removedLineBackground,
+    rgba(255, 0, 0, 0.2)
+  );
+
+  /* Git Decorations */
+  --git-added-foreground: var(
+    --vscode-gitDecoration-addedResourceForeground,
+    light-dark(#587c0c, #89d185)
+  );
+  --git-deleted-foreground: var(
+    --vscode-gitDecoration-deletedResourceForeground,
+    light-dark(#ad0707, #f48771)
+  );
+
+  /* Scrollbar */
+  --scrollbar-slider-background: var(
+    --vscode-scrollbarSlider-background,
+    rgba(121, 121, 121, 0.4)
+  );
+  --scrollbar-slider-hover-background: var(
+    --vscode-scrollbarSlider-hoverBackground,
+    rgba(100, 100, 100, 0.7)
+  );
+  --scrollbar-slider-active-background: var(
+    --vscode-scrollbarSlider-activeBackground,
+    rgba(191, 191, 191, 0.4)
+  );
+
+  /* Card background - 20% darker than sidebar for tool calls etc */
+  --card-background: color-mix(in oklch, var(--sidebar-background) 90%, black);
+
   /* Fonts */
-  --font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
+  --font-family: var(
+    --vscode-font-family,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif
+  );
   --font-size: var(--vscode-font-size, 13px);
-  
+
   /* ===========================================
    * Derived Variables (using theme variables above)
    * =========================================== */
-  
+
   /* Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 6px;
   --spacing-md: 8px;
-  
+
   /* Typography */
   --font-size-base: var(--font-size);
   --font-size-small: calc(var(--font-size) - 1px);
-  
+
   /* Backgrounds */
   --input-background: var(--editor-background);
   --input-background-muted: var(--card-background);
   --hover-background: var(--card-background);
   --hover-background-muted: var(--card-background);
-  
+
   /* Borders */
-  --border-color: var(--input-border, color-mix(in srgb, var(--foreground) 20%, var(--sidebar-background)));
-  --border-color-muted: color-mix(in oklab, var(--border-color) 80%, var(--sidebar-background));
+  --border-color: var(
+    --input-border,
+    color-mix(in srgb, var(--foreground) 20%, var(--sidebar-background))
+  );
+  --border-color-muted: color-mix(
+    in oklab,
+    var(--border-color) 80%,
+    var(--sidebar-background)
+  );
   --focus-border-color: var(--focus-border);
-  
+
   /* Padding combinations */
   --padding-button: var(--spacing-xs) var(--spacing-md);
   --padding-button-compact: var(--spacing-xs) var(--spacing-sm);
@@ -252,7 +351,8 @@ body {
 
 /* Loading Indicator */
 .loading-indicator {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
   font-size: var(--font-size-base);
   color: var(--description-foreground);
   padding: var(--spacing-md);
@@ -392,7 +492,11 @@ body {
 }
 
 .tool-icon {
-  line-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  width: 20px;
   flex-shrink: 0;
 }
 
@@ -499,10 +603,10 @@ body {
   border-top: 1px solid var(--border-color-muted);
   background: repeating-linear-gradient(
     -45deg,
-    light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.25)),
-    light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.25)) 8px,
-    light-dark(rgba(255, 165, 0, 0.18), rgba(255, 165, 0, 0.15)) 8px,
-    light-dark(rgba(255, 165, 0, 0.18), rgba(255, 165, 0, 0.15)) 16px
+    light-dark(rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.25)),
+    light-dark(rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.25)) 8px,
+    light-dark(rgba(255, 165, 0, 0.3), rgba(255, 165, 0, 0.15)) 8px,
+    light-dark(rgba(255, 165, 0, 0.3), rgba(255, 165, 0, 0.15)) 16px
   );
 }
 
@@ -683,7 +787,9 @@ body.vscode-high-contrast {
   box-sizing: border-box;
 }
 
-.session-switcher-button:hover:not(:disabled), .session-switcher-button:active:not(:disabled), .session-switcher-button.active:not(:disabled) {
+.session-switcher-button:hover:not(:disabled),
+.session-switcher-button:active:not(:disabled),
+.session-switcher-button.active:not(:disabled) {
   background-color: var(--hover-background);
   color: var(--foreground);
   border-color: var(--border-color);
@@ -733,6 +839,11 @@ body.vscode-high-contrast {
   border: 1px solid var(--border-color);
   border-radius: 4px;
   z-index: 1000;
+}
+
+.session-dropdown:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 0;
 }
 
 .session-item {
@@ -810,6 +921,7 @@ body.vscode-high-contrast {
 .new-session-button:focus-visible {
   outline: 1px solid var(--focus-border);
   outline-offset: 0;
+  border-color: transparent;
 }
 
 /* Input Status Row */
@@ -901,12 +1013,24 @@ body.vscode-high-contrast {
   line-height: 1.3;
 }
 
-.message-text h1 { font-size: 1.5em; }
-.message-text h2 { font-size: 1.3em; }
-.message-text h3 { font-size: 1.1em; }
-.message-text h4 { font-size: 1em; }
-.message-text h5 { font-size: 0.95em; }
-.message-text h6 { font-size: 0.9em; }
+.message-text h1 {
+  font-size: 1.5em;
+}
+.message-text h2 {
+  font-size: 1.3em;
+}
+.message-text h3 {
+  font-size: 1.1em;
+}
+.message-text h4 {
+  font-size: 1em;
+}
+.message-text h5 {
+  font-size: 0.95em;
+}
+.message-text h6 {
+  font-size: 0.9em;
+}
 
 .message-text ul,
 .message-text ol {

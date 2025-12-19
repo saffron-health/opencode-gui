@@ -3,6 +3,8 @@ import { OpenCodeService } from './OpenCodeService';
 import type { Event } from '@opencode-ai/sdk';
 import { getLogger } from './extension';
 
+const LAST_AGENT_KEY = 'opencode.lastUsedAgent';
+
 export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'opencode.chatView';
   private _view?: vscode.WebviewView;
@@ -11,7 +13,8 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
-    private readonly _openCodeService: OpenCodeService
+    private readonly _openCodeService: OpenCodeService,
+    private readonly _globalState: vscode.Memento
   ) {}
 
   public resolveWebviewView(
@@ -64,6 +67,9 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
           case 'cancel-session':
             await this._handleCancelSession();
             return;
+          case 'agent-changed':
+            await this._handleAgentChanged(message.agent);
+            return;
         }
       }
     );
@@ -107,9 +113,20 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   private async _handleGetAgents() {
     try {
       const agents = await this._openCodeService.getAgents();
+      const lastUsedAgent = this._globalState.get<string>(LAST_AGENT_KEY);
+      
+      // Determine the default agent: last used if still valid, otherwise first agent
+      let defaultAgent: string | undefined;
+      if (lastUsedAgent && agents.some(a => a.name === lastUsedAgent)) {
+        defaultAgent = lastUsedAgent;
+      } else if (agents.length > 0) {
+        defaultAgent = agents[0].name;
+      }
+      
       this._sendMessage({ 
         type: 'agentList', 
-        agents 
+        agents,
+        defaultAgent
       });
     } catch (error) {
       console.error('Error getting agents:', error);
@@ -119,6 +136,13 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         agents: [] 
       });
     }
+  }
+
+  private async _handleAgentChanged(agent: string) {
+    // Persist the selected agent
+    await this._globalState.update(LAST_AGENT_KEY, agent);
+    const logger = getLogger();
+    logger.info('[ViewProvider] Agent selection persisted:', agent);
   }
 
   private async _handleLoadSessions() {
