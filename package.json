@@ -2,7 +2,7 @@
   "name": "opencode-vscode",
   "displayName": "OpenCode GUI",
   "description": "OpenCode AI coding agent for VSCode GUI extension",
-  "version": "0.0.5",
+  "version": "0.1.0",
   "publisher": "TanishqKancharla",
   "repository": {
     "type": "git",

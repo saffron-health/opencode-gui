@@ -20,3 +20,5 @@ PROMPT.md
 QUICKSTART.md
 AGENTS.md
 start-dev.sh
+light.jsonc
+dark.jsonc
