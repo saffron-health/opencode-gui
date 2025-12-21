@@ -99,7 +99,7 @@ export function DiffViewer(props: DiffViewerProps) {
             <span class="diff-line-sign">
               {line.type === "add" ? "+" : line.type === "remove" ? "-" : " "}
             </span>
-            <span class="diff-line-content">{line.content}</span>
+            <span class="diff-line-content"> {line.content}</span>
           </div>
         )}
       </For>

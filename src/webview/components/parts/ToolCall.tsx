@@ -741,11 +741,11 @@ export function ToolCall(props: ToolCallProps) {
           <Show when={hasOutput && isOpen()}>
             <div class="tool-output-container">
               <Show when={isEditTool && hasDiff} fallback={
-                <pre class="tool-output">{state.error || state.output}</pre>
+                <pre class="tool-output" classList={{ "tool-output--bash": tool === "bash" }}>{state.error || state.output}</pre>
               }>
                 <DiffViewer diff={state.metadata?.diff || ""} />
                 <Show when={state.output}>
-                  <pre class="tool-output">{state.output}</pre>
+                  <pre class="tool-output" classList={{ "tool-output--bash": tool === "bash" }}>{state.output}</pre>
                 </Show>
               </Show>
             </div>
