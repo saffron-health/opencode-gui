@@ -48,6 +48,12 @@ export async function activate(context: vscode.ExtensionContext) {
     )
   );
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand("opencode.open", () => {
+      vscode.commands.executeCommand("opencode.chatView.focus");
+    })
+  );
+
   // Cleanup on deactivation
   context.subscriptions.push(openCodeService);
 

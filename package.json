@@ -35,7 +35,13 @@
           "name": ""
         }
       ]
-    }
+    },
+    "commands": [
+      {
+        "command": "opencode.open",
+        "title": "OpenCode: Open Chat"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
