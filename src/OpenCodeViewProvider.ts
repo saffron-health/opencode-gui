@@ -2,6 +2,17 @@ import * as vscode from 'vscode';
 import { OpenCodeService } from './OpenCodeService';
 import type { Event } from '@opencode-ai/sdk';
 import { getLogger } from './extension';
+import { safeValidateWebviewMessage, type HostMessage } from './shared/messages';
+import { 
+  isMessagePartUpdatedEvent,
+  isMessageUpdatedEvent,
+  isMessageRemovedEvent,
+  isSessionUpdatedEvent,
+  isPermissionUpdatedEvent,
+  isPermissionRepliedEvent,
+  getEventSessionId,
+  type DiffInfo
+} from './shared/sdk-types';
 
 const LAST_AGENT_KEY = 'opencode.lastUsedAgent';
 
@@ -40,7 +51,16 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
     // Handle messages from the webview
     webviewView.webview.onDidReceiveMessage(
-      async (message) => {
+      async (rawMessage) => {
+        // Validate the message from webview
+        const validationResult = safeValidateWebviewMessage(rawMessage);
+        if (!validationResult) {
+          logger.error('[ViewProvider] Invalid message from webview:', rawMessage);
+          return;
+        }
+
+        const message = validationResult;
+        
         switch (message.type) {
           case 'sendPrompt':
             await this._handleSendPrompt(message.text, message.agent);
@@ -84,10 +104,12 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       const currentSessionTitle = this._openCodeService.getCurrentSessionTitle();
       
       // If there's an active session, load its messages
-      let messages: any[] | undefined;
+      let messages: unknown[] | undefined;
       if (currentSessionId) {
         try {
-          messages = await this._openCodeService.getMessages(currentSessionId);
+          const normalizedMessages = await this._openCodeService.getMessages(currentSessionId);
+          // Cast to unknown[] for the message boundary
+          messages = normalizedMessages as unknown[];
         } catch (error) {
           console.error('Error loading session messages:', error);
           // Continue without messages rather than failing
@@ -181,10 +203,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
       // Send file changes summary if available
       if (session.summary?.diffs) {
-        const diffs = session.summary.diffs;
+        const diffs = session.summary.diffs as DiffInfo[];
         const fileCount = diffs.length;
-        const additions = diffs.reduce((sum: number, d: any) => sum + (d.additions || 0), 0);
-        const deletions = diffs.reduce((sum: number, d: any) => sum + (d.deletions || 0), 0);
+        const additions = diffs.reduce((sum: number, d: DiffInfo) => sum + (d.additions || 0), 0);
+        const deletions = diffs.reduce((sum: number, d: DiffInfo) => sum + (d.deletions || 0), 0);
         
         this._sendMessage({
           type: 'file-changes-update',
@@ -197,16 +219,12 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       }
 
       // Find last assistant message to restore context info
-      const lastAssistantMsg = [...messages].reverse().find((m: any) => {
-        const info = m.info || m;
-        return info.role === 'assistant' && info.tokens;
+      const lastAssistantMsg = [...messages].reverse().find((m) => {
+        return m.role === 'assistant' && m.tokens;
       });
       
-      if (lastAssistantMsg) {
-        const info: any = lastAssistantMsg.info || lastAssistantMsg;
-        if (info.tokens) {
-          this._updateContextInfo(info.tokens, info.modelID, info.providerID);
-        }
+      if (lastAssistantMsg && lastAssistantMsg.tokens) {
+        this._updateContextInfo(lastAssistantMsg.tokens, lastAssistantMsg.modelID, lastAssistantMsg.providerID);
       }
     } catch (error) {
       console.error('Error switching session:', error);
@@ -389,17 +407,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private _getEventSessionId(event: Event): string | undefined {
-    const e: any = event;
-    return e?.properties?.sessionID
-        ?? e?.properties?.info?.sessionID
-        ?? e?.properties?.part?.sessionID
-        ?? e?.sessionID
-        ?? e?.properties?.session?.id;
-  }
+  // Removed _getEventSessionId - now using getEventSessionId from shared/sdk-types
 
   private _handleStreamEvent(event: Event) {
-    const evSessionId = this._getEventSessionId(event);
+    const evSessionId = getEventSessionId(event);
     if (this._activeSessionId && evSessionId && evSessionId !== this._activeSessionId) {
       console.log('[ViewProvider] Ignoring stream event for inactive session:', evSessionId, 'active:', this._activeSessionId, 'type:', event.type);
       return;
@@ -407,8 +418,8 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
     console.log('[ViewProvider] Stream event:', event.type);
     
-    if (event.type === 'message.removed') {
-      const messageID = (event as any).properties?.messageID;
+    if (isMessageRemovedEvent(event)) {
+      const { messageID } = event.properties;
       console.log('[ViewProvider] Message removed:', messageID);
       
       // Forward message removal to webview
@@ -417,8 +428,11 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         messageId: messageID,
         sessionId: evSessionId
       });
-    } else if (event.type === 'message.part.updated') {
-      const part = event.properties.part;
+      return;
+    }
+    
+    if (isMessagePartUpdatedEvent(event)) {
+      const { part, delta } = event.properties;
       console.log('[ViewProvider] Sending part-update to webview:', {
         partId: part.id,
         partType: part.type,
@@ -428,28 +442,34 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       // Forward part updates to webview for real-time display
       this._sendMessage({
         type: 'part-update',
-        part: event.properties.part,
-        delta: event.properties.delta,
+        part,
+        delta,
         sessionId: evSessionId
       });
-    } else if (event.type === 'message.updated') {
+      return;
+    }
+    
+    if (isMessageUpdatedEvent(event)) {
+      const { info } = event.properties;
       console.log('[ViewProvider] Sending message-update to webview:', {
-        messageId: event.properties.info.id
+        messageId: info.id
       });
       
       // Full message update (can use for final state)
       this._sendMessage({
         type: 'message-update',
-        message: event.properties.info,
+        message: info,
         sessionId: evSessionId
       });
 
       // Update context info if this is an assistant message
-      const info: any = event.properties.info;
       if (info.role === 'assistant' && info.tokens) {
         this._updateContextInfo(info.tokens, info.modelID, info.providerID);
       }
-    } else if (event.type === 'permission.updated') {
+      return;
+    }
+    
+    if (isPermissionUpdatedEvent(event)) {
       console.log('[ViewProvider] Permission required:', {
         permissionId: event.properties.id,
         type: event.properties.type,
@@ -474,7 +494,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     } else if (event.type === 'session.idle') {
       // Session finished processing
       console.log('[ViewProvider] Session idle - streaming complete');
-    } else if (event.type === 'session.updated') {
+      return;
+    }
+    
+    if (isSessionUpdatedEvent(event)) {
       const session = event.properties.info;
       const logger = getLogger();
       logger.info('[ViewProvider] session.updated event received', {
@@ -496,10 +519,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       
       // Send file changes summary if available
       if (session.summary?.diffs) {
-        const diffs = session.summary.diffs;
+        const diffs = session.summary.diffs as DiffInfo[];
         const fileCount = diffs.length;
-        const additions = diffs.reduce((sum: number, d: any) => sum + (d.additions || 0), 0);
-        const deletions = diffs.reduce((sum: number, d: any) => sum + (d.deletions || 0), 0);
+        const additions = diffs.reduce((sum: number, d: DiffInfo) => sum + (d.additions || 0), 0);
+        const deletions = diffs.reduce((sum: number, d: DiffInfo) => sum + (d.deletions || 0), 0);
         
         this._sendMessage({
           type: 'file-changes-update',
@@ -525,12 +548,26 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     return 'No response received';
   }
 
-  private async _updateContextInfo(tokens: any, modelID: string, providerID: string) {
+  private async _updateContextInfo(
+    tokens: { input?: number; output?: number; cache?: { read?: number } } | undefined,
+    modelID: string | undefined,
+    providerID: string | undefined
+  ) {
     try {
+      if (!tokens || !modelID || !providerID) {
+        return;
+      }
+
       // Get the model's context limit from the SDK
       const configResult = await this._openCodeService.getConfig();
-      const contextLimit = configResult?.providers?.[providerID]?.models?.[modelID]?.limit?.context;
-      if (contextLimit) {
+      
+      // Safe navigation through config structure
+      const providers = (configResult as any)?.providers;
+      const provider = providers?.[providerID];
+      const model = provider?.models?.[modelID];
+      const contextLimit = model?.limit?.context;
+      
+      if (contextLimit && typeof contextLimit === 'number') {
         this._currentModelContextLimit = contextLimit;
       }
 
@@ -557,7 +594,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private _sendMessage(message: Record<string, unknown>) {
+  private _sendMessage(message: HostMessage) {
     if (this._view) {
       this._view.webview.postMessage(message);
     }
