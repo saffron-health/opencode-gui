@@ -4,9 +4,17 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { getLogger } from "./extension";
+import { 
+  SDKEventSchema, 
+  getEventSessionId,
+  isSessionIdleEvent,
+  type MessageInfo,
+  type SessionInfo
+} from "./shared/sdk-types";
+import { normalizeMessage, type NormalizedMessage } from "./shared/normalizers";
 
 // Debug logging to VSCode output channel
-function debugLog(message: string, data?: any) {
+function debugLog(message: string, data?: unknown) {
   const logger = getLogger();
   if (logger) {
     if (data) {
@@ -337,24 +345,32 @@ export class OpenCodeService {
       for await (const event of sseResult.stream) {
         eventCount++;
 
-        // Filter for events related to our session
-        const typedEvent = event as Event;
-        const props = (typedEvent as any).properties ?? {};
-        const evSessionID = props.sessionID as string | undefined;
+        // Validate and parse the event
+        const validationResult = SDKEventSchema.safeParse(event);
+        if (!validationResult.success) {
+          debugLog(`[SSE Event #${eventCount}] Failed to parse event`, {
+            error: validationResult.error,
+            rawEvent: event,
+          });
+          continue;
+        }
 
-        // Log all events for our session
+        const typedEvent = validationResult.data;
+        const evSessionID = getEventSessionId(typedEvent);
+
+        // Filter for events related to our session
         if (!evSessionID || evSessionID === sid) {
           debugLog(`[SSE Event #${eventCount}] ${typedEvent.type}`, {
             sessionID: evSessionID,
-            properties: props,
           });
 
-          onEvent(typedEvent);
+          // Pass the original event to handler for backward compatibility
+          onEvent(event as Event);
 
-          // Stop streaming when session goes idle
-          if (typedEvent.type === "session.idle") {
+          // Stop streaming when THIS session goes idle
+          if (isSessionIdleEvent(typedEvent) && evSessionID === sid) {
             debugLog(
-              `[sendPromptStreaming] Session idle after ${eventCount} events, stopping stream`
+              `[sendPromptStreaming] Session ${sid} idle after ${eventCount} events, stopping stream`
             );
             break;
           }
@@ -366,7 +382,8 @@ export class OpenCodeService {
     } finally {
       // Close the SSE connection to avoid leaks
       try {
-        (sseResult as any).close?.();
+        const closeable = sseResult as { close?: () => void };
+        closeable.close?.();
         debugLog("[sendPromptStreaming] SSE stream closed");
       } catch (e) {
         debugLog("[sendPromptStreaming] Failed to close SSE stream", e);
@@ -386,7 +403,7 @@ export class OpenCodeService {
 
   async getMessages(
     sessionId: string
-  ): Promise<Array<{ info: unknown; parts: unknown[] }>> {
+  ): Promise<NormalizedMessage[]> {
     if (!this.opencode) {
       throw new Error("OpenCode not initialized");
     }
@@ -401,10 +418,22 @@ export class OpenCodeService {
       );
     }
 
-    return (result.data || []) as Array<{ info: unknown; parts: unknown[] }>;
+    const rawMessages = (result.data || []) as unknown[];
+    
+    // Normalize all messages to handle inconsistent shapes
+    return rawMessages
+      .map((raw) => {
+        try {
+          return normalizeMessage(raw);
+        } catch (error) {
+          debugLog('[getMessages] Failed to normalize message', error);
+          return null;
+        }
+      })
+      .filter((msg): msg is NormalizedMessage => msg !== null);
   }
 
-  async getConfig(): Promise<any> {
+  async getConfig(): Promise<Config | undefined> {
     if (!this.opencode) {
       throw new Error("OpenCode not initialized");
     }
@@ -415,7 +444,7 @@ export class OpenCodeService {
       throw new Error(`Failed to get config: ${JSON.stringify(result.error)}`);
     }
 
-    return result.data;
+    return result.data as Config | undefined;
   }
 
   async respondToPermission(
