@@ -1,5 +1,6 @@
 import { onMount, onCleanup } from "solid-js";
 import type { MessagePart, Agent, IncomingMessage, WebviewMessage, Session, Permission, ContextInfo, FileChangesInfo } from "../types";
+import { safeValidateHostMessage } from "../../shared/messages";
 
 declare const acquireVsCodeApi: any;
 const vscode = acquireVsCodeApi();
@@ -24,7 +25,14 @@ export interface VsCodeBridgeCallbacks {
 export function useVsCodeBridge(callbacks: VsCodeBridgeCallbacks) {
   onMount(() => {
     const messageHandler = (event: MessageEvent) => {
-      const message = event.data;
+      // Validate the message from the extension
+      const validatedMessage = safeValidateHostMessage(event.data);
+      if (!validatedMessage) {
+        console.warn('[Bridge] Invalid message from extension:', event.data);
+        return;
+      }
+
+      const message = validatedMessage;
 
       switch (message.type) {
         case "init":

@@ -234,6 +234,7 @@ export type SDKEvent = z.infer<typeof SDKEventSchema>;
 
 /**
  * Safely extract session ID from an SDK event
+ * Accepts both validated SDKEvent and unknown (will parse)
  */
 export function getEventSessionId(event: unknown): string | undefined {
   try {
@@ -245,29 +246,49 @@ export function getEventSessionId(event: unknown): string | undefined {
     const evt = parsed.data;
     
     // Handle each event type appropriately
-    if (evt.type === 'message.part.updated' || evt.type === 'message.updated' || evt.type === 'message.removed') {
-      return evt.properties.sessionID;
+    switch (evt.type) {
+      case 'message.part.updated':
+      case 'message.updated':
+      case 'message.removed':
+      case 'session.idle':
+      case 'permission.replied':
+        return evt.properties.sessionID;
+      
+      case 'session.updated':
+        return evt.properties.info.id;
+      
+      case 'permission.updated':
+        return evt.properties.sessionID;
+      
+      default:
+        return undefined;
     }
-    
-    if (evt.type === 'session.updated') {
-      return evt.properties.info.id;
-    }
-    
-    if (evt.type === 'session.idle') {
-      return evt.properties.sessionID;
-    }
-    
-    if (evt.type === 'permission.updated') {
-      return evt.properties.sessionID;
-    }
-    
-    if (evt.type === 'permission.replied') {
-      return evt.properties.sessionID;
-    }
-
-    return undefined;
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * Extract session ID from an already-validated event (avoids re-parsing)
+ * Use this when you've already validated the event with SDKEventSchema
+ */
+export function getEventSessionIdFromValidated(evt: SDKEvent): string | undefined {
+  switch (evt.type) {
+    case 'message.part.updated':
+    case 'message.updated':
+    case 'message.removed':
+    case 'session.idle':
+    case 'permission.replied':
+      return evt.properties.sessionID;
+    
+    case 'session.updated':
+      return evt.properties.info.id;
+    
+    case 'permission.updated':
+      return evt.properties.sessionID;
+    
+    default:
+      return undefined;
   }
 }
 

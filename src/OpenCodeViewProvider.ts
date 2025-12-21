@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { OpenCodeService } from './OpenCodeService';
 import type { Event } from '@opencode-ai/sdk';
 import { getLogger } from './extension';
-import { safeValidateWebviewMessage } from './shared/messages';
+import { safeValidateWebviewMessage, type HostMessage } from './shared/messages';
 import { 
   isMessagePartUpdatedEvent,
   isMessageUpdatedEvent,
@@ -418,8 +418,8 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
     console.log('[ViewProvider] Stream event:', event.type);
     
-    if (event.type === 'message.removed') {
-      const messageID = (event as any).properties?.messageID;
+    if (isMessageRemovedEvent(event)) {
+      const { messageID } = event.properties;
       console.log('[ViewProvider] Message removed:', messageID);
       
       // Forward message removal to webview
@@ -428,8 +428,11 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         messageId: messageID,
         sessionId: evSessionId
       });
-    } else if (event.type === 'message.part.updated') {
-      const part = event.properties.part;
+      return;
+    }
+    
+    if (isMessagePartUpdatedEvent(event)) {
+      const { part, delta } = event.properties;
       console.log('[ViewProvider] Sending part-update to webview:', {
         partId: part.id,
         partType: part.type,
@@ -439,28 +442,34 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       // Forward part updates to webview for real-time display
       this._sendMessage({
         type: 'part-update',
-        part: event.properties.part,
-        delta: event.properties.delta,
+        part,
+        delta,
         sessionId: evSessionId
       });
-    } else if (event.type === 'message.updated') {
+      return;
+    }
+    
+    if (isMessageUpdatedEvent(event)) {
+      const { info } = event.properties;
       console.log('[ViewProvider] Sending message-update to webview:', {
-        messageId: event.properties.info.id
+        messageId: info.id
       });
       
       // Full message update (can use for final state)
       this._sendMessage({
         type: 'message-update',
-        message: event.properties.info,
+        message: info,
         sessionId: evSessionId
       });
 
       // Update context info if this is an assistant message
-      const info: any = event.properties.info;
       if (info.role === 'assistant' && info.tokens) {
         this._updateContextInfo(info.tokens, info.modelID, info.providerID);
       }
-    } else if (event.type === 'permission.updated') {
+      return;
+    }
+    
+    if (isPermissionUpdatedEvent(event)) {
       console.log('[ViewProvider] Permission required:', {
         permissionId: event.properties.id,
         type: event.properties.type,
@@ -485,7 +494,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     } else if (event.type === 'session.idle') {
       // Session finished processing
       console.log('[ViewProvider] Session idle - streaming complete');
-    } else if (event.type === 'session.updated') {
+      return;
+    }
+    
+    if (isSessionUpdatedEvent(event)) {
       const session = event.properties.info;
       const logger = getLogger();
       logger.info('[ViewProvider] session.updated event received', {
@@ -582,7 +594,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private _sendMessage(message: Record<string, unknown>) {
+  private _sendMessage(message: HostMessage) {
     if (this._view) {
       this._view.webview.postMessage(message);
     }

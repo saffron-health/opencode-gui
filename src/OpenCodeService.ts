@@ -6,10 +6,9 @@ import * as vscode from "vscode";
 import { getLogger } from "./extension";
 import { 
   SDKEventSchema, 
-  getEventSessionId,
+  getEventSessionIdFromValidated,
   isSessionIdleEvent,
-  type MessageInfo,
-  type SessionInfo
+  type SDKEvent
 } from "./shared/sdk-types";
 import { normalizeMessage, type NormalizedMessage } from "./shared/normalizers";
 
@@ -356,7 +355,7 @@ export class OpenCodeService {
         }
 
         const typedEvent = validationResult.data;
-        const evSessionID = getEventSessionId(typedEvent);
+        const evSessionID = getEventSessionIdFromValidated(typedEvent);
 
         // Filter for events related to our session
         if (!evSessionID || evSessionID === sid) {
