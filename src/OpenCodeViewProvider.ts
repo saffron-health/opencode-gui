@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { OpenCodeService } from './OpenCodeService';
 import type { Event } from '@opencode-ai/sdk';
 import { getLogger } from './extension';
+import type { HostMessage, WebviewMessage, IncomingMessage, MessagePart } from './shared/messages';
+import { parseWebviewMessage } from './shared/messages';
 
 const LAST_AGENT_KEY = 'opencode.lastUsedAgent';
 
@@ -38,59 +40,62 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     logger.info('Generated webview HTML length:', html.length);
     webviewView.webview.html = html;
 
-    // Handle messages from the webview
-    webviewView.webview.onDidReceiveMessage(
-      async (message) => {
-        switch (message.type) {
-          case 'sendPrompt':
-            await this._handleSendPrompt(message.text, message.agent);
-            return;
-          case 'ready':
-            // Webview is ready, send initialization data including current session state
-            await this._handleReady();
-            return;
-          case 'getAgents':
-            await this._handleGetAgents();
-            return;
-          case 'load-sessions':
-            await this._handleLoadSessions();
-            return;
-          case 'switch-session':
-            await this._handleSwitchSession(message.sessionId);
-            return;
-          case 'create-session':
-            await this._handleCreateSession();
-            return;
-          case 'permission-response':
-            await this._handlePermissionResponse(message.sessionId, message.permissionId, message.response);
-            return;
-          case 'cancel-session':
-            await this._handleCancelSession();
-            return;
-          case 'agent-changed':
-            await this._handleAgentChanged(message.agent);
-            return;
-          case 'edit-previous-message':
-            await this._handleEditPreviousMessage(message.sessionId, message.messageId, message.newText, message.agent);
-            return;
-        }
+    webviewView.webview.onDidReceiveMessage(async (data: unknown) => {
+      const message = parseWebviewMessage(data);
+      if (!message) {
+        console.warn('[ViewProvider] Received invalid message from webview:', data);
+        return;
       }
-    );
+      await this._handleWebviewMessage(message);
+    });
+  }
+
+  private async _handleWebviewMessage(message: WebviewMessage) {
+    switch (message.type) {
+      case 'sendPrompt':
+        await this._handleSendPrompt(message.text, message.agent);
+        break;
+      case 'ready':
+        await this._handleReady();
+        break;
+      case 'getAgents':
+        await this._handleGetAgents();
+        break;
+      case 'load-sessions':
+        await this._handleLoadSessions();
+        break;
+      case 'switch-session':
+        await this._handleSwitchSession(message.sessionId);
+        break;
+      case 'create-session':
+        await this._handleCreateSession();
+        break;
+      case 'permission-response':
+        await this._handlePermissionResponse(message.sessionId, message.permissionId, message.response);
+        break;
+      case 'cancel-session':
+        await this._handleCancelSession();
+        break;
+      case 'agent-changed':
+        await this._handleAgentChanged(message.agent);
+        break;
+      case 'edit-previous-message':
+        await this._handleEditPreviousMessage(message.sessionId, message.messageId, message.newText, message.agent);
+        break;
+    }
   }
 
   private async _handleReady() {
     try {
-      const currentSessionId = this._openCodeService.getCurrentSessionId();
+      const currentSessionId = this._openCodeService.getCurrentSessionId() ?? undefined;
       const currentSessionTitle = this._openCodeService.getCurrentSessionTitle();
       
-      // If there's an active session, load its messages
-      let messages: any[] | undefined;
+      let messages: unknown[] | undefined;
       if (currentSessionId) {
         try {
           messages = await this._openCodeService.getMessages(currentSessionId);
         } catch (error) {
           console.error('Error loading session messages:', error);
-          // Continue without messages rather than failing
         }
       }
       
@@ -98,17 +103,17 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         type: 'init',
         ready: this._openCodeService.isReady(),
         workspaceRoot: this._openCodeService.getWorkspaceRoot(),
-        currentSessionId: currentSessionId,
-        currentSessionTitle: currentSessionTitle,
-        currentSessionMessages: messages
+        currentSessionId,
+        currentSessionTitle,
+        currentSessionMessages: messages as IncomingMessage[] | undefined
       });
     } catch (error) {
       console.error('Error handling ready:', error);
-      // Send basic init without session state
       this._sendMessage({
         type: 'init',
         ready: this._openCodeService.isReady(),
-        workspaceRoot: this._openCodeService.getWorkspaceRoot()
+        workspaceRoot: this._openCodeService.getWorkspaceRoot(),
+        currentSessionId: undefined
       });
     }
   }
@@ -169,14 +174,13 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       this._activeSessionId = sessionId;
       const session = await this._openCodeService.switchSession(sessionId);
       
-      // Load messages from the session
       const messages = await this._openCodeService.getMessages(sessionId);
       
       this._sendMessage({
         type: 'session-switched',
         sessionId,
         title: this._openCodeService.getCurrentSessionTitle(),
-        messages
+        messages: messages as unknown as IncomingMessage[]
       });
 
       // Send file changes summary if available
@@ -266,13 +270,12 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       // Update the active session
       this._activeSessionId = sessionId;
 
-      // Reload messages after revert to get the updated state
       const messages = await this._openCodeService.getMessages(sessionId);
       this._sendMessage({
         type: 'session-switched',
         sessionId,
         title: this._openCodeService.getCurrentSessionTitle(),
-        messages
+        messages: messages as unknown as IncomingMessage[]
       });
 
       // Now send the new prompt
@@ -425,10 +428,9 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         messageID: part.messageID
       });
       
-      // Forward part updates to webview for real-time display
       this._sendMessage({
         type: 'part-update',
-        part: event.properties.part,
+        part: event.properties.part as MessagePart & { messageID: string },
         delta: event.properties.delta,
         sessionId: evSessionId
       });
@@ -437,10 +439,9 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         messageId: event.properties.info.id
       });
       
-      // Full message update (can use for final state)
       this._sendMessage({
         type: 'message-update',
-        message: event.properties.info,
+        message: event.properties.info as IncomingMessage,
         sessionId: evSessionId
       });
 
@@ -557,7 +558,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private _sendMessage(message: Record<string, unknown>) {
+  private _sendMessage(message: HostMessage) {
     if (this._view) {
       this._view.webview.postMessage(message);
     }
