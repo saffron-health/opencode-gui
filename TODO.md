@@ -183,8 +183,26 @@
   - **Known Limitations**: No message history loading when switching sessions, session titles not editable, no session deletion, no persistence across reloads, dropdown doesn't close on outside click
 
 - [x] Better tool calls. The tool calls are really ugly right now.
-- [ ] Markdown support in assistant messages
-- [ ] diff support in patch tool
+- [x] Markdown support in assistant messages
+- [x] diff support in patch tool
+- [ ] Init message should probably return agents in it as well
+
+## Architecture Improvements
+
+- [ ] **Shared type definitions between extension and webview.** Currently `src/webview/types.ts` defines message types only for the webview, while `OpenCodeViewProvider.ts` uses `Record<string, unknown>` with no type safety. Create `src/shared/messages.ts` with discriminated unions for all host↔webview messages and import in both sides.
+
+- [ ] **Consolidate state management.** State is scattered across `OpenCodeService.ts` (currentSessionId, currentSessionTitle), `OpenCodeViewProvider.ts` (_activeSessionId, _currentModelContextLimit), and `App.tsx` (messages, sessions, etc.). Make `OpenCodeService` the single source of truth; the ViewProvider should be a pure passthrough; the webview should only hold UI state (drafts, editing state).
+
+- [ ] **Simplify the message bridge with typed RPC.** The ViewProvider switch statement (`OpenCodeViewProvider.ts` L44-77) and webview bridge (`src/webview/hooks/useVsCodeBridge.ts`) duplicate message type handling. Replace with a typed RPC-style pattern where extension exposes methods and webview calls them via typed wrapper.
+
+- [ ] **Normalize message data at the boundary.** `App.tsx` (L89-110, L213-234) repeats fragile message normalization (`raw?.info ?? raw`, extracting text from parts). Normalize messages in `OpenCodeViewProvider.ts` before sending to webview so it receives clean, predictable shapes.
+
+- [ ] **Decouple SSE streaming from prompt sending.** `sendPromptStreaming` in `OpenCodeService.ts` (L279-381) subscribes to SSE, sends prompt, and processes events all in one method. Separate into `subscribeToEvents(sessionId)` returning an async iterator and `sendPrompt(sessionId, text)` that just sends, letting ViewProvider orchestrate.
+
+- [ ] **Add error boundaries and recovery.** Errors show as messages but there's no recovery path. If the server dies, the extension is stuck. Add health check/reconnection logic in `OpenCodeService.ts`, a "Retry" button when errors occur, and use VSCode's `window.withProgress` for long operations.
+
+- [ ] **Remove duplicate session title normalization.** The pattern `/^(New session|Child session) - \d{4}-\d{2}-\d{2}T/` appears in multiple places in `App.tsx`. Create a `normalizeSessionTitle(title: string)` utility function and use everywhere.
+
 - [ ] diagnostics
 - [ ] @-mention support
 - [ ] Settings panel

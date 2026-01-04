@@ -1,6 +1,6 @@
 Pick the first thing off @TODO.md and do it.
 
-For the todo, start by thoroughly researching and writing your notes into `docs/todos/<todo-name>.md`.
+For the todo, start by thoroughly researching and writing your notes into `thoughts/todos/<todo-name>.md`.
 
 After researching and making a spec about how to do the task, do it. After its done, update the spec about what was completed and how far you got.
 
