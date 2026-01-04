@@ -501,4 +501,8 @@ export class OpenCodeService {
   getWorkspaceRoot(): string | undefined {
     return this.workspaceDir;
   }
+
+  getServerUrl(): string | undefined {
+    return this.opencode?.server.url;
+  }
 }

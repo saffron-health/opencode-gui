@@ -98,6 +98,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         type: 'init',
         ready: this._openCodeService.isReady(),
         workspaceRoot: this._openCodeService.getWorkspaceRoot(),
+        serverUrl: this._openCodeService.getServerUrl(),
         currentSessionId: currentSessionId,
         currentSessionTitle: currentSessionTitle,
         currentSessionMessages: messages
@@ -108,7 +109,8 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       this._sendMessage({
         type: 'init',
         ready: this._openCodeService.isReady(),
-        workspaceRoot: this._openCodeService.getWorkspaceRoot()
+        workspaceRoot: this._openCodeService.getWorkspaceRoot(),
+        serverUrl: this._openCodeService.getServerUrl()
       });
     }
   }
@@ -580,7 +582,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src http://127.0.0.1:* ws://127.0.0.1:*;">
         <link href="${styleUri}" rel="stylesheet">
         <title>OpenCode</title>
       </head>
