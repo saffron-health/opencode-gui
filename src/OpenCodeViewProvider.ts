@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { OpenCodeService } from './OpenCodeService';
 import { getLogger } from './extension';
-import type { HostMessage, WebviewMessage, IncomingMessage, MessagePart } from './shared/messages';
+import type { HostMessage, WebviewMessage, IncomingMessage } from './shared/messages';
 import { parseWebviewMessage } from './shared/messages';
 
 const LAST_AGENT_KEY = 'opencode.lastUsedAgent';
@@ -10,7 +10,6 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'opencode.chatView';
   private _view?: vscode.WebviewView;
   private _sseConnections = new Map<string, { close: () => void }>();
-  private _activeSessionId?: string;
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -68,35 +67,11 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
   private async _handleWebviewMessage(message: WebviewMessage) {
     switch (message.type) {
-      case 'sendPrompt':
-        await this._handleSendPrompt(message.text, message.agent);
-        break;
       case 'ready':
         await this._handleReady();
         break;
-      case 'getAgents':
-        await this._handleGetAgents();
-        break;
-      case 'load-sessions':
-        await this._handleLoadSessions();
-        break;
-      case 'switch-session':
-        await this._handleSwitchSession(message.sessionId);
-        break;
-      case 'create-session':
-        await this._handleCreateSession();
-        break;
-      case 'permission-response':
-        await this._handlePermissionResponse(message.sessionId, message.permissionId, message.response);
-        break;
-      case 'cancel-session':
-        await this._handleCancelSession();
-        break;
       case 'agent-changed':
         await this._handleAgentChanged(message.agent);
-        break;
-      case 'edit-previous-message':
-        await this._handleEditPreviousMessage(message.sessionId, message.messageId, message.newText, message.agent);
         break;
     }
   }
@@ -137,178 +112,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private async _handleGetAgents() {
-    try {
-      const agents = await this._openCodeService.getAgents();
-      const lastUsedAgent = this._globalState.get<string>(LAST_AGENT_KEY);
-      
-      let defaultAgent: string | undefined;
-      if (lastUsedAgent && agents.some(a => a.name === lastUsedAgent)) {
-        defaultAgent = lastUsedAgent;
-      } else if (agents.length > 0) {
-        defaultAgent = agents[0].name;
-      }
-      
-      this._sendMessage({ 
-        type: 'agentList', 
-        agents,
-        defaultAgent
-      });
-    } catch (error) {
-      console.error('Error getting agents:', error);
-      this._sendMessage({ 
-        type: 'agentList', 
-        agents: [] 
-      });
-    }
-  }
-
   private async _handleAgentChanged(agent: string) {
     await this._globalState.update(LAST_AGENT_KEY, agent);
     const logger = getLogger();
     logger.info('[ViewProvider] Agent selection persisted:', agent);
-  }
-
-  private async _handleLoadSessions() {
-    try {
-      const sessions = await this._openCodeService.listSessions();
-      this._sendMessage({
-        type: 'session-list',
-        sessions
-      });
-    } catch (error) {
-      console.error('Error loading sessions:', error);
-      this._sendMessage({
-        type: 'session-list',
-        sessions: []
-      });
-    }
-  }
-
-  private async _handleSwitchSession(sessionId: string) {
-    try {
-      this._activeSessionId = sessionId;
-      const session = await this._openCodeService.switchSession(sessionId);
-      
-      const messages = await this._openCodeService.getMessages(sessionId);
-      
-      this._sendMessage({
-        type: 'session-switched',
-        sessionId,
-        title: this._openCodeService.getCurrentSessionTitle(),
-        messages: messages as unknown as IncomingMessage[]
-      });
-
-      if (session.summary?.diffs) {
-        const diffs = session.summary.diffs;
-        const fileCount = diffs.length;
-        const additions = diffs.reduce((sum: number, d: { additions?: number }) => sum + (d.additions || 0), 0);
-        const deletions = diffs.reduce((sum: number, d: { deletions?: number }) => sum + (d.deletions || 0), 0);
-        
-        this._sendMessage({
-          type: 'file-changes-update',
-          fileChanges: {
-            fileCount,
-            additions,
-            deletions
-          }
-        });
-      }
-
-      const lastAssistantMsg = [...messages].reverse().find((m: unknown) => {
-        const info = (m as Record<string, unknown>).info || m;
-        return (info as Record<string, unknown>).role === 'assistant';
-      });
-      
-      if (lastAssistantMsg) {
-        const msgInfo = (lastAssistantMsg as Record<string, unknown>).info || lastAssistantMsg;
-        const metadata = (msgInfo as Record<string, unknown>).metadata as Record<string, unknown> | undefined;
-        if (metadata?.assistant) {
-          const assistantMeta = metadata.assistant as Record<string, unknown>;
-          if (assistantMeta.tokens) {
-            const tokens = assistantMeta.tokens as Record<string, number>;
-            const used = tokens.input + tokens.output;
-            const limit = 200000;
-            this._sendMessage({
-              type: 'context-update',
-              contextInfo: {
-                usedTokens: used,
-                limitTokens: limit,
-                percentage: Math.round((used / limit) * 100)
-              }
-            });
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error switching session:', error);
-    }
-  }
-
-  private async _handleCreateSession() {
-    try {
-      const session = await this._openCodeService.createSession();
-      this._activeSessionId = session.id;
-      
-      this._sendMessage({
-        type: 'session-switched',
-        sessionId: session.id,
-        title: session.title || 'New Session',
-        messages: []
-      });
-    } catch (error) {
-      console.error('Error creating session:', error);
-    }
-  }
-
-  private async _handleSendPrompt(text: string, agent?: string) {
-    try {
-      const sessionId = this._activeSessionId || this._openCodeService.getCurrentSessionId();
-      if (!sessionId) {
-        const session = await this._openCodeService.createSession();
-        this._activeSessionId = session.id;
-      }
-      
-      this._sendMessage({ type: 'thinking', isThinking: true });
-      
-      await this._openCodeService.sendPrompt(text, agent || undefined);
-      
-    } catch (error) {
-      console.error('Error sending prompt:', error);
-      this._sendMessage({
-        type: 'error',
-        message: String((error as Error)?.message ?? error)
-      });
-      this._sendMessage({ type: 'thinking', isThinking: false });
-    }
-  }
-
-  private async _handlePermissionResponse(sessionId: string, permissionId: string, response: 'once' | 'always' | 'reject') {
-    try {
-      await this._openCodeService.respondToPermission(sessionId, permissionId, response);
-    } catch (error) {
-      console.error('Error responding to permission:', error);
-    }
-  }
-
-  private async _handleCancelSession() {
-    try {
-      const sessionId = this._activeSessionId || this._openCodeService.getCurrentSessionId();
-      if (sessionId) {
-        await this._openCodeService.abortSession(sessionId);
-      }
-    } catch (error) {
-      console.error('Error cancelling session:', error);
-    }
-  }
-
-  private async _handleEditPreviousMessage(sessionId: string, messageId: string, newText: string, agent?: string) {
-    try {
-      await this._openCodeService.revertToMessage(sessionId, messageId);
-      await this._openCodeService.sendPrompt(newText, agent);
-    } catch (error) {
-      console.error('Error editing message:', error);
-    }
   }
 
   // SSE Proxy handlers
