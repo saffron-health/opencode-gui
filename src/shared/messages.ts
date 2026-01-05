@@ -110,9 +110,6 @@ export const FileChangesInfoSchema = z.object({
 });
 export type FileChangesInfo = z.infer<typeof FileChangesInfoSchema>;
 
-const nullToUndefined = <T>(schema: z.ZodType<T>) =>
-  z.preprocess((v) => (v === null ? undefined : v), schema);
-
 // Host -> Webview messages
 export const HostMessageSchema = z.discriminatedUnion("type", [
   z
@@ -131,65 +128,8 @@ export const HostMessageSchema = z.discriminatedUnion("type", [
       currentSessionId: v.currentSessionId ?? undefined,
     })),
   z.object({
-    type: z.literal("agentList"),
-    agents: z.array(AgentSchema),
-    defaultAgent: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("thinking"),
-    isThinking: z.boolean(),
-  }),
-  z.object({
-    type: z.literal("part-update"),
-    part: MessagePartSchema.extend({ messageID: z.string() }),
-    delta: z.string().optional(),
-    sessionId: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("message-update"),
-    message: IncomingMessageSchema,
-    sessionId: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("message-removed"),
-    messageId: z.string(),
-    sessionId: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("response"),
-    text: z.string().optional(),
-    parts: z.array(MessagePartSchema).optional(),
-  }),
-  z.object({
     type: z.literal("error"),
     message: z.string(),
-  }),
-  z.object({
-    type: z.literal("session-list"),
-    sessions: z.array(SessionSchema),
-  }),
-  z.object({
-    type: z.literal("session-switched"),
-    sessionId: z.string(),
-    title: z.string(),
-    messages: z.array(IncomingMessageSchema).optional(),
-  }),
-  z.object({
-    type: z.literal("session-title-update"),
-    sessionId: z.string(),
-    title: z.string(),
-  }),
-  z.object({
-    type: z.literal("permission-required"),
-    permission: PermissionSchema,
-  }),
-  z.object({
-    type: z.literal("context-update"),
-    contextInfo: ContextInfoSchema,
-  }),
-  z.object({
-    type: z.literal("file-changes-update"),
-    fileChanges: FileChangesInfoSchema,
   }),
   // Proxy fetch/SSE messages for CORS bypass
   z.object({
@@ -225,43 +165,8 @@ export const WebviewMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("ready"),
   }),
   z.object({
-    type: z.literal("getAgents"),
-  }),
-  z.object({
-    type: z.literal("sendPrompt"),
-    text: z.string(),
-    agent: nullToUndefined(z.string().optional()),
-  }),
-  z.object({
-    type: z.literal("load-sessions"),
-  }),
-  z.object({
-    type: z.literal("switch-session"),
-    sessionId: z.string(),
-  }),
-  z.object({
-    type: z.literal("create-session"),
-    title: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal("permission-response"),
-    sessionId: z.string(),
-    permissionId: z.string(),
-    response: z.enum(["once", "always", "reject"]),
-  }),
-  z.object({
-    type: z.literal("cancel-session"),
-  }),
-  z.object({
     type: z.literal("agent-changed"),
     agent: z.string(),
-  }),
-  z.object({
-    type: z.literal("edit-previous-message"),
-    sessionId: z.string(),
-    messageId: z.string(),
-    newText: z.string(),
-    agent: nullToUndefined(z.string().optional()),
   }),
 ]);
 export type WebviewMessage = z.infer<typeof WebviewMessageSchema>;

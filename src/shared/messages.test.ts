@@ -145,102 +145,8 @@ describe("HostMessageSchema", () => {
     expect(HostMessageSchema.parse(msg)).toEqual(msg);
   });
 
-  it("parses agentList message", () => {
-    const msg = {
-      type: "agentList",
-      agents: [{ name: "coder", mode: "primary", builtIn: true }],
-      defaultAgent: "coder",
-    };
-    expect(HostMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses thinking message", () => {
-    const msg = { type: "thinking", isThinking: true };
-    expect(HostMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses part-update message", () => {
-    const msg = {
-      type: "part-update",
-      part: { id: "p1", type: "text", text: "Hello", messageID: "m1" },
-      sessionId: "s1",
-    };
-    expect(HostMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses message-update message", () => {
-    const msg = {
-      type: "message-update",
-      message: { id: "m1", role: "assistant" },
-    };
-    expect(HostMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses message-removed message", () => {
-    const msg = { type: "message-removed", messageId: "m1" };
-    expect(HostMessageSchema.parse(msg)).toEqual(msg);
-  });
-
   it("parses error message", () => {
     const msg = { type: "error", message: "Something went wrong" };
-    expect(HostMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses session-list message", () => {
-    const msg = {
-      type: "session-list",
-      sessions: [
-        {
-          id: "s1",
-          title: "Session 1",
-          projectID: "p1",
-          directory: "/home",
-          time: { created: 1000, updated: 2000 },
-        },
-      ],
-    };
-    expect(HostMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses session-switched message", () => {
-    const msg = { type: "session-switched", sessionId: "s1", title: "Session 1" };
-    expect(HostMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses session-title-update message", () => {
-    const msg = { type: "session-title-update", sessionId: "s1", title: "New Title" };
-    expect(HostMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses permission-required message", () => {
-    const msg = {
-      type: "permission-required",
-      permission: {
-        id: "perm1",
-        type: "file.write",
-        sessionID: "s1",
-        messageID: "m1",
-        title: "Write file",
-        metadata: {},
-        time: { created: 1000 },
-      },
-    };
-    expect(HostMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses context-update message", () => {
-    const msg = {
-      type: "context-update",
-      contextInfo: { usedTokens: 1000, limitTokens: 100000, percentage: 1 },
-    };
-    expect(HostMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses file-changes-update message", () => {
-    const msg = {
-      type: "file-changes-update",
-      fileChanges: { fileCount: 2, additions: 50, deletions: 10 },
-    };
     expect(HostMessageSchema.parse(msg)).toEqual(msg);
   });
 
@@ -254,67 +160,9 @@ describe("WebviewMessageSchema", () => {
     expect(WebviewMessageSchema.parse({ type: "ready" })).toEqual({ type: "ready" });
   });
 
-  it("parses getAgents message", () => {
-    expect(WebviewMessageSchema.parse({ type: "getAgents" })).toEqual({ type: "getAgents" });
-  });
-
-  it("parses sendPrompt message", () => {
-    const msg = { type: "sendPrompt", text: "Hello", agent: "coder" };
-    expect(WebviewMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("converts null agent to undefined", () => {
-    const msg = { type: "sendPrompt", text: "Hello", agent: null };
-    expect(WebviewMessageSchema.parse(msg)).toEqual({ type: "sendPrompt", text: "Hello", agent: undefined });
-  });
-
-  it("parses load-sessions message", () => {
-    expect(WebviewMessageSchema.parse({ type: "load-sessions" })).toEqual({ type: "load-sessions" });
-  });
-
-  it("parses switch-session message", () => {
-    const msg = { type: "switch-session", sessionId: "s1" };
-    expect(WebviewMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses create-session message", () => {
-    expect(WebviewMessageSchema.parse({ type: "create-session" })).toEqual({ type: "create-session" });
-  });
-
-  it("parses permission-response message", () => {
-    const msg = {
-      type: "permission-response",
-      sessionId: "s1",
-      permissionId: "perm1",
-      response: "always",
-    };
-    expect(WebviewMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses cancel-session message", () => {
-    expect(WebviewMessageSchema.parse({ type: "cancel-session" })).toEqual({ type: "cancel-session" });
-  });
-
   it("parses agent-changed message", () => {
     const msg = { type: "agent-changed", agent: "coder" };
     expect(WebviewMessageSchema.parse(msg)).toEqual(msg);
-  });
-
-  it("parses edit-previous-message message and converts null agent to undefined", () => {
-    const msg = {
-      type: "edit-previous-message",
-      sessionId: "s1",
-      messageId: "m1",
-      newText: "Updated text",
-      agent: null,
-    };
-    expect(WebviewMessageSchema.parse(msg)).toEqual({
-      type: "edit-previous-message",
-      sessionId: "s1",
-      messageId: "m1",
-      newText: "Updated text",
-      agent: undefined,
-    });
   });
 
   it("rejects unknown message type", () => {
@@ -324,8 +172,8 @@ describe("WebviewMessageSchema", () => {
 
 describe("parseHostMessage", () => {
   it("returns parsed message for valid input", () => {
-    const result = parseHostMessage({ type: "thinking", isThinking: true });
-    expect(result).toEqual({ type: "thinking", isThinking: true });
+    const result = parseHostMessage({ type: "error", message: "Something went wrong" });
+    expect(result).toEqual({ type: "error", message: "Something went wrong" });
   });
 
   it("returns null for invalid input", () => {
@@ -352,7 +200,7 @@ describe("parseWebviewMessage", () => {
   });
 
   it("returns null for missing required fields", () => {
-    const result = parseWebviewMessage({ type: "sendPrompt" });
+    const result = parseWebviewMessage({ type: "agent-changed" });
     expect(result).toBeNull();
   });
 });
