@@ -1,13 +1,13 @@
-
-import { createSignal, createMemo, Show, onMount } from "solid-js";
+import { createSignal, createMemo, Show, onMount, onCleanup, createEffect } from "solid-js";
 import { InputBar } from "./components/InputBar";
 import { MessageList } from "./components/MessageList";
 import { TopBar } from "./components/TopBar";
 import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
-import { useVsCodeBridge } from "./hooks/useVsCodeBridge";
+import { useOpenCode, type Event as OpenCodeEvent, type Session as SDKSession, type Agent as SDKAgent } from "./hooks/useOpenCode";
 import { applyPartUpdate, applyMessageUpdate } from "./utils/messageUtils";
-import type { Message, Agent, Session, Permission, ContextInfo, FileChangesInfo } from "./types";
+import type { Message, Agent, Session, Permission, ContextInfo, FileChangesInfo, MessagePart, IncomingMessage } from "./types";
+import { vscode } from "./utils/vscode";
 
 const DEBUG = false;
 const NEW_SESSION_KEY = "__new__";
@@ -15,28 +15,44 @@ const NEW_SESSION_KEY = "__new__";
 function App() {
   const [messages, setMessages] = createSignal<Message[]>([]);
   const [isThinking, setIsThinking] = createSignal(false);
-  const [isReady, setIsReady] = createSignal(false);
   const [agents, setAgents] = createSignal<Agent[]>([]);
   const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
   const [sessions, setSessions] = createSignal<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(null);
   const [currentSessionTitle, setCurrentSessionTitle] = createSignal<string>("New Session");
-  const [workspaceRoot, setWorkspaceRoot] = createSignal<string | undefined>(undefined);
   const [contextInfo, setContextInfo] = createSignal<ContextInfo | null>(null);
   const [fileChanges, setFileChanges] = createSignal<FileChangesInfo | null>(null);
+  const [currentModelContextLimit, setCurrentModelContextLimit] = createSignal<number>(200000);
   
   // Per-session drafts and agent selection
-  // Key is session ID or NEW_SESSION_KEY for new sessions
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
   
-  // Pending permissions are tracked separately from tool parts
-  // Key is either callID (preferred) or permissionID as fallback
+  // Pending permissions
   const [pendingPermissions, setPendingPermissions] = createSignal<Map<string, Permission>>(new Map());
   
   // Editing state for previous messages
   const [editingMessageId, setEditingMessageId] = createSignal<string | null>(null);
   const [editingText, setEditingText] = createSignal<string>("");
+
+  // Get SDK hook
+  const {
+    isReady: sdkIsReady,
+    workspaceRoot: sdkWorkspaceRoot,
+    initData,
+    listSessions,
+    getSession,
+    createSession,
+    getAgents,
+    getMessages,
+    getConfig,
+    abortSession,
+    sendPrompt,
+    subscribeToEvents,
+    respondToPermission,
+    revertToMessage,
+    client,
+  } = useOpenCode();
 
   // Get the current session key for drafts/agents
   const sessionKey = () => currentSessionId() || NEW_SESSION_KEY;
@@ -69,268 +85,447 @@ function App() {
   );
 
   const sessionsToShow = createMemo(() => {
-    // Don't show the current session if it's new (no ID yet)
     return sessions().filter(s => s.id !== currentSessionId() || currentSessionId() !== null);
   });
 
-  const { send } = useVsCodeBridge({
-    onInit: (ready, workspaceRootPath, sessionId, sessionTitle, incomingMessages) => {
-      setIsReady(ready);
-      setWorkspaceRoot(workspaceRootPath);
-      
-      // Restore active session state from backend if it exists
-      if (sessionId) {
-        setCurrentSessionId(sessionId);
-        // If it's a default timestamp title, show "New Session" instead
-        const isDefaultTitle = sessionTitle && /^(New session|Child session) - \d{4}-\d{2}-\d{2}T/.test(sessionTitle);
-        setCurrentSessionTitle(isDefaultTitle ? "New Session" : (sessionTitle || "New Session"));
-        
-        // Load messages from the active session
-        if (incomingMessages && incomingMessages.length > 0) {
-          const messages: Message[] = incomingMessages.map((raw: any) => {
-            const m = raw?.info ?? raw;
-            const parts = raw?.parts ?? m?.parts ?? [];
-            const text =
-              m?.text ??
-              (Array.isArray(parts)
-                ? parts
-                    .filter((p: any) => p?.type === "text" && typeof p.text === "string")
-                    .map((p: any) => p.text)
-                    .join("\n")
-                : "");
-            
-            const role = m?.role ?? "assistant";
-            
-            return {
-              id: m.id,
-              type: role === "user" ? "user" : "assistant",
-              text,
-              parts,
-            };
+  // Helper: check if title is default timestamp-based
+  const isDefaultTitle = (title: string) => /^(New session|Child session) - \d{4}-\d{2}-\d{2}T/.test(title);
+
+  // Helper: map legacy/SDK messages to UI format
+  function mapMessagesToUI(incomingMessages: unknown[]): Message[] {
+    return incomingMessages.map((raw: unknown) => {
+      const r = raw as Record<string, unknown>;
+      const m = (r?.info ?? r) as Record<string, unknown>;
+      const parts = (r?.parts ?? m?.parts ?? []) as MessagePart[];
+      const text =
+        (m?.text as string) ??
+        (Array.isArray(parts)
+          ? parts
+              .filter((p) => p?.type === "text" && typeof p.text === "string")
+              .map((p) => p.text)
+              .join("\n")
+          : "");
+      const role = (m?.role as string) ?? "assistant";
+      return {
+        id: m.id as string,
+        type: role === "user" ? "user" : "assistant",
+        text,
+        parts,
+      } as Message;
+    });
+  }
+
+  // Initialize from initData when SDK is ready
+  createEffect(async () => {
+    if (!sdkIsReady()) return;
+    const init = initData();
+    if (!init) return;
+
+    // Restore current session
+    const sessionId = init.currentSessionId ?? null;
+    const title = init.currentSessionTitle ?? "New Session";
+    setCurrentSessionId(sessionId);
+    setCurrentSessionTitle(isDefaultTitle(title) ? "New Session" : title);
+
+    // Load messages for current session
+    if (sessionId && init.currentSessionMessages && init.currentSessionMessages.length > 0) {
+      const msgs = mapMessagesToUI(init.currentSessionMessages);
+      setMessages(msgs);
+
+      // Extract agent from last user message
+      const lastUserMsg = [...init.currentSessionMessages].reverse().find((raw: unknown) => {
+        const r = raw as Record<string, unknown>;
+        const m = (r?.info ?? r) as Record<string, unknown>;
+        return m?.role === "user";
+      });
+      if (lastUserMsg) {
+        const info = ((lastUserMsg as Record<string, unknown>)?.info ?? lastUserMsg) as Record<string, unknown>;
+        if (info?.agent) {
+          setSessionAgents((prev) => {
+            const next = new Map(prev);
+            next.set(sessionId, info.agent as string);
+            return next;
           });
-          setMessages(messages);
-          
-          // Extract agent from the last user message for this session
-          const lastUserMsg = [...incomingMessages].reverse().find((raw: any) => {
-            const m = raw?.info ?? raw;
-            return m?.role === "user";
-          });
-          if (lastUserMsg) {
-            const info = lastUserMsg?.info ?? lastUserMsg;
-            if (info?.agent) {
-              setSessionAgents((prev) => {
-                const next = new Map(prev);
-                next.set(sessionId, info.agent);
-                return next;
-              });
-            }
-          }
         }
       }
-    },
+    }
+  });
 
-    onAgentList: (agentList, persistedDefault) => {
-      setAgents(agentList);
-      // Set the default agent for new sessions
-      if (persistedDefault && agentList.some(a => a.name === persistedDefault)) {
+  // Load agents when SDK is ready
+  createEffect(async () => {
+    if (!sdkIsReady()) return;
+    try {
+      const res = await getAgents();
+      const agentList = (res?.data ?? []) as Agent[];
+      // Filter to primary/all agents
+      const filteredAgents = agentList.filter(a => a.mode === "primary" || a.mode === "all");
+      setAgents(filteredAgents);
+
+      // Use persisted default from extension, or first agent
+      const init = initData();
+      const persistedDefault = init?.defaultAgent;
+      if (persistedDefault && filteredAgents.some(a => a.name === persistedDefault)) {
         setDefaultAgent(persistedDefault);
-      } else if (agentList.length > 0) {
-        setDefaultAgent(agentList[0].name);
+      } else if (!defaultAgent() && filteredAgents.length > 0) {
+        setDefaultAgent(filteredAgents[0].name);
       }
-    },
+    } catch (err) {
+      console.error("[App] Failed to load agents:", err);
+    }
+  });
 
-    onThinking: (thinking) => {
-      setIsThinking(thinking);
-    },
-
-    onPartUpdate: (part) => {
-      if (DEBUG) {
-        console.log('[Webview] part-update received:', {
-          partId: part.id,
-          partType: part.type,
-          messageID: part.messageID,
-          callID: part.callID,
-        });
-      }
-      console.log('[App] Part update:', JSON.stringify(part, null, 2));
-      setMessages((prev) => applyPartUpdate(prev, part));
-    },
-
-    onMessageUpdate: (finalMessage) => {
-      if (DEBUG) {
-        console.log('[Webview] message-update received:', {
-          id: finalMessage.id,
-          role: finalMessage.role,
-          hasParts: !!(finalMessage.parts && finalMessage.parts.length > 0)
-        });
-      }
-      setMessages((prev) => applyMessageUpdate(prev, finalMessage));
-    },
-
-    onMessageRemoved: (messageId) => {
-      console.log('[Webview] message-removed received:', messageId);
-      setMessages((prev) => prev.filter(m => m.id !== messageId));
-    },
-
-    onResponse: (payload) => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          type: "assistant" as const,
-          text: payload.text,
-          parts: payload.parts,
-        },
-      ]);
-    },
-
-    onError: (errorMessage) => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          type: "assistant" as const,
-          text: `Error: ${errorMessage}`,
-        },
-      ]);
-    },
-
-    onSessionList: (sessionList) => {
+  // Load sessions when SDK is ready
+  createEffect(async () => {
+    if (!sdkIsReady()) return;
+    try {
+      const res = await listSessions();
+      const sessionList = (res?.data ?? []) as Session[];
       setSessions(sessionList);
-    },
+    } catch (err) {
+      console.error("[App] Failed to load sessions:", err);
+    }
+  });
 
-    onSessionSwitched: (sessionId, title, incomingMessages) => {
-      setCurrentSessionId(sessionId);
-      // If it's a default timestamp title, show "New Session" instead
-      const isDefaultTitle = /^(New session|Child session) - \d{4}-\d{2}-\d{2}T/.test(title);
-      setCurrentSessionTitle(isDefaultTitle ? "New Session" : title);
-      // Reset - backend will send updated values via file-changes-update and context-update
+  // Update context info from assistant message tokens
+  async function updateContextInfo(tokens: Record<string, unknown>, modelID: string, providerID: string) {
+    try {
+      const c = client();
+      if (!c) return;
+
+      // Try to get model context limit from config
+      const configResult = await c.config.providers();
+      const providers = configResult?.data as Record<string, { models?: Record<string, { limit?: { context?: number } }> }> | undefined;
+      const contextLimit = providers?.[providerID]?.models?.[modelID]?.limit?.context;
+      if (contextLimit) {
+        setCurrentModelContextLimit(contextLimit);
+      }
+
+      const cache = tokens.cache as { read?: number } | undefined;
+      const usedTokens = ((tokens.input as number) || 0) + ((tokens.output as number) || 0) + (cache?.read || 0);
+      
+      if (usedTokens === 0) return;
+      
+      const limit = currentModelContextLimit();
+      const percentage = Math.min(100, (usedTokens / limit) * 100);
+
+      setContextInfo({
+        usedTokens,
+        limitTokens: limit,
+        percentage,
+      });
+    } catch (error) {
+      console.error("[App] Error updating context info:", error);
+    }
+  }
+
+  // Handle SSE events
+  function handleEvent(event: OpenCodeEvent) {
+    const activeSessionId = currentSessionId();
+
+    // Helper to get session ID from event
+    const getEventSessionId = (e: OpenCodeEvent): string | undefined => {
+      const props = (e as unknown as { properties: Record<string, unknown> }).properties;
+      return (props?.sessionID as string) ??
+             (props?.info as Record<string, unknown>)?.sessionID as string ??
+             ((props?.part as Record<string, unknown>)?.sessionID as string) ??
+             ((props?.info as Record<string, unknown>)?.id === activeSessionId ? activeSessionId : undefined);
+    };
+
+    const evSessionId = getEventSessionId(event);
+
+    // Filter events for current session only (for message/part events)
+    const shouldFilterBySession = ["message.updated", "message.removed", "message.part.updated", "message.part.removed"].includes(event.type);
+    if (shouldFilterBySession && activeSessionId && evSessionId && evSessionId !== activeSessionId) {
+      if (DEBUG) console.log("[App] Ignoring event for inactive session:", evSessionId);
+      return;
+    }
+
+    if (DEBUG) console.log("[App] SSE event:", event.type, event);
+
+    switch (event.type) {
+      case "message.part.updated": {
+        const props = (event as unknown as { properties: { part: MessagePart & { messageID: string }; delta?: string } }).properties;
+        const part = props.part;
+        if (DEBUG) console.log("[App] Part update:", part);
+        setMessages((prev) => applyPartUpdate(prev, part));
+        break;
+      }
+
+      case "message.updated": {
+        const props = (event as unknown as { properties: { info: IncomingMessage & { tokens?: Record<string, unknown>; modelID?: string; providerID?: string } } }).properties;
+        const info = props.info;
+        if (DEBUG) console.log("[App] Message update:", info);
+        setMessages((prev) => applyMessageUpdate(prev, info));
+
+        // Update context info for assistant messages
+        if (info.role === "assistant" && info.tokens) {
+          updateContextInfo(info.tokens, info.modelID || "", info.providerID || "");
+        }
+        break;
+      }
+
+      case "message.removed": {
+        const props = (event as unknown as { properties: { messageID: string } }).properties;
+        console.log("[App] Message removed:", props.messageID);
+        setMessages((prev) => prev.filter((m) => m.id !== props.messageID));
+        break;
+      }
+
+      case "session.idle": {
+        console.log("[App] Session idle - streaming complete");
+        setIsThinking(false);
+        break;
+      }
+
+      case "session.updated": {
+        const props = (event as unknown as { properties: { info: Session } }).properties;
+        const session = props.info;
+        
+        // Update session title if it changed
+        if (session.id === activeSessionId && session.title && !isDefaultTitle(session.title)) {
+          setCurrentSessionTitle(session.title);
+        }
+
+        // Update sessions list
+        setSessions((prev) => prev.map((s) => s.id === session.id ? { ...s, ...session } : s));
+
+        // Update file changes from session summary
+        if (session.summary?.diffs) {
+          const diffs = session.summary.diffs;
+          setFileChanges({
+            fileCount: diffs.length,
+            additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
+            deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
+          });
+        }
+        break;
+      }
+
+      case "session.created": {
+        const props = (event as unknown as { properties: { info: Session } }).properties;
+        const session = props.info;
+        setSessions((prev) => {
+          if (prev.some((s) => s.id === session.id)) return prev;
+          return [...prev, session];
+        });
+        break;
+      }
+
+      case "permission.updated": {
+        const permission = (event as unknown as { properties: Permission }).properties;
+        console.log("[App] Permission required:", permission);
+        const key = permission.callID || permission.id;
+        setPendingPermissions((prev) => {
+          const next = new Map(prev);
+          next.set(key, permission);
+          return next;
+        });
+        break;
+      }
+
+      case "permission.replied": {
+        const props = (event as unknown as { properties: { permissionID: string } }).properties;
+        console.log("[App] Permission replied:", props.permissionID);
+        break;
+      }
+
+      case "session.error": {
+        const props = (event as unknown as { properties: { error?: { data?: { message?: string } } } }).properties;
+        const errorMessage = props.error?.data?.message || "Unknown error";
+        console.error("[App] Session error:", errorMessage);
+        setIsThinking(false);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            type: "assistant",
+            text: `Error: ${errorMessage}`,
+          },
+        ]);
+        break;
+      }
+
+      default:
+        if (DEBUG) console.log("[App] Unhandled event:", event.type);
+    }
+  }
+
+  // Start SSE subscription
+  onMount(() => {
+    let cleanup: (() => void) | undefined;
+
+    const startSSE = async () => {
+      // Wait for SDK to be ready
+      while (!sdkIsReady()) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
+      try {
+        console.log("[App] Starting SSE subscription");
+        cleanup = subscribeToEvents((event) => {
+          handleEvent(event);
+        });
+      } catch (err) {
+        console.error("[App] SSE subscription failed:", err);
+      }
+    };
+
+    startSSE();
+
+    onCleanup(() => {
+      cleanup?.();
+    });
+  });
+
+  // Handlers
+  const handleSubmit = async () => {
+    const text = input().trim();
+    if (!text || !sdkIsReady()) return;
+
+    const agent = agents().some((a) => a.name === selectedAgent())
+      ? selectedAgent()
+      : null;
+
+    // Ensure we have a session
+    let sessionId = currentSessionId();
+    if (!sessionId) {
+      try {
+        const res = await createSession();
+        const newSession = res?.data as Session | undefined;
+        if (!newSession?.id) {
+          console.error("[App] Failed to create session");
+          return;
+        }
+        sessionId = newSession.id;
+        setCurrentSessionId(sessionId);
+        setCurrentSessionTitle("New Session");
+        setSessions((prev) => [...prev, newSession]);
+      } catch (err) {
+        console.error("[App] Failed to create session:", err);
+        return;
+      }
+    }
+
+    setInput("");
+    setIsThinking(true);
+
+    try {
+      await sendPrompt(sessionId, text, agent);
+    } catch (err) {
+      console.error("[App] sendPrompt failed:", err);
+      setIsThinking(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          type: "assistant",
+          text: `Error: ${(err as Error).message}`,
+        },
+      ]);
+    }
+  };
+
+  const handleSessionSelect = async (sessionId: string) => {
+    if (!sdkIsReady()) return;
+    
+    setCurrentSessionId(sessionId);
+    setFileChanges(null);
+    setContextInfo(null);
+
+    try {
+      // Load messages
+      const res = await getMessages(sessionId);
+      const sdkMessages = (res?.data ?? []) as unknown[];
+      setMessages(mapMessagesToUI(sdkMessages));
+
+      // Extract agent from last user message
+      const lastUser = [...sdkMessages].reverse().find((m: unknown) => {
+        const msg = m as Record<string, unknown>;
+        const info = (msg?.info ?? msg) as Record<string, unknown>;
+        return info?.role === "user";
+      });
+      if (lastUser) {
+        const info = ((lastUser as Record<string, unknown>)?.info ?? lastUser) as Record<string, unknown>;
+        if (info?.agent) {
+          setSessionAgents((prev) => {
+            const next = new Map(prev);
+            next.set(sessionId, info.agent as string);
+            return next;
+          });
+        }
+      }
+
+      // Get session title
+      const sessionRes = await getSession(sessionId);
+      const session = sessionRes?.data as Session | undefined;
+      if (session?.title) {
+        setCurrentSessionTitle(isDefaultTitle(session.title) ? "New Session" : session.title);
+      }
+
+      // Update file changes if available
+      if (session?.summary?.diffs) {
+        const diffs = session.summary.diffs;
+        setFileChanges({
+          fileCount: diffs.length,
+          additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
+          deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
+        });
+      }
+
+      // Find last assistant message to restore context info
+      const lastAssistantMsg = [...sdkMessages].reverse().find((m: unknown) => {
+        const msg = m as Record<string, unknown>;
+        const info = (msg?.info ?? msg) as Record<string, unknown>;
+        return info?.role === "assistant" && info?.tokens;
+      });
+      if (lastAssistantMsg) {
+        const info = ((lastAssistantMsg as Record<string, unknown>)?.info ?? lastAssistantMsg) as Record<string, unknown>;
+        if (info.tokens) {
+          updateContextInfo(
+            info.tokens as Record<string, unknown>,
+            (info.modelID as string) || "",
+            (info.providerID as string) || ""
+          );
+        }
+      }
+    } catch (err) {
+      console.error("[App] Failed to switch session:", err);
+    }
+  };
+
+  const handleNewSession = async () => {
+    if (!sdkIsReady()) return;
+    try {
+      const res = await createSession();
+      const newSession = res?.data as Session | undefined;
+      if (!newSession?.id) return;
+
+      setSessions((prev) => [...prev, newSession]);
+      setCurrentSessionId(newSession.id);
+      setCurrentSessionTitle("New Session");
+      setMessages([]);
       setFileChanges(null);
       setContextInfo(null);
-      
-      // Load messages from the session
-      if (incomingMessages && incomingMessages.length > 0) {
-        const messages: Message[] = incomingMessages.map((raw: any) => {
-          const m = raw?.info ?? raw;
-          const parts = raw?.parts ?? m?.parts ?? [];
-          const text =
-            m?.text ??
-            (Array.isArray(parts)
-              ? parts
-                  .filter((p: any) => p?.type === "text" && typeof p.text === "string")
-                  .map((p: any) => p.text)
-                  .join("\n")
-              : "");
-          
-          const role = m?.role ?? "assistant";
-          
-          return {
-            id: m.id,
-            type: role === "user" ? "user" : "assistant",
-            text,
-            parts,
-          };
-        });
-        setMessages(messages);
-        
-        // Extract agent from the last user message for this session
-        // Messages come from newest to oldest, so find the first user message
-        const lastUserMsg = [...incomingMessages].reverse().find((raw: any) => {
-          const m = raw?.info ?? raw;
-          return m?.role === "user";
-        });
-        if (lastUserMsg) {
-          const info = lastUserMsg?.info ?? lastUserMsg;
-          if (info?.agent) {
-            // Set this session's agent to the last used agent
-            setSessionAgents((prev) => {
-              const next = new Map(prev);
-              next.set(sessionId, info.agent);
-              return next;
-            });
-          }
-        }
-      } else {
-        setMessages([]);
-      }
-    },
-
-    onSessionTitleUpdate: (sessionId, title) => {
-      // Skip default timestamp titles to avoid flash before real title is generated
-      const isDefaultTitle = /^(New session|Child session) - \d{4}-\d{2}-\d{2}T/.test(title);
-      
-      // Update title when OpenCode auto-generates it after first message
-      if (sessionId === currentSessionId() && !isDefaultTitle) {
-        setCurrentSessionTitle(title);
-      }
-      // Also update the session in the list
-      setSessions((prev) => 
-        prev.map((s) => s.id === sessionId ? { ...s, title } : s)
-      );
-    },
-
-    onPermissionRequired: (permission: Permission) => {
-      console.log('[App] Permission required:', permission);
-      
-      // Store permission in the pending permissions map
-      // Key by callID if available, otherwise by permission ID
-      const key = permission.callID || permission.id;
-      setPendingPermissions((prev) => {
-        const next = new Map(prev);
-        next.set(key, permission);
-        console.log('[App] Added pending permission:', key, 'total:', next.size);
-        return next;
-      });
-    },
-
-    onContextUpdate: (context: ContextInfo) => {
-      setContextInfo(context);
-    },
-
-    onFileChangesUpdate: (changes: FileChangesInfo) => {
-      setFileChanges(changes);
-    },
-  });
-
-  onMount(() => {
-    send({ type: "load-sessions" });
-  });
-
-  const handleSubmit = () => {
-    const text = input().trim();
-    if (!text) return;
-    
-    const agent = agents().some(a => a.name === selectedAgent()) 
-      ? selectedAgent() 
-      : null;
-    
-    send({
-      type: "sendPrompt",
-      text,
-      agent,
-    });
-    setInput("");
+    } catch (err) {
+      console.error("[App] Failed to create session:", err);
+    }
   };
 
-  const handleSessionSelect = (sessionId: string) => {
-    send({ type: "switch-session", sessionId });
-  };
-
-  const handleNewSession = () => {
-    send({ type: "create-session" });
-    // The session-switched event handler will update the UI state
-  };
-
-  const handleCancel = () => {
-    send({ type: "cancel-session" });
+  const handleCancel = async () => {
+    const sessionId = currentSessionId();
+    if (!sdkIsReady() || !sessionId) return;
+    try {
+      await abortSession(sessionId);
+    } finally {
+      setIsThinking(false);
+    }
   };
 
   const handleAgentChange = (agent: string | null) => {
     setSelectedAgent(agent);
-    // Only persist as the global default if this is a new session (no ID yet)
-    // For existing sessions, the agent is just stored per-session in memory
+    // Persist as global default for new sessions
     if (agent && !currentSessionId()) {
-      send({ type: "agent-changed", agent });
+      vscode.postMessage({ type: "agent-changed", agent });
     }
   };
 
@@ -344,88 +539,77 @@ function App() {
     setEditingText("");
   };
 
-  const handleSubmitEdit = (newText: string) => {
+  const handleSubmitEdit = async (newText: string) => {
     const messageId = editingMessageId();
     const sessionId = currentSessionId();
-    
-    if (!messageId || !sessionId || !newText.trim()) return;
-    
-    const agent = agents().some(a => a.name === selectedAgent()) 
-      ? selectedAgent() 
+    if (!messageId || !sessionId || !newText.trim() || !sdkIsReady()) return;
+
+    const agent = agents().some((a) => a.name === selectedAgent())
+      ? selectedAgent()
       : null;
-    
-    // Optimistically truncate messages to the point being edited (exclusive)
-    // This prevents the UI from showing old messages while the backend reverts
-    const messageIndex = messages().findIndex(m => m.id === messageId);
+
+    // Optimistically truncate messages
+    const messageIndex = messages().findIndex((m) => m.id === messageId);
     if (messageIndex !== -1) {
       setMessages(messages().slice(0, messageIndex));
     }
-    
-    send({
-      type: "edit-previous-message",
-      sessionId,
-      messageId,
-      newText: newText.trim(),
-      agent,
-    });
-    
-    // Clear editing state
+
+    setIsThinking(true);
     setEditingMessageId(null);
     setEditingText("");
+
+    try {
+      await revertToMessage(sessionId, messageId);
+      await sendPrompt(sessionId, newText.trim(), agent);
+    } catch (err) {
+      console.error("[App] Failed to edit message:", err);
+      setIsThinking(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          type: "assistant",
+          text: `Error editing message: ${(err as Error).message}`,
+        },
+      ]);
+    }
   };
 
-  const handlePermissionResponse = (permissionId: string, response: "once" | "always" | "reject") => {
-    console.log(`[App] Permission response clicked: ${response} for ${permissionId}`);
-    
-    // Find the permission in pendingPermissions
+  const handlePermissionResponse = async (
+    permissionId: string,
+    response: "once" | "always" | "reject"
+  ) => {
+    console.log(`[App] Permission response: ${response} for ${permissionId}`);
+
     const perms = pendingPermissions();
     let permission: Permission | undefined;
-    
-    // Search by permission ID
-    for (const [key, perm] of perms.entries()) {
+    for (const [, perm] of perms.entries()) {
       if (perm.id === permissionId) {
         permission = perm;
         break;
       }
     }
-    
+
     const sessionId = permission?.sessionID || currentSessionId();
-    
-    if (!sessionId) {
-      console.error('[App] Cannot respond to permission: no session ID found');
+    if (!sessionId || !sdkIsReady()) {
+      console.error("[App] Cannot respond to permission: no session ID");
       return;
     }
-    
-    // Send permission response to extension
-    console.log('[App] Sending permission-response message to extension:', {
-      type: "permission-response",
-      sessionId,
-      permissionId,
-      response
-    });
-    
-    send({
-      type: "permission-response",
-      sessionId,
-      permissionId,
-      response
-    });
-    
-    // Remove the permission from pending permissions
-    setPendingPermissions((prev) => {
-      const next = new Map(prev);
-      // Remove by finding the key that has this permission ID
-      for (const [key, perm] of next.entries()) {
-        if (perm.id === permissionId) {
-          next.delete(key);
-          break;
+
+    try {
+      await respondToPermission(sessionId, permissionId, response);
+    } finally {
+      setPendingPermissions((prev) => {
+        const next = new Map(prev);
+        for (const [key, perm] of next.entries()) {
+          if (perm.id === permissionId) {
+            next.delete(key);
+            break;
+          }
         }
-      }
-      console.log('[App] Removed pending permission:', permissionId, 'remaining:', next.size);
-      return next;
-    });
-    
-    console.log('[App] Permission response sent');
+        return next;
+      });
+    }
   };
 
   return (
@@ -444,7 +628,7 @@ function App() {
           onInput={setInput}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
-          disabled={!isReady()}
+          disabled={!sdkIsReady()}
           isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}
@@ -452,11 +636,11 @@ function App() {
         />
       </Show>
 
-      <MessageList 
-        messages={messages()} 
-        isThinking={isThinking()} 
-        workspaceRoot={workspaceRoot()} 
-        pendingPermissions={pendingPermissions()} 
+      <MessageList
+        messages={messages()}
+        isThinking={isThinking()}
+        workspaceRoot={sdkWorkspaceRoot()}
+        pendingPermissions={pendingPermissions()}
         onPermissionResponse={handlePermissionResponse}
         editingMessageId={editingMessageId()}
         editingText={editingText()}
@@ -477,7 +661,7 @@ function App() {
           onInput={setInput}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
-          disabled={!isReady()}
+          disabled={!sdkIsReady()}
           isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}

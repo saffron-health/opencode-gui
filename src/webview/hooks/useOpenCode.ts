@@ -3,12 +3,15 @@ import {
   createOpencodeClient,
   type OpencodeClient,
   type Event,
-} from "@opencode-ai/sdk";
-import type { Agent, Session, Message as SDKMessage, Part } from "@opencode-ai/sdk";
+  type Agent,
+  type Session,
+  type Message as SDKMessage,
+  type Part,
+} from "@opencode-ai/sdk/client";
 
-declare const vscode: {
-  postMessage: (message: unknown) => void;
-};
+import { vscode } from "../utils/vscode";
+import { proxyFetch } from "../utils/proxyFetch";
+import { proxyEventSource } from "../utils/proxyEventSource";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
@@ -17,6 +20,7 @@ export interface InitData {
   currentSessionId?: string | null;
   currentSessionTitle?: string;
   currentSessionMessages?: unknown[];
+  defaultAgent?: string;
 }
 
 export function useOpenCode() {
@@ -24,6 +28,7 @@ export function useOpenCode() {
   const [isReady, setIsReady] = createSignal(false);
   const [workspaceRoot, setWorkspaceRoot] = createSignal<string | undefined>(undefined);
   const [initData, setInitData] = createSignal<InitData | null>(null);
+  const [serverUrl, setServerUrl] = createSignal<string | undefined>(undefined);
 
   onMount(() => {
     const handleMessage = (e: MessageEvent) => {
@@ -33,8 +38,12 @@ export function useOpenCode() {
         const url = data.serverUrl ?? data.url;
         if (!url) return;
 
-        const opencodeClient = createOpencodeClient({ baseUrl: url });
+        const opencodeClient = createOpencodeClient({
+          baseUrl: url,
+          fetch: proxyFetch,
+        });
         setClient(opencodeClient);
+        setServerUrl(url);
         setIsReady(true);
 
         // Store workspaceRoot for SSE subscriptions
@@ -48,6 +57,7 @@ export function useOpenCode() {
             currentSessionId: data.currentSessionId,
             currentSessionTitle: data.currentSessionTitle,
             currentSessionMessages: data.currentSessionMessages,
+            defaultAgent: data.defaultAgent,
           });
         }
       }
@@ -80,17 +90,32 @@ export function useOpenCode() {
     });
   }
 
-  // Subscribe to events for the workspace
-  async function subscribeToEvents(onEvent: (event: Event) => void) {
-    const c = client();
+  // Subscribe to events for the workspace through the extension proxy
+  // (native EventSource has CORS issues in webview)
+  function subscribeToEvents(onEvent: (event: Event) => void): () => void {
+    const baseUrl = serverUrl();
     const dir = workspaceRoot();
-    if (!c || !dir) throw new Error("Not connected");
+    if (!baseUrl) throw new Error("Not connected");
 
-    const result = await c.event.subscribe({ query: { directory: dir } });
-
-    for await (const event of result.stream) {
-      onEvent(event as Event);
+    const url = new URL("/event", baseUrl);
+    if (dir) {
+      url.searchParams.set("directory", dir);
     }
+
+    return proxyEventSource(
+      url.toString(),
+      (data) => {
+        try {
+          const parsed = JSON.parse(data);
+          onEvent(parsed as Event);
+        } catch (err) {
+          console.error("[SSE] Failed to parse event:", err);
+        }
+      },
+      (err) => {
+        console.error("[SSE] EventSource error:", err);
+      }
+    );
   }
 
   // Respond to permission request

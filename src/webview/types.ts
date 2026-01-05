@@ -54,6 +54,13 @@ export interface Session {
     created: number;
     updated: number;
   };
+  summary?: {
+    diffs: Array<{
+      file: string;
+      additions: number;
+      deletions: number;
+    }>;
+  };
 }
 
 export interface IncomingMessage {
@@ -89,28 +96,4 @@ export interface FileChangesInfo {
   deletions: number;
 }
 
-export type HostMessage =
-  | { type: "init"; ready: boolean; workspaceRoot?: string; currentSessionId?: string | null; currentSessionTitle?: string; currentSessionMessages?: IncomingMessage[] }
-  | { type: "agentList"; agents: Agent[] }
-  | { type: "thinking"; isThinking: boolean }
-  | { type: "part-update"; part: MessagePart & { messageID: string } }
-  | { type: "message-update"; message: IncomingMessage }
-  | { type: "response"; text?: string; parts?: MessagePart[] }
-  | { type: "error"; message: string }
-  | { type: "session-list"; sessions: Session[] }
-  | { type: "session-switched"; sessionId: string; title: string; messages?: IncomingMessage[] }
-  | { type: "permission-required"; permission: Permission }
-  | { type: "context-update"; contextInfo: ContextInfo }
-  | { type: "file-changes-update"; fileChanges: FileChangesInfo };
 
-export type WebviewMessage =
-  | { type: "ready" }
-  | { type: "getAgents" }
-  | { type: "sendPrompt"; text: string; agent: string | null }
-  | { type: "load-sessions" }
-  | { type: "switch-session"; sessionId: string }
-  | { type: "create-session"; title?: string }
-  | { type: "permission-response"; sessionId: string; permissionId: string; response: "once" | "always" | "reject" }
-  | { type: "cancel-session" }
-  | { type: "agent-changed"; agent: string }
-  | { type: "edit-previous-message"; sessionId: string; messageId: string; newText: string; agent: string | null };

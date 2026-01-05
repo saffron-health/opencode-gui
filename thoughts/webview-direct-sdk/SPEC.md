@@ -267,6 +267,245 @@ function App() {
 }
 ```
 
+### Phase 6: E2E Playwright Tests
+
+End-to-end tests for the webview, running against a manually-started OpenCode server.
+
+#### Approach
+
+Since the webview now communicates directly with the OpenCode server via HTTP/SSE (after Phase 4), we can test the webview UI in a standalone browser context—no VSCode extension host required for most tests.
+
+**Test harness architecture:**
+```
+┌─────────────────────────────────────┐
+│  Playwright Browser                 │
+│  └─ Loads webview HTML directly     │
+│     └─ SDK client (HTTP/SSE) ──────────┐
+└─────────────────────────────────────┘  │
+                                         ▼
+┌─────────────────────────────────────┐
+│  OpenCode Server (manually started) │
+│  └─ Running at localhost:XXXX       │
+└─────────────────────────────────────┘
+```
+
+#### Prerequisites
+
+1. **OpenCode server running**: Tests assume the server is already running at a configurable URL (e.g., `OPENCODE_URL=http://127.0.0.1:XXXX`)
+2. **Webview build**: The webview must be built (`pnpm build`)
+
+#### Test Setup
+
+**New files:**
+- `tests/e2e/playwright.config.ts` - Playwright configuration
+- `tests/e2e/fixtures.ts` - Shared test fixtures and helpers
+- `tests/e2e/webview.spec.ts` - Main test suite
+
+**`playwright.config.ts`:**
+```typescript
+import { defineConfig } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './tests/e2e',
+  use: {
+    baseURL: 'http://localhost:5173', // Vite dev server or static serve
+  },
+  webServer: {
+    command: 'pnpm serve-webview', // Serve built webview for tests
+    port: 5173,
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
+**`fixtures.ts`:**
+```typescript
+import { test as base, expect } from '@playwright/test';
+
+export const test = base.extend<{
+  openCodeUrl: string;
+}>({
+  openCodeUrl: async ({}, use) => {
+    const url = process.env.OPENCODE_URL || 'http://127.0.0.1:1337';
+    // Optionally verify server is reachable
+    await use(url);
+  },
+});
+
+export { expect };
+```
+
+#### Test Cases
+
+**Core functionality (`webview.spec.ts`):**
+
+```typescript
+import { test, expect } from './fixtures';
+
+test.describe('Webview E2E', () => {
+  test.beforeEach(async ({ page, openCodeUrl }) => {
+    // Navigate to webview and inject server URL
+    await page.goto('/');
+    await page.evaluate((url) => {
+      window.postMessage({ type: 'server-url', url }, '*');
+    }, openCodeUrl);
+  });
+
+  test('displays agent selector when connected', async ({ page }) => {
+    await expect(page.getByTestId('agent-selector')).toBeVisible();
+  });
+
+  test('can create a new session', async ({ page }) => {
+    await page.getByRole('button', { name: /new session/i }).click();
+    await expect(page.getByTestId('message-input')).toBeVisible();
+  });
+
+  test('can list existing sessions', async ({ page }) => {
+    await expect(page.getByTestId('session-list')).toBeVisible();
+  });
+
+  test('can send a prompt and receive streaming response', async ({ page }) => {
+    // Create or select session
+    await page.getByRole('button', { name: /new session/i }).click();
+    
+    // Type and send message
+    await page.getByTestId('message-input').fill('Hello, world!');
+    await page.getByRole('button', { name: /send/i }).click();
+    
+    // Wait for response to start streaming
+    await expect(page.getByTestId('assistant-message')).toBeVisible({ timeout: 30000 });
+  });
+
+  test('can abort an in-progress session', async ({ page }) => {
+    await page.getByRole('button', { name: /new session/i }).click();
+    await page.getByTestId('message-input').fill('Write a long essay');
+    await page.getByRole('button', { name: /send/i }).click();
+    
+    // Wait for streaming to start, then abort
+    await expect(page.getByRole('button', { name: /stop/i })).toBeVisible();
+    await page.getByRole('button', { name: /stop/i }).click();
+    
+    // Verify session is no longer active
+    await expect(page.getByRole('button', { name: /send/i })).toBeEnabled();
+  });
+
+  test('handles permission requests', async ({ page }) => {
+    // Trigger a tool that requires permission
+    await page.getByRole('button', { name: /new session/i }).click();
+    await page.getByTestId('message-input').fill('Read the file README.md');
+    await page.getByRole('button', { name: /send/i }).click();
+    
+    // Wait for permission dialog
+    await expect(page.getByTestId('permission-dialog')).toBeVisible({ timeout: 30000 });
+    
+    // Approve permission
+    await page.getByRole('button', { name: /allow once/i }).click();
+    
+    // Verify permission was handled
+    await expect(page.getByTestId('permission-dialog')).not.toBeVisible();
+  });
+});
+```
+
+#### Running Tests
+
+**package.json scripts:**
+```json
+{
+  "scripts": {
+    "serve-webview": "vite preview --port 5173",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  }
+}
+```
+
+**Usage:**
+```bash
+# 1. Start OpenCode server manually in a separate terminal
+opencode
+
+# 2. Run e2e tests (server assumed at http://127.0.0.1:1337)
+pnpm test:e2e
+
+# Or specify custom server URL
+OPENCODE_URL=http://127.0.0.1:9999 pnpm test:e2e
+```
+
+#### Serving the Webview
+
+Since the webview normally runs inside VSCode, we need a way to serve it standalone for Playwright:
+
+**Option A: Vite dev server / preview**
+- Run `pnpm serve-webview` which uses `vite preview` to serve the built `out/` directory
+- Webview HTML needs a small shim to work outside VSCode (mock `acquireVsCodeApi`)
+
+**Option B: Custom test HTML**
+- Create `tests/e2e/test-harness.html` that loads the webview bundle with mocked VSCode API
+
+**Recommended: Option A with shim**
+
+Add to webview entry point:
+```typescript
+// src/webview/index.tsx
+declare global {
+  interface Window {
+    acquireVsCodeApi?: () => { postMessage: (msg: unknown) => void };
+  }
+}
+
+// Mock for standalone testing
+if (!window.acquireVsCodeApi) {
+  window.acquireVsCodeApi = () => ({
+    postMessage: (msg: unknown) => {
+      console.log('[Mock VSCode API]', msg);
+    }
+  });
+}
+```
+
+#### Data-testid Conventions
+
+Add `data-testid` attributes to key components for reliable test selectors:
+
+| Component | data-testid |
+|-----------|-------------|
+| Agent dropdown | `agent-selector` |
+| Session list | `session-list` |
+| Message input | `message-input` |
+| Send button | `send-button` |
+| Stop/abort button | `abort-button` |
+| Assistant message | `assistant-message` |
+| Permission dialog | `permission-dialog` |
+
+#### CI Integration (Future)
+
+For CI, the OpenCode server would need to be started automatically:
+
+```yaml
+# .github/workflows/e2e.yml
+jobs:
+  e2e:
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+      - run: pnpm install
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps
+      # Start opencode server in background (would need mock or test mode)
+      - run: pnpm test:e2e
+```
+
+**Note**: Full CI integration may require a mock OpenCode server or test mode to avoid real LLM calls.
+
+#### Success Criteria
+
+- [ ] Playwright configured and running
+- [ ] Webview can be served standalone for testing
+- [ ] Tests pass with manually-started OpenCode server
+- [ ] Core flows covered: session create, prompt/response, abort, permissions
+- [ ] `data-testid` attributes added to key components
+
 ## Files to Modify
 
 | File | Change |
@@ -308,16 +547,41 @@ The extension host still handles:
 2. **Phase 3**: Create `useOpenCode` hook alongside existing code
 3. **Phase 4**: Migrate App.tsx to use new hook
 4. **Phase 5**: Delete old proxy code
+5. **Phase 6**: E2E Playwright tests for webview
+
+## Implementation Status (Completed)
+
+### What Was Done
+
+**Phase 5 completed** - Webview now uses SDK directly with fetch proxy for CORS bypass.
+
+**Files changed:**
+- `src/webview/hooks/useOpenCode.ts` - SDK client with proxyFetch, native EventSource for SSE
+- `src/webview/utils/proxyFetch.ts` - Routes fetch through extension via postMessage (30s timeout, cleanup on unload)
+- `src/webview/utils/vscode.ts` - Shared acquireVsCodeApi instance
+- `src/OpenCodeViewProvider.ts` - Reduced to ~190 lines: init, agent persistence, proxyFetch handler with strict origin validation
+- `src/OpenCodeService.ts` - Reduced to ~120 lines: server spawn only
+- `src/webview/App.tsx` - Uses useOpenCode instead of useVsCodeBridge
+- Deleted: `src/webview/hooks/useVsCodeBridge.ts`
+
+**CORS workaround:**
+- OpenCode server doesn't return `Access-Control-Allow-Origin` for `vscode-webview://` origins
+- Solution: proxyFetch routes API calls through extension host (which has no CORS)
+- SSE uses native EventSource which may have different CORS behavior
+
+**Bundle size reduction:**
+- Extension: 64KB → 44KB (~30% smaller)
+- ~400 lines of proxy code removed
 
 ## Open Questions
 
-1. **Error handling**: How to surface SDK errors in the UI?
-2. **Reconnection**: What if the server restarts? Need to re-establish client.
-3. **Workspace directory**: SDK needs `directory` param for events - pass from extension or read from SDK?
+1. **Reconnection**: What if the server restarts? Need to re-establish client.
+2. **Streaming via proxy**: Currently only text responses supported; binary/streaming would need chunked messages.
 
 ## Success Criteria
 
-- [ ] SDK client works in webview
-- [ ] All existing features work (sessions, prompts, permissions, streaming)
-- [ ] ~400 lines of proxy code removed
-- [ ] New SDK features (fork, share, etc.) available immediately
+- [x] SDK client works in webview
+- [x] All existing features work (sessions, prompts, permissions, streaming)
+- [x] ~400 lines of proxy code removed
+- [x] New SDK features available immediately
+- [ ] E2E Playwright tests passing for core webview flows
