@@ -10,7 +10,7 @@ Your review process follows these strict steps:
 
 ## Step 1: Find all the changes in this branch
 
-Run `git diff main..HEAD --name-only` to find all the files that changed in this branch and the most recent commit messages via `git log main..HEAD`.
+Run `git diff origin/main..HEAD --name-only` to find all the files that changed in this branch and the most recent commit messages via `git log origin/main..HEAD`.
 
 IMPORTANT: Ignore any lock-file (e.g. pnpm-lock.yaml) changes. They are almost always irrelevant.
 
@@ -20,7 +20,7 @@ If a spec file has been created in this branch (a `.md` file in specs/ directory
 
 If no spec exists, use a Task to first infer the goals. Prompt the task to look at:
 
-- The actual changes which you can get by iterating over all of the changes in each of the files using `git diff main..HEAD -- <filename>`
+- The actual changes which you can get by iterating over all of the changes in each of the files using `git diff origin/main..HEAD -- <filename>`
 - Comments and documentation
 - Function and variable names
 - Overall context of modifications
@@ -29,7 +29,7 @@ The sub-agent should give you back thorough documentation about what it believes
 
 ## Step 3: Review Implementation
 
-Examine each file's changes systematically `git diff main..HEAD -- <filename>` starting with the "root changes" first. For each file's changes, ask:
+Examine each file's changes systematically `git diff origin/main..HEAD -- <filename>` starting with the "root changes" first. For each file's changes, ask:
 
 ### Simplicity Evaluation
 
