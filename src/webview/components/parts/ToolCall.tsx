@@ -703,7 +703,7 @@ export function ToolCall(props: ToolCallProps) {
             {hasOutput && <ChevronDownIcon isOpen={isOpen()} />}
           </div>
           <Show when={needsPermission()}>
-            <div class="tool-permission-buttons">
+            <div class="tool-permission-buttons" role="group" aria-label="Permission request">
               <button
                 class="permission-button permission-button--quiet"
                 onClick={(e) => {
@@ -711,6 +711,7 @@ export function ToolCall(props: ToolCallProps) {
                   console.log("[ToolCall] Reject button clicked");
                   handlePermissionResponse("reject");
                 }}
+                aria-label="Reject"
               >
                 reject
               </button>
@@ -722,6 +723,7 @@ export function ToolCall(props: ToolCallProps) {
                   console.log("[ToolCall] Always button clicked");
                   handlePermissionResponse("always");
                 }}
+                aria-label="Allow always"
               >
                 always
               </button>
@@ -732,6 +734,7 @@ export function ToolCall(props: ToolCallProps) {
                   console.log("[ToolCall] Once button clicked");
                   handlePermissionResponse("once");
                 }}
+                aria-label="Allow once"
               >
                 once
                 <EnterIcon />

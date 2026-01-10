@@ -49,10 +49,13 @@
     "dev": "vite",
     "uikit": "vite --open /src/webview/uikit.html",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "package": "vsce package",
     "publish": "npx vsce publish --skip-duplicate --no-dependencies && npx ovsx publish -p \"$OPEN_VSX_KEY\" --no-dependencies"
   },
   "devDependencies": {
+    "@playwright/test": "^1.50.0",
     "@types/node": "^20.x",
     "@types/vscode": "^1.74.0",
     "@vscode/vsce": "^3.x",

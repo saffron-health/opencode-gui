@@ -9,12 +9,17 @@ import {
   type Part,
 } from "@opencode-ai/sdk/client";
 
-import { vscode } from "../utils/vscode";
+import { hasVscodeApi, vscode } from "../utils/vscode";
 import { proxyFetch } from "../utils/proxyFetch";
 import { proxyEventSource } from "../utils/proxyEventSource";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
+
+interface GlobalConfig {
+  serverUrl: string;
+  workspaceRoot?: string;
+}
 
 export interface InitData {
   currentSessionId?: string | null;
@@ -31,6 +36,22 @@ export function useOpenCode() {
   const [serverUrl, setServerUrl] = createSignal<string | undefined>(undefined);
 
   onMount(() => {
+    // Check for standalone config (for E2E tests / web app)
+    const globalConfig = (window as unknown as { OPENCODE_CONFIG?: GlobalConfig }).OPENCODE_CONFIG;
+    if (globalConfig?.serverUrl) {
+      const opencodeClient = createOpencodeClient({
+        baseUrl: globalConfig.serverUrl,
+        fetch: proxyFetch,
+      });
+      setClient(opencodeClient);
+      setServerUrl(globalConfig.serverUrl);
+      setIsReady(true);
+      if (globalConfig.workspaceRoot) {
+        setWorkspaceRoot(globalConfig.workspaceRoot);
+      }
+      return; // Skip VSCode handshake
+    }
+
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
       // Support both legacy 'init' and future 'server-url' message types
@@ -64,7 +85,9 @@ export function useOpenCode() {
     };
 
     window.addEventListener("message", handleMessage);
-    vscode.postMessage({ type: "ready" });
+    if (hasVscodeApi) {
+      vscode.postMessage({ type: "ready" });
+    }
 
     onCleanup(() => {
       window.removeEventListener("message", handleMessage);

@@ -7,7 +7,7 @@ export function NewSessionButton(props: NewSessionButtonProps) {
     <button
       class="new-session-button"
       onClick={props.onClick}
-      title="Create new session"
+      aria-label="New session"
     >
       +
     </button>

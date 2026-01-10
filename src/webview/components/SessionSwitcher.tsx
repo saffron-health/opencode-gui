@@ -38,6 +38,8 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
         class={`session-switcher-button ${isOpen() ? "active" : ""}`}
         onClick={toggleDropdown}
         disabled={props.sessions.length === 0}
+        aria-label="Switch session"
+        aria-expanded={isOpen()}
       >
         <span class="session-title">{props.currentSessionTitle}</span>
       </button>

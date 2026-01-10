@@ -1,3 +1,9 @@
-declare const acquireVsCodeApi: () => { postMessage: (message: unknown) => void };
+declare const acquireVsCodeApi: (() => { postMessage: (message: unknown) => void }) | undefined;
 
-export const vscode = acquireVsCodeApi();
+export const hasVscodeApi = typeof acquireVsCodeApi !== "undefined";
+
+const noopVscode = {
+  postMessage: (_message: unknown) => {},
+};
+
+export const vscode = hasVscodeApi ? acquireVsCodeApi!() : noopVscode;

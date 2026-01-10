@@ -142,7 +142,7 @@ export function MessageList(props: MessageListProps) {
   };
 
   return (
-    <div class="messages-container" ref={containerRef!}>
+    <div class="messages-container" ref={containerRef!} role="log" aria-label="Messages">
       <div class="messages-content" ref={contentRef!}>
         <For each={props.messages}>
           {(message, index) => {

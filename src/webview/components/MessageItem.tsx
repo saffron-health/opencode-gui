@@ -16,7 +16,7 @@ export function MessageItem(props: MessageItemProps) {
   const hasParts = () => props.message.parts && props.message.parts.length > 0;
   
   return (
-    <div class={`message message--${props.message.type}`}>
+    <div class={`message message--${props.message.type}`} role="article" aria-label={`${props.message.type} message`}>
       <div class="message-content">
         <Show 
           when={hasParts()} 

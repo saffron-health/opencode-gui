@@ -1,4 +1,4 @@
-import { vscode } from "./vscode";
+import { hasVscodeApi, vscode } from "./vscode";
 
 const FETCH_TIMEOUT_MS = 30_000;
 
@@ -51,11 +51,16 @@ window.addEventListener("beforeunload", () => {
 /**
  * Fetch implementation that proxies requests through the VS Code extension
  * to bypass CORS restrictions for localhost API calls.
+ * Falls back to native fetch when running outside VSCode.
  */
 export async function proxyFetch(
   input: RequestInfo | URL,
   init?: RequestInit
 ): Promise<Response> {
+  // Use native fetch when running outside VSCode
+  if (!hasVscodeApi) {
+    return fetch(input, init);
+  }
   // Handle Request objects - the SDK might pass a Request instead of separate args
   let url: string;
   let method: string | undefined;

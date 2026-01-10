@@ -81,6 +81,7 @@ export function InputBar(props: InputBarProps) {
         value={props.value}
         onInput={(e) => props.onInput(e.currentTarget.value)}
         onKeyDown={handleKeyDown}
+        aria-label="Message input"
       />
       <div class="input-buttons">
         <Show when={props.agents.length > 0 && !props.isThinking}>
@@ -97,7 +98,7 @@ export function InputBar(props: InputBarProps) {
               type="submit"
               class="shortcut-button shortcut-button--secondary"
               disabled={props.disabled || !props.value.trim()}
-              aria-label="Submit (Cmd+Enter)"
+              aria-label="Submit"
             >
               ⌘⏎
             </button>
@@ -107,7 +108,7 @@ export function InputBar(props: InputBarProps) {
             type="button"
             class="shortcut-button shortcut-button--stop"
             onClick={() => props.onCancel()}
-            aria-label="Stop (Escape)"
+            aria-label="Stop"
           >
             <svg viewBox="0 0 10 10" fill="currentColor">
               <rect width="10" height="10" rx="2" />

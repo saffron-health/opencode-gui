@@ -1,4 +1,4 @@
-import { vscode } from "./vscode";
+import { hasVscodeApi, vscode } from "./vscode";
 
 type SSEEventHandler = (data: string) => void;
 type SSEErrorHandler = (error: Error) => void;
@@ -43,6 +43,7 @@ window.addEventListener("beforeunload", () => {
 
 /**
  * Subscribe to SSE events through the VS Code extension proxy.
+ * Falls back to native EventSource when running outside VSCode.
  * Returns an unsubscribe function.
  */
 export function proxyEventSource(
@@ -50,6 +51,20 @@ export function proxyEventSource(
   onMessage: SSEEventHandler,
   onError?: SSEErrorHandler
 ): () => void {
+  // Use native EventSource when running outside VSCode
+  if (!hasVscodeApi) {
+    const eventSource = new EventSource(url);
+    eventSource.onmessage = (event) => {
+      onMessage(event.data);
+    };
+    eventSource.onerror = () => {
+      onError?.(new Error("EventSource connection error"));
+    };
+    return () => {
+      eventSource.close();
+    };
+  }
+
   const id = crypto.randomUUID();
 
   activeSubscriptions.set(id, { onMessage, onError });
