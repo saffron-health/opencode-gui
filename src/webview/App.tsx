@@ -395,12 +395,6 @@ function App() {
   const handleSubmit = async () => {
     const text = input().trim();
     if (!text || !sdkIsReady()) return;
-    
-    // TODO: Remove this test error trigger
-    if (text === "test error") {
-      setHostError("This is a test error message to verify the error banner works!");
-      return;
-    }
 
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
