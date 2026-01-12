@@ -34,6 +34,7 @@ export function useOpenCode() {
   const [workspaceRoot, setWorkspaceRoot] = createSignal<string | undefined>(undefined);
   const [initData, setInitData] = createSignal<InitData | null>(null);
   const [serverUrl, setServerUrl] = createSignal<string | undefined>(undefined);
+  const [hostError, setHostError] = createSignal<string | null>(null);
 
   onMount(() => {
     // Check for standalone config (for E2E tests / web app)
@@ -54,6 +55,13 @@ export function useOpenCode() {
 
     const handleMessage = (e: MessageEvent) => {
       const data = e.data;
+      
+      // Handle error messages from host
+      if (data?.type === "error") {
+        setHostError(data.message ?? "An unknown error occurred");
+        return;
+      }
+      
       // Support both legacy 'init' and future 'server-url' message types
       if (data?.type === "init" || data?.type === "server-url") {
         const url = data.serverUrl ?? data.url;
@@ -172,6 +180,9 @@ export function useOpenCode() {
     isReady,
     workspaceRoot,
     initData,
+    hostError,
+    setHostError,
+    clearHostError: () => setHostError(null),
     // Expose SDK methods directly
     listSessions: () => client()?.session.list(),
     getSession: (id: string) => client()?.session.get({ path: { id } }),

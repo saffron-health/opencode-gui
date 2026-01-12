@@ -7,6 +7,12 @@ import { FileChangesSummary } from "./components/FileChangesSummary";
 import { useOpenCode, type Event as OpenCodeEvent, type Session as SDKSession, type Agent as SDKAgent } from "./hooks/useOpenCode";
 import { applyPartUpdate, applyMessageUpdate } from "./utils/messageUtils";
 import type { Message, Agent, Session, Permission, ContextInfo, FileChangesInfo, MessagePart, IncomingMessage } from "./types";
+
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  agent: string | null;
+}
 import { vscode } from "./utils/vscode";
 
 const DEBUG = false;
@@ -34,6 +40,9 @@ function App() {
   // Editing state for previous messages
   const [editingMessageId, setEditingMessageId] = createSignal<string | null>(null);
   const [editingText, setEditingText] = createSignal<string>("");
+  
+  // Message queue for queuing messages while generating
+  const [messageQueue, setMessageQueue] = createSignal<QueuedMessage[]>([]);
 
   // Get SDK hook
   const {
@@ -52,6 +61,9 @@ function App() {
     respondToPermission,
     revertToMessage,
     client,
+    hostError,
+    setHostError,
+    clearHostError,
   } = useOpenCode();
 
   // Get the current session key for drafts/agents
@@ -274,6 +286,8 @@ function App() {
       case "session.idle": {
         console.log("[App] Session idle - streaming complete");
         setIsThinking(false);
+        // Process next queued message if any
+        processNextQueuedMessage();
         break;
       }
 
@@ -381,6 +395,12 @@ function App() {
   const handleSubmit = async () => {
     const text = input().trim();
     if (!text || !sdkIsReady()) return;
+    
+    // TODO: Remove this test error trigger
+    if (text === "test error") {
+      setHostError("This is a test error message to verify the error banner works!");
+      return;
+    }
 
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
@@ -425,12 +445,80 @@ function App() {
     }
   };
 
+  const processNextQueuedMessage = async () => {
+    const queue = messageQueue();
+    if (queue.length === 0) return;
+    
+    const [next, ...rest] = queue;
+    setMessageQueue(rest);
+    
+    const sessionId = currentSessionId();
+    if (!sessionId || !sdkIsReady()) return;
+    
+    setIsThinking(true);
+    
+    try {
+      await sendPrompt(sessionId, next.text, next.agent);
+    } catch (err) {
+      console.error("[App] Queue sendPrompt failed:", err);
+      setIsThinking(false);
+      setMessageQueue([]); // Clear queue on error
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          type: "assistant",
+          text: `Error: ${(err as Error).message}`,
+        },
+      ]);
+    }
+  };
+
+  const handleQueueMessage = () => {
+    const text = input().trim();
+    if (!text || !sdkIsReady()) return;
+    
+    const agent = agents().some((a) => a.name === selectedAgent())
+      ? selectedAgent()
+      : null;
+    
+    const queuedMessage: QueuedMessage = {
+      id: crypto.randomUUID(),
+      text,
+      agent,
+    };
+    
+    setMessageQueue((prev) => [...prev, queuedMessage]);
+    setInput("");
+  };
+
+  const handleRemoveFromQueue = (id: string) => {
+    setMessageQueue((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const handleEditQueuedMessage = (id: string) => {
+    const queue = messageQueue();
+    const index = queue.findIndex((m) => m.id === id);
+    if (index === -1) return;
+    
+    const message = queue[index];
+    // Remove this message and all after it
+    setMessageQueue(queue.slice(0, index));
+    // Put the message text in the input
+    setInput(message.text);
+    // Set the agent if different
+    if (message.agent) {
+      setSelectedAgent(message.agent);
+    }
+  };
+
   const handleSessionSelect = async (sessionId: string) => {
     if (!sdkIsReady()) return;
     
     setCurrentSessionId(sessionId);
     setFileChanges(null);
     setContextInfo(null);
+    setMessageQueue([]); // Clear queue on session switch
 
     try {
       // Load messages
@@ -506,6 +594,7 @@ function App() {
       setMessages([]);
       setFileChanges(null);
       setContextInfo(null);
+      setMessageQueue([]);
     } catch (err) {
       console.error("[App] Failed to create session:", err);
     }
@@ -614,6 +703,13 @@ function App() {
 
   return (
     <div class={`app ${hasMessages() ? "app--has-messages" : ""}`}>
+      <Show when={hostError()}>
+        <div class="error-banner">
+          <span class="error-banner__message">{hostError()}</span>
+          <button class="error-banner__dismiss" onClick={clearHostError} aria-label="Dismiss error">×</button>
+        </div>
+      </Show>
+      
       <TopBar
         sessions={sessionsToShow()}
         currentSessionId={currentSessionId()}
@@ -628,11 +724,15 @@ function App() {
           onInput={setInput}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
+          onQueue={handleQueueMessage}
           disabled={!sdkIsReady()}
           isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}
           onAgentChange={handleAgentChange}
+          queuedMessages={messageQueue()}
+          onRemoveFromQueue={handleRemoveFromQueue}
+          onEditQueuedMessage={handleEditQueuedMessage}
         />
       </Show>
 
@@ -661,11 +761,15 @@ function App() {
           onInput={setInput}
           onSubmit={handleSubmit}
           onCancel={handleCancel}
+          onQueue={handleQueueMessage}
           disabled={!sdkIsReady()}
           isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}
           onAgentChange={handleAgentChange}
+          queuedMessages={messageQueue()}
+          onRemoveFromQueue={handleRemoveFromQueue}
+          onEditQueuedMessage={handleEditQueuedMessage}
         />
       </Show>
     </div>
