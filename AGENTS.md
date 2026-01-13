@@ -6,6 +6,7 @@
 - **Watch**: `pnpm watch` (dev mode with hot reload)
 - **Test**: `pnpm test` (runs vitest)
 - **Single test**: `pnpm test -- path/to/file.test.ts`
+- **E2E Tests**: `pnpm test:e2e` (runs playwright e2e tests with AI generation)
 - **Package**: `pnpm package` (creates .vsix)
 - **UI Kit**: `pnpm uikit` (opens component playground)
 
@@ -25,3 +26,7 @@ VSCode extension with SolidJS webview. Two build targets:
 - Use VSCode API types from `@types/vscode`
 - Prefer explicit imports, avoid barrel files
 - Error handling: use VSCode's `window.showErrorMessage` and `LogOutputChannel`
+
+## Publishing
+
+Use the `pnpm run publish` script to publish the extension to the VSCode and OVSX marketplaces.

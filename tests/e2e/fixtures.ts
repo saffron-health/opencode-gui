@@ -6,9 +6,23 @@ interface OpenCodeConfig {
   workspaceRoot?: string;
 }
 
+interface LogEntry {
+  level: string;
+  timestamp: string;
+  service?: string;
+  message: string;
+  raw: string;
+  metadata: Record<string, string>;
+}
+
 interface OpenCodeServer {
   url: string;
   process: ChildProcess;
+  logs: string[];
+  getLogs: () => string;
+  searchLogs: (pattern: string | RegExp) => boolean;
+  getLogEntries: () => LogEntry[];
+  searchLogEntries: (filter: Partial<LogEntry>) => LogEntry[];
 }
 
 export interface OpenCodeWorkerFixtures {
@@ -17,6 +31,60 @@ export interface OpenCodeWorkerFixtures {
 
 export interface OpenCodeFixtures {
   openWebview: (config?: Partial<OpenCodeConfig>) => Promise<Page>;
+  serverLogs: OpenCodeServer["logs"];
+  getServerLogs: () => string;
+  searchServerLogs: (pattern: string | RegExp) => boolean;
+  getServerLogEntries: () => LogEntry[];
+  searchServerLogEntries: (filter: Partial<LogEntry>) => LogEntry[];
+}
+
+function parseLogLine(line: string): LogEntry {
+  // Parse format: "LEVEL  timestamp +offset service=value key=value message"
+  // Example: "INFO  2026-01-13T03:11:44 +0ms service=config path=/path/to/file loading"
+  const match = line.match(/^(DEBUG|INFO|WARN|ERROR)\s+(\S+)\s+\+\S+\s+(.*)$/);
+  if (!match) {
+    return {
+      level: "UNKNOWN",
+      timestamp: "",
+      message: line.trim(),
+      raw: line,
+      metadata: {},
+    };
+  }
+
+  const [, level, timestamp, rest] = match;
+  const metadata: Record<string, string> = {};
+  let service: string | undefined;
+  let message = "";
+
+  // Parse key=value pairs and remaining message
+  const parts = rest.split(/\s+/);
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    // Match key=value where value can be anything (including quoted strings, JSON, etc)
+    const kvMatch = part.match(/^([a-zA-Z_][a-zA-Z0-9_.-]*)=(.+)$/);
+    if (kvMatch) {
+      const [, key, value] = kvMatch;
+      metadata[key] = value;
+      if (key === "service") {
+        service = value;
+      }
+    } else {
+      // Rest is the message
+      message = parts.slice(i).join(" ");
+      break;
+    }
+  }
+
+  return {
+    level,
+    timestamp,
+    service,
+    message: message.trim(),
+    raw: line,
+    metadata,
+  };
 }
 
 async function waitForServerReady(url: string, timeout = 10000): Promise<void> {
@@ -39,6 +107,8 @@ async function waitForServerReady(url: string, timeout = 10000): Promise<void> {
 async function startOpenCodeServer(workspaceRoot: string): Promise<OpenCodeServer> {
   return new Promise((resolve, reject) => {
     console.log(`[fixture] Spawning opencode serve in ${workspaceRoot}`);
+    
+    const logs: string[] = [];
     
     const serverProcess = spawn(
       "opencode",
@@ -67,6 +137,10 @@ async function startOpenCodeServer(workspaceRoot: string): Promise<OpenCodeServe
     const handleOutput = (data: Buffer) => {
       const text = data.toString();
       outputBuffer += text;
+      
+      // Store logs for test access
+      logs.push(text);
+      
       console.log(`[opencode] ${text.trim()}`);
 
       // Look for the server URL in the output
@@ -76,7 +150,48 @@ async function startOpenCodeServer(workspaceRoot: string): Promise<OpenCodeServe
         // Normalize 127.0.0.1 to localhost for browser compatibility
         serverUrl = urlMatch[1].replace("127.0.0.1", "localhost");
         console.log(`[fixture] Detected server URL: ${serverUrl}`);
-        resolve({ url: serverUrl, process: serverProcess });
+        
+        const getLogEntries = () => {
+          return logs
+            .map((log) => {
+              const lines = log.split("\n").filter((l) => l.trim());
+              return lines.map(parseLogLine);
+            })
+            .flat();
+        };
+
+        const searchLogEntries = (filter: Partial<LogEntry>) => {
+          return getLogEntries().filter((entry) => {
+            for (const [key, value] of Object.entries(filter)) {
+              if (key === "metadata") {
+                // Check if all metadata keys match
+                const metadataFilter = value as Record<string, string>;
+                for (const [k, v] of Object.entries(metadataFilter)) {
+                  if (entry.metadata[k] !== v) return false;
+                }
+              } else if (entry[key as keyof LogEntry] !== value) {
+                return false;
+              }
+            }
+            return true;
+          });
+        };
+        
+        resolve({ 
+          url: serverUrl, 
+          process: serverProcess,
+          logs,
+          getLogs: () => logs.join(""),
+          searchLogs: (pattern: string | RegExp) => {
+            const logsText = logs.join("");
+            if (typeof pattern === "string") {
+              return logsText.includes(pattern);
+            }
+            return pattern.test(logsText);
+          },
+          getLogEntries,
+          searchLogEntries,
+        });
       }
     };
 
@@ -174,6 +289,27 @@ export const test = base.extend<OpenCodeFixtures, OpenCodeWorkerFixtures>({
 
     await use(openWebview);
   },
+
+  serverLogs: async ({ opencodeServer }, use) => {
+    await use(opencodeServer.logs);
+  },
+
+  getServerLogs: async ({ opencodeServer }, use) => {
+    await use(opencodeServer.getLogs);
+  },
+
+  searchServerLogs: async ({ opencodeServer }, use) => {
+    await use(opencodeServer.searchLogs);
+  },
+
+  getServerLogEntries: async ({ opencodeServer }, use) => {
+    await use(opencodeServer.getLogEntries);
+  },
+
+  searchServerLogEntries: async ({ opencodeServer }, use) => {
+    await use(opencodeServer.searchLogEntries);
+  },
 });
 
 export { expect } from "@playwright/test";
+export type { LogEntry };
