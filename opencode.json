@@ -14,6 +14,12 @@
   },
   "username": "",
   "provider": {
+    "google-vertex": {
+			"options": {
+				"project": "saffron-health",
+				"location": "global"
+			}
+		},
     "openai": {
       "models": {
         "gpt-5": {
