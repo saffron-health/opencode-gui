@@ -2,7 +2,7 @@
   "name": "opencode-vscode",
   "displayName": "OpenCode GUI",
   "description": "OpenCode AI coding agent for VSCode GUI extension",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "TanishqKancharla",
   "repository": {
     "type": "git",
@@ -52,7 +52,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "package": "vsce package",
-    "publish": "npx vsce publish --skip-duplicate --no-dependencies && npx ovsx publish -p \"$OPEN_VSX_KEY\" --no-dependencies"
+    "publish": "npx vsce publish --skip-duplicate --no-dependencies && source .env && ovsx publish -p \"$OPEN_VSX_KEY\" --no-dependencies"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
