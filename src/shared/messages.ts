@@ -73,6 +73,7 @@ export const SessionSchema = z.object({
   title: z.string(),
   projectID: z.string(),
   directory: z.string(),
+  parentID: z.string().optional(),
   time: z.object({
     created: z.number(),
     updated: z.number(),

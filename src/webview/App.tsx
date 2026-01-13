@@ -114,7 +114,22 @@ function App() {
   };
 
   const sessionsToShow = createMemo(() => {
-    return sessions().filter(s => s.id !== currentSessionId() || currentSessionId() !== null);
+    const root = sdkWorkspaceRoot();
+    const currentId = currentSessionId();
+    
+    return sessions()
+      .filter(s => {
+        // Only list sessions with primary agents (no parentID)
+        if (s.parentID) return false;
+        
+        // Filter to sessions in the same repo/worktree
+        if (root && s.directory !== root) return false;
+        
+        // Filter out the current session from the switcher list
+        return s.id !== currentId;
+      })
+      // Sort by edited time (updated) instead of started time (created)
+      .sort((a, b) => b.time.updated - a.time.updated);
   });
 
   // Helper: check if title is default timestamp-based

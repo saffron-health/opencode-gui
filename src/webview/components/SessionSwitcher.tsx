@@ -56,7 +56,7 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
               >
                 <div class="session-item-title">{session.title}</div>
                 <div class="session-item-time">
-                  {formatRelativeTime(session.time.created)}
+                  {formatRelativeTime(session.time.updated)}
                 </div>
               </div>
             )}
