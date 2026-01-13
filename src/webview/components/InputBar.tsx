@@ -182,8 +182,10 @@ export function InputBar(props: InputBarProps) {
               disabled={props.disabled || !hasText()}
               aria-label="Submit"
             >
-              <span>⇧⌘⏎</span>
-              <span class="queue-label">Steer</span>
+              <span>⌘⏎</span>
+              <Show when={props.isThinking && hasText()}>
+                <span class="queue-label">Steer</span>
+              </Show>
             </button>
           </Show>
         </div>

@@ -329,6 +329,9 @@ body {
   background-color: var(--button-secondary-background);
   color: var(--button-secondary-foreground);
   opacity: 0.8;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
 }
 
 .shortcut-button--secondary:hover:not(:disabled) {

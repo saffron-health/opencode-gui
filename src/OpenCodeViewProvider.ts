@@ -10,6 +10,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'opencode.chatView';
   private _view?: vscode.WebviewView;
   private _sseConnections = new Map<string, { close: () => void }>();
+  private _proxyFetchControllers = new Map<string, AbortController>();
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -44,6 +45,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         const msg = data as Record<string, unknown>;
         if (msg.type === 'proxyFetch') {
           await this._handleProxyFetch(msg as { id: string; url: string; init?: { method?: string; headers?: Record<string, string>; body?: string } });
+          return;
+        }
+        if (msg.type === 'proxyFetchAbort') {
+          this._handleProxyFetchAbort(msg.id as string);
           return;
         }
         if (msg.type === 'sseSubscribe') {
@@ -224,6 +229,14 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private _handleProxyFetchAbort(id: string) {
+    const controller = this._proxyFetchControllers.get(id);
+    if (controller) {
+      controller.abort();
+      this._proxyFetchControllers.delete(id);
+    }
+  }
+
   private async _handleProxyFetch(message: {
     id: string;
     url: string;
@@ -278,11 +291,15 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    const controller = new AbortController();
+    this._proxyFetchControllers.set(id, controller);
+
     try {
       const res = await fetch(url, {
         method: init?.method,
         headers: init?.headers,
         body: init?.body,
+        signal: controller.signal,
       });
 
       const bodyText = await res.text();
@@ -302,13 +319,25 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         bodyText,
       } as HostMessage);
     } catch (error) {
-      logger.error('[ViewProvider] Proxy fetch failed', { url, error });
-      this._sendMessage({
-        type: 'proxyFetchResult',
-        id,
-        ok: false,
-        error: String((error as Error)?.message ?? error),
-      } as HostMessage);
+      if ((error as Error).name === 'AbortError') {
+        logger.info('[ViewProvider] Proxy fetch aborted', { url, id });
+        this._sendMessage({
+          type: 'proxyFetchResult',
+          id,
+          ok: false,
+          error: 'Aborted',
+        } as HostMessage);
+      } else {
+        logger.error('[ViewProvider] Proxy fetch failed', { url, error });
+        this._sendMessage({
+          type: 'proxyFetchResult',
+          id,
+          ok: false,
+          error: String((error as Error)?.message ?? error),
+        } as HostMessage);
+      }
+    } finally {
+      this._proxyFetchControllers.delete(id);
     }
   }
 

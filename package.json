@@ -67,7 +67,7 @@
     "vitest": "^1.x"
   },
   "dependencies": {
-    "@opencode-ai/sdk": "^0.15.18",
+    "@opencode-ai/sdk": "^1.1.18",
     "marked": "^17.0.1",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",

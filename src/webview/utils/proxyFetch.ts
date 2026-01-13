@@ -1,13 +1,11 @@
 import { hasVscodeApi, vscode } from "./vscode";
 
-const FETCH_TIMEOUT_MS = 30_000;
-
 const pendingFetches = new Map<
   string,
   {
     resolve: (value: Response) => void;
     reject: (reason?: unknown) => void;
-    timeoutId: number;
+    abortController: AbortController;
   }
 >();
 
@@ -21,7 +19,6 @@ window.addEventListener("message", (event) => {
   const entry = pendingFetches.get(id);
   if (!entry) return;
 
-  clearTimeout(entry.timeoutId);
   pendingFetches.delete(id);
 
   if (!ok) {
@@ -41,8 +38,8 @@ window.addEventListener("message", (event) => {
 
 // Clean up pending requests when webview unloads
 window.addEventListener("beforeunload", () => {
-  for (const [, entry] of pendingFetches.entries()) {
-    clearTimeout(entry.timeoutId);
+  for (const [id, entry] of pendingFetches.entries()) {
+    entry.abortController.abort();
     entry.reject(new Error("Webview unloaded before proxy fetch completed"));
   }
   pendingFetches.clear();
@@ -87,12 +84,19 @@ export async function proxyFetch(
   const id = crypto.randomUUID();
 
   return new Promise<Response>((resolve, reject) => {
-    const timeoutId = window.setTimeout(() => {
-      pendingFetches.delete(id);
-      reject(new Error("Proxy fetch timed out"));
-    }, FETCH_TIMEOUT_MS);
+    const abortController = new AbortController();
+    
+    // Listen for abort signal from init?.signal if provided
+    if (init?.signal) {
+      init.signal.addEventListener('abort', () => {
+        abortController.abort();
+        pendingFetches.delete(id);
+        vscode.postMessage({ type: "proxyFetchAbort", id });
+        reject(new Error("Aborted"));
+      });
+    }
 
-    pendingFetches.set(id, { resolve, reject, timeoutId });
+    pendingFetches.set(id, { resolve, reject, abortController });
 
     const headers: Record<string, string> = {};
     if (reqHeaders instanceof Headers) {

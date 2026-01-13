@@ -171,6 +171,13 @@ export const HostMessageSchema = z.discriminatedUnion("type", [
 ]);
 export type HostMessage = z.infer<typeof HostMessageSchema>;
 
+// Additional webview messages for proxy fetch abort
+export const ProxyFetchAbortSchema = z.object({
+  type: z.literal("proxyFetchAbort"),
+  id: z.string(),
+});
+export type ProxyFetchAbort = z.infer<typeof ProxyFetchAbortSchema>;
+
 // Webview -> Host messages
 export const WebviewMessageSchema = z.discriminatedUnion("type", [
   z.object({
