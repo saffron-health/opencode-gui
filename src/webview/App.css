@@ -1114,6 +1114,13 @@ body.vscode-high-contrast {
   line-height: 1.6;
 }
 
+.user-message-text {
+  margin: 0;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
 .message-text > *:first-child {
   margin-top: 0;
 }

@@ -22,9 +22,16 @@ export function MessageItem(props: MessageItemProps) {
           when={hasParts()} 
           fallback={
             <Show when={props.message.text}>
-              <Streamdown mode={props.isStreaming ? "streaming" : "static"} class="message-text">
-                {props.message.text!}
-              </Streamdown>
+              <Show 
+                when={props.message.type === "user"}
+                fallback={
+                  <Streamdown mode={props.isStreaming ? "streaming" : "static"} class="message-text">
+                    {props.message.text!}
+                  </Streamdown>
+                }
+              >
+                <pre class="message-text user-message-text">{props.message.text}</pre>
+              </Show>
             </Show>
           }
         >

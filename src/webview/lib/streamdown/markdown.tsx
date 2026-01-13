@@ -5,7 +5,7 @@ import remarkParse from "remark-parse";
 import remarkGfm from "remark-gfm";
 import type { Options as RemarkRehypeOptions } from "remark-rehype";
 import remarkRehype from "remark-rehype";
-import rehypeRaw from "rehype-raw";
+
 import type { PluggableList } from "unified";
 import { unified } from "unified";
 import { hastToSolid, type Components, type HastNode } from "./hast-to-solid";
@@ -21,7 +21,7 @@ export type MarkdownOptions = {
 };
 
 const EMPTY_PLUGINS: PluggableList = [];
-const DEFAULT_REMARK_REHYPE_OPTIONS = { allowDangerousHtml: true };
+const DEFAULT_REMARK_REHYPE_OPTIONS = { allowDangerousHtml: false };
 
 // Plugin name cache for faster serialization
 const pluginNameCache = new WeakMap<Function, string>();
@@ -130,7 +130,6 @@ const createProcessor = (options: Readonly<MarkdownOptions>) => {
     .use(remarkGfm)
     .use(remarkPlugins)
     .use(remarkRehype, remarkRehypeOptions)
-    .use(rehypeRaw)
     .use(rehypePlugins);
 };
 
