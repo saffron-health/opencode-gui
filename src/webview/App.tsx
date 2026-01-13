@@ -20,7 +20,7 @@ const NEW_SESSION_KEY = "__new__";
 
 function App() {
   const [messages, setMessages] = createSignal<Message[]>([]);
-  const [isThinking, setIsThinking] = createSignal(false);
+  const [thinkingSessions, setThinkingSessions] = createSignal<Set<string>>(new Set());
   const [agents, setAgents] = createSignal<Agent[]>([]);
   const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
   const [sessions, setSessions] = createSignal<Session[]>([]);
@@ -95,6 +95,23 @@ function App() {
   const hasMessages = createMemo(() =>
     messages().some((m) => m.type === "user" || m.type === "assistant")
   );
+
+  const isThinking = () => {
+    const sessionId = currentSessionId();
+    return sessionId ? thinkingSessions().has(sessionId) : false;
+  };
+
+  const setIsThinking = (sessionId: string, thinking: boolean) => {
+    setThinkingSessions((prev) => {
+      const next = new Set(prev);
+      if (thinking) {
+        next.add(sessionId);
+      } else {
+        next.delete(sessionId);
+      }
+      return next;
+    });
+  };
 
   const sessionsToShow = createMemo(() => {
     return sessions().filter(s => s.id !== currentSessionId() || currentSessionId() !== null);
@@ -284,8 +301,9 @@ function App() {
       }
 
       case "session.idle": {
-        console.log("[App] Session idle - streaming complete");
-        setIsThinking(false);
+        const sessionId = evSessionId || activeSessionId;
+        console.log("[App] Session idle - streaming complete", sessionId);
+        if (sessionId) setIsThinking(sessionId, false);
         // Process next queued message if any
         processNextQueuedMessage();
         break;
@@ -346,8 +364,9 @@ function App() {
       case "session.error": {
         const props = (event as unknown as { properties: { error?: { data?: { message?: string } } } }).properties;
         const errorMessage = props.error?.data?.message || "Unknown error";
+        const sessionId = evSessionId || activeSessionId;
         console.error("[App] Session error:", errorMessage);
-        setIsThinking(false);
+        if (sessionId) setIsThinking(sessionId, false);
         setMessages((prev) => [
           ...prev,
           {
@@ -421,13 +440,13 @@ function App() {
     }
 
     setInput("");
-    setIsThinking(true);
+    setIsThinking(sessionId, true);
 
     try {
       await sendPrompt(sessionId, text, agent);
     } catch (err) {
       console.error("[App] sendPrompt failed:", err);
-      setIsThinking(false);
+      setIsThinking(sessionId, false);
       setMessages((prev) => [
         ...prev,
         {
@@ -449,13 +468,13 @@ function App() {
     const sessionId = currentSessionId();
     if (!sessionId || !sdkIsReady()) return;
     
-    setIsThinking(true);
+    setIsThinking(sessionId, true);
     
     try {
       await sendPrompt(sessionId, next.text, next.agent);
     } catch (err) {
       console.error("[App] Queue sendPrompt failed:", err);
-      setIsThinking(false);
+      setIsThinking(sessionId, false);
       setMessageQueue([]); // Clear queue on error
       setMessages((prev) => [
         ...prev,
@@ -600,7 +619,7 @@ function App() {
     try {
       await abortSession(sessionId);
     } finally {
-      setIsThinking(false);
+      setIsThinking(sessionId, false);
     }
   };
 
@@ -637,7 +656,7 @@ function App() {
       setMessages(messages().slice(0, messageIndex));
     }
 
-    setIsThinking(true);
+    setIsThinking(sessionId, true);
     setEditingMessageId(null);
     setEditingText("");
 
@@ -646,7 +665,7 @@ function App() {
       await sendPrompt(sessionId, newText.trim(), agent);
     } catch (err) {
       console.error("[App] Failed to edit message:", err);
-      setIsThinking(false);
+      setIsThinking(sessionId, false);
       setMessages((prev) => [
         ...prev,
         {
