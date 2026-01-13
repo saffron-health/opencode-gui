@@ -219,17 +219,24 @@ body {
   overflow: hidden;
 }
 
+/* Input Bar Wrapper */
+.input-bar-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-md);
+  flex-shrink: 0;
+}
+
 /* Input Container */
 .input-container {
   padding: var(--spacing-sm);
   background-color: var(--input-background);
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  margin: var(--spacing-md);
   cursor: text;
 }
 
@@ -288,7 +295,7 @@ body {
 }
 
 .shortcut-button {
-  padding: var(--padding-button);
+  padding: 4px 6px;
   border: none;
   border-radius: 3px;
   background-color: transparent;
@@ -299,6 +306,7 @@ body {
   opacity: 0.5;
   line-height: 1;
   user-select: none;
+  min-height: 20px;
 }
 
 .shortcut-button:hover:not(:disabled) {
@@ -336,7 +344,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--padding-button);
 }
 
 .shortcut-button--stop:hover {
@@ -347,6 +354,76 @@ body {
 .shortcut-button--stop svg {
   width: 8px;
   height: 8px;
+}
+
+.shortcut-button--queue {
+  border: none;
+  background-color: var(--button-secondary-background);
+  color: var(--button-secondary-foreground);
+  opacity: 0.8;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.shortcut-button--queue:hover:not(:disabled) {
+  opacity: 1;
+  background-color: var(--button-secondary-hover-background);
+}
+
+.shortcut-button--queue .queue-label {
+  font-size: var(--font-size-small);
+}
+
+/* Queued Messages */
+.queued-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.queued-message {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background-color: var(--card-background);
+  border: 1px solid var(--border-color-muted);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.queued-message:hover {
+  background-color: var(--hover-background);
+  border-color: var(--border-color);
+}
+
+.queued-message__text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-small);
+  color: var(--description-foreground);
+}
+
+.queued-message__remove {
+  flex-shrink: 0;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: var(--description-foreground);
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+}
+
+.queued-message__remove:hover {
+  color: var(--foreground);
+  background-color: var(--hover-background);
 }
 
 /* Loading Indicator */
@@ -601,6 +678,44 @@ body {
   color: var(--error-foreground);
   background-color: var(--input-validation-error-background);
   border-color: var(--input-validation-error-border);
+}
+
+/* Error Banner */
+.error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--input-validation-error-background);
+  border-bottom: 1px solid var(--input-validation-error-border);
+  color: var(--error-foreground);
+  font-size: var(--font-size-small);
+}
+
+.error-banner__message {
+  flex: 1;
+  word-break: break-word;
+}
+
+.error-banner__dismiss {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--error-foreground);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.error-banner__dismiss:hover {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Tool Permission Buttons */

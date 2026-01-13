@@ -59,6 +59,15 @@ export const AgentSchema = z.object({
 });
 export type Agent = z.infer<typeof AgentSchema>;
 
+export const FileDiffSchema = z.object({
+  file: z.string(),
+  before: z.string(),
+  after: z.string(),
+  additions: z.number(),
+  deletions: z.number(),
+});
+export type FileDiff = z.infer<typeof FileDiffSchema>;
+
 export const SessionSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -68,6 +77,9 @@ export const SessionSchema = z.object({
     created: z.number(),
     updated: z.number(),
   }),
+  summary: z.object({
+    diffs: z.array(FileDiffSchema),
+  }).optional(),
 });
 export type Session = z.infer<typeof SessionSchema>;
 

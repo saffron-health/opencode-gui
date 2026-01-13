@@ -1,5 +1,5 @@
 
-import { createSignal } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { render } from "solid-js/web";
 import "./App.css";
 import { ContextIndicator } from "./components/ContextIndicator";
@@ -7,6 +7,7 @@ import { FileChangesSummary } from "./components/FileChangesSummary";
 import { InputBar } from "./components/InputBar";
 import { MessageList } from "./components/MessageList";
 import { TopBar } from "./components/TopBar";
+import type { QueuedMessage } from "./App";
 import type {
   Agent,
   ContextInfo,
@@ -15,6 +16,11 @@ import type {
   Permission,
   Session,
 } from "./types";
+
+const fakeQueuedMessages: QueuedMessage[] = [
+  { id: "q1", text: "After that, can you add unit tests for the auth module?" },
+  { id: "q2", text: "Also update the README with the new API endpoints" },
+];
 
 // Fake data for UI development
 const fakeAgents: Agent[] = [
@@ -311,6 +317,13 @@ function UIKit() {
     ])
   );
 
+  // Queued messages state
+  const [queuedMessages, setQueuedMessages] = createSignal<QueuedMessage[]>([]);
+  const [showQueuedMessages, setShowQueuedMessages] = createSignal(false);
+  
+  // Error state for testing error banner
+  const [errorMessage, setErrorMessage] = createSignal<string | null>(null);
+
   const hasMessages = () => messages().length > 0;
 
   const handleSubmit = () => {
@@ -388,6 +401,15 @@ function UIKit() {
   const toggleThinking = () => setIsThinking(!isThinking());
   const clearMessages = () => setMessages([]);
   const loadFakeMessages = () => setMessages(fakeMessages);
+  const toggleQueuedMessages = () => {
+    if (showQueuedMessages()) {
+      setQueuedMessages([]);
+      setShowQueuedMessages(false);
+    } else {
+      setQueuedMessages(fakeQueuedMessages);
+      setShowQueuedMessages(true);
+    }
+  };
 
   const cycleContextPercentage = () => {
     const current = contextInfo().percentage;
@@ -417,143 +439,144 @@ function UIKit() {
     console.log("[UIKit] New context percentage:", contextInfo().percentage);
   };
 
+  const toggleError = () => {
+    if (errorMessage()) {
+      setErrorMessage(null);
+    } else {
+      setErrorMessage("This is a test error message! Something went wrong with the service connection.");
+    }
+  };
+
+  const controlButtons = [
+    { label: () => isThinking() ? "Stop Thinking" : "Start Thinking", onClick: toggleThinking },
+    { label: () => "Clear Messages", onClick: clearMessages },
+    { label: () => "Load Fake Messages", onClick: loadFakeMessages },
+    { label: () => `Context % (${contextInfo().percentage.toFixed(0)}%)`, onClick: cycleContextPercentage },
+    { label: () => showQueuedMessages() ? "Hide Queue" : "Show Queue", onClick: toggleQueuedMessages },
+    { label: () => errorMessage() ? "Hide Error" : "Show Error", onClick: toggleError },
+  ];
+
   return (
-    <div
-      style={{ display: "flex", "flex-direction": "column", height: "100vh" }}
-    >
-      {/* Control Panel */}
+    <div style={{ display: "flex", height: "100vh" }}>
+      {/* Sidebar Control Panel */}
       <div
         style={{
-          padding: "8px",
-          background: "var(--vscode-editor-background, #1e1e1e)",
-          "border-bottom": "1px solid var(--vscode-panel-border, #3a3a3a)",
+          width: "180px",
+          padding: "12px",
+          background: "var(--vscode-sideBar-background, #252526)",
+          "border-right": "1px solid var(--vscode-panel-border, #3a3a3a)",
           display: "flex",
+          "flex-direction": "column",
           gap: "8px",
-          "flex-wrap": "wrap",
-          "align-items": "center",
+          "overflow-y": "auto",
         }}
       >
-        <button
-          onClick={toggleThinking}
-          style={{
-            padding: "4px 8px",
-            "font-size": "12px",
-            background: "var(--vscode-button-background, #0e639c)",
-            color: "var(--vscode-button-foreground, white)",
-            border: "none",
-            "border-radius": "2px",
-            cursor: "pointer",
-          }}
-        >
-          {isThinking() ? "Stop Thinking" : "Start Thinking"}
-        </button>
-        <button
-          onClick={clearMessages}
-          style={{
-            padding: "4px 8px",
-            "font-size": "12px",
-            background: "var(--vscode-button-secondaryBackground, #3a3a3a)",
-            color: "var(--vscode-button-secondaryForeground, white)",
-            border: "none",
-            "border-radius": "2px",
-            cursor: "pointer",
-          }}
-        >
-          Clear Messages
-        </button>
-        <button
-          onClick={loadFakeMessages}
-          style={{
-            padding: "4px 8px",
-            "font-size": "12px",
-            background: "var(--vscode-button-secondaryBackground, #3a3a3a)",
-            color: "var(--vscode-button-secondaryForeground, white)",
-            border: "none",
-            "border-radius": "2px",
-            cursor: "pointer",
-          }}
-        >
-          Load Fake Messages
-        </button>
-        <button
-          onClick={() => {
-            console.log("[UIKit] Button clicked!");
-            cycleContextPercentage();
-          }}
-          style={{
-            padding: "4px 8px",
-            "font-size": "12px",
-            background: "var(--vscode-button-secondaryBackground, #3a3a3a)",
-            color: "var(--vscode-button-secondaryForeground, white)",
-            border: "none",
-            "border-radius": "2px",
-            cursor: "pointer",
-          }}
-        >
-          Cycle Context % ({contextInfo().percentage.toFixed(0)}%)
-        </button>
         <span
           style={{
-            "margin-left": "auto",
             color: "var(--vscode-descriptionForeground, #888)",
-            "font-size": "12px",
+            "font-size": "11px",
+            "text-transform": "uppercase",
+            "letter-spacing": "0.5px",
+            "margin-bottom": "4px",
           }}
         >
-          🎨 UI Kit - Hot Reload Enabled
+          UI Kit Controls
         </span>
+        <For each={controlButtons}>
+          {(btn) => (
+            <button
+              onClick={btn.onClick}
+              style={{
+                padding: "6px 10px",
+                "font-size": "12px",
+                background: "var(--vscode-button-secondaryBackground, #3a3a3a)",
+                color: "var(--vscode-button-secondaryForeground, white)",
+                border: "none",
+                "border-radius": "4px",
+                cursor: "pointer",
+                "text-align": "left",
+              }}
+            >
+              {btn.label()}
+            </button>
+          )}
+        </For>
       </div>
 
       {/* Main App UI */}
       <div
-        class={`app ${hasMessages() ? "app--has-messages" : ""}`}
-        style={{ flex: 1, width: "320px", margin: "0 auto" }}
+        style={{ flex: 1, display: "flex", "flex-direction": "column" }}
       >
-        <TopBar
-          sessions={sessions()}
-          currentSessionId={currentSessionId()}
-          currentSessionTitle={currentSessionTitle()}
-          onSessionSelect={handleSessionSelect}
-          onNewSession={handleNewSession}
-        />
-
-        {!hasMessages() && (
-          <InputBar
-            value={input()}
-            onInput={setInput}
-            onSubmit={handleSubmit}
-            disabled={false}
-            selectedAgent={selectedAgent()}
-            agents={agents()}
-            onAgentChange={setSelectedAgent}
-          />
-        )}
-
-        <MessageList
-          messages={messages()}
-          isThinking={isThinking()}
-          workspaceRoot="/Users/developer/project"
-          pendingPermissions={pendingPermissions()}
-          onPermissionResponse={handlePermissionResponse}
-        />
-
-        {hasMessages() && (
-          <>
-            <div class="input-divider" />
-            <div class="input-status-row">
-              <FileChangesSummary fileChanges={fileChanges()} />
-              <ContextIndicator contextInfo={contextInfo()} />
+        <div
+          class={`app ${hasMessages() ? "app--has-messages" : ""}`}
+          style={{ flex: 1, width: "320px", margin: "0 auto" }}
+        >
+          <Show when={errorMessage()}>
+            <div class="error-banner">
+              <span class="error-banner__message">{errorMessage()}</span>
+              <button class="error-banner__dismiss" onClick={() => setErrorMessage(null)} aria-label="Dismiss error">×</button>
             </div>
+          </Show>
+          
+          <TopBar
+            sessions={sessions()}
+            currentSessionId={currentSessionId()}
+            currentSessionTitle={currentSessionTitle()}
+            onSessionSelect={handleSessionSelect}
+            onNewSession={handleNewSession}
+          />
+
+          {!hasMessages() && (
             <InputBar
               value={input()}
               onInput={setInput}
               onSubmit={handleSubmit}
+              onCancel={() => setIsThinking(false)}
+              onQueue={() => {}}
               disabled={false}
+              isThinking={isThinking()}
               selectedAgent={selectedAgent()}
               agents={agents()}
               onAgentChange={setSelectedAgent}
+              queuedMessages={queuedMessages()}
+              onRemoveFromQueue={(id) => setQueuedMessages((prev) => prev.filter((m) => m.id !== id))}
+              onEditQueuedMessage={() => {}}
             />
-          </>
-        )}
+          )}
+
+          <MessageList
+            messages={messages()}
+            isThinking={isThinking()}
+            workspaceRoot="/Users/developer/project"
+            pendingPermissions={pendingPermissions()}
+            onPermissionResponse={handlePermissionResponse}
+          />
+
+          {hasMessages() && (
+            <>
+              <div class="input-divider" />
+              <div class="input-status-row">
+                <FileChangesSummary fileChanges={fileChanges()} />
+                <ContextIndicator contextInfo={contextInfo()} />
+              </div>
+              <InputBar
+                value={input()}
+                onInput={setInput}
+                onSubmit={handleSubmit}
+                onCancel={() => setIsThinking(false)}
+                onQueue={() => {}}
+                disabled={false}
+                isThinking={isThinking()}
+                selectedAgent={selectedAgent()}
+                agents={agents()}
+                onAgentChange={setSelectedAgent}
+                queuedMessages={queuedMessages()}
+                onRemoveFromQueue={(id) => setQueuedMessages((prev) => prev.filter((m) => m.id !== id))}
+                onEditQueuedMessage={() => {}}
+              />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

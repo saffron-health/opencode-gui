@@ -87,6 +87,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
           messages = await this._openCodeService.getMessages(currentSessionId);
         } catch (error) {
           console.error('Error loading session messages:', error);
+          this._sendMessage({ type: 'error', message: `Failed to load session messages: ${(error as Error).message}` });
         }
       }
       
@@ -102,6 +103,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       });
     } catch (error) {
       console.error('Error handling ready:', error);
+      this._sendMessage({ type: 'error', message: `Failed to initialize: ${(error as Error).message}` });
       this._sendMessage({
         type: 'init',
         ready: this._openCodeService.isReady(),
