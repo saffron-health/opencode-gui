@@ -1018,6 +1018,15 @@ body.vscode-high-contrast {
   flex-shrink: 0;
 }
 
+.session-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  color: var(--description-foreground);
+  font-size: var(--font-size-small);
+}
+
 /* New Session Button */
 .new-session-button {
   display: inline-flex;
