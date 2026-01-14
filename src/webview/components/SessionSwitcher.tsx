@@ -49,7 +49,6 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
       <button
         class={`session-switcher-button ${isOpen() ? "active" : ""}`}
         onClick={toggleDropdown}
-        disabled={props.sessions.length === 0}
         aria-label="Switch session"
         aria-expanded={isOpen()}
       >
@@ -62,21 +61,28 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
             <div class="session-loading">Loading sessions...</div>
           </Show>
           <Show when={!isLoading()}>
-            <For each={props.sessions}>
-              {(session) => (
-                <div
-                  class={`session-item ${
-                    session.id === props.currentSessionId ? "selected" : ""
-                  }`}
-                  onClick={() => handleSessionClick(session.id)}
-                >
-                  <div class="session-item-title">{session.title}</div>
-                  <div class="session-item-time">
-                    {formatRelativeTime(session.time.updated)}
+            <Show
+              when={props.sessions.length > 0}
+              fallback={
+                <div class="session-loading">No sessions found</div>
+              }
+            >
+              <For each={props.sessions}>
+                {(session) => (
+                  <div
+                    class={`session-item ${
+                      session.id === props.currentSessionId ? "selected" : ""
+                    }`}
+                    onClick={() => handleSessionClick(session.id)}
+                  >
+                    <div class="session-item-title">{session.title}</div>
+                    <div class="session-item-time">
+                      {formatRelativeTime(session.time.updated)}
+                    </div>
                   </div>
-                </div>
-              )}
-            </For>
+                )}
+              </For>
+            </Show>
           </Show>
         </div>
       </Show>
