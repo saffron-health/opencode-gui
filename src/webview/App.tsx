@@ -221,6 +221,11 @@ function App() {
   // Load sessions when SDK is ready
   createEffect(async () => {
     if (!sdkIsReady()) return;
+    await refreshSessions();
+  });
+
+  // Refresh sessions function
+  async function refreshSessions() {
     try {
       const res = await listSessions();
       const sessionList = (res?.data ?? []) as Session[];
@@ -228,7 +233,7 @@ function App() {
     } catch (err) {
       console.error("[App] Failed to load sessions:", err);
     }
-  });
+  }
 
   // Update context info from assistant message tokens
   async function updateContextInfo(tokens: Record<string, unknown>, modelID: string, providerID: string) {
@@ -757,6 +762,7 @@ function App() {
         currentSessionTitle={currentSessionTitle()}
         onSessionSelect={handleSessionSelect}
         onNewSession={handleNewSession}
+        onRefreshSessions={refreshSessions}
       />
 
       <Show when={!hasMessages()}>

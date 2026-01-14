@@ -6,12 +6,24 @@ interface SessionSwitcherProps {
   currentSessionId: string | null;
   currentSessionTitle: string;
   onSessionSelect: (sessionId: string) => void;
+  onRefreshSessions: () => Promise<void>;
 }
 
 export function SessionSwitcher(props: SessionSwitcherProps) {
   const [isOpen, setIsOpen] = createSignal(false);
+  const [isLoading, setIsLoading] = createSignal(false);
 
-  const toggleDropdown = () => setIsOpen(!isOpen());
+  const toggleDropdown = async () => {
+    if (!isOpen()) {
+      setIsLoading(true);
+      try {
+        await props.onRefreshSessions();
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    setIsOpen(!isOpen());
+  };
 
   const handleSessionClick = (sessionId: string) => {
     props.onSessionSelect(sessionId);
@@ -37,7 +49,6 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
       <button
         class={`session-switcher-button ${isOpen() ? "active" : ""}`}
         onClick={toggleDropdown}
-        disabled={props.sessions.length === 0}
         aria-label="Switch session"
         aria-expanded={isOpen()}
       >
@@ -46,21 +57,33 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
 
       <Show when={isOpen()}>
         <div class="session-dropdown">
-          <For each={props.sessions}>
-            {(session) => (
-              <div
-                class={`session-item ${
-                  session.id === props.currentSessionId ? "selected" : ""
-                }`}
-                onClick={() => handleSessionClick(session.id)}
-              >
-                <div class="session-item-title">{session.title}</div>
-                <div class="session-item-time">
-                  {formatRelativeTime(session.time.updated)}
-                </div>
-              </div>
-            )}
-          </For>
+          <Show when={isLoading()}>
+            <div class="session-loading">Loading sessions...</div>
+          </Show>
+          <Show when={!isLoading()}>
+            <Show
+              when={props.sessions.length > 0}
+              fallback={
+                <div class="session-loading">No sessions found</div>
+              }
+            >
+              <For each={props.sessions}>
+                {(session) => (
+                  <div
+                    class={`session-item ${
+                      session.id === props.currentSessionId ? "selected" : ""
+                    }`}
+                    onClick={() => handleSessionClick(session.id)}
+                  >
+                    <div class="session-item-title">{session.title}</div>
+                    <div class="session-item-time">
+                      {formatRelativeTime(session.time.updated)}
+                    </div>
+                  </div>
+                )}
+              </For>
+            </Show>
+          </Show>
         </div>
       </Show>
     </div>

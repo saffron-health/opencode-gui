@@ -8,6 +8,7 @@ interface TopBarProps {
   currentSessionTitle: string;
   onSessionSelect: (sessionId: string) => void;
   onNewSession: () => void;
+  onRefreshSessions: () => Promise<void>;
 }
 
 export function TopBar(props: TopBarProps) {
@@ -18,6 +19,7 @@ export function TopBar(props: TopBarProps) {
         currentSessionId={props.currentSessionId}
         currentSessionTitle={props.currentSessionTitle}
         onSessionSelect={props.onSessionSelect}
+        onRefreshSessions={props.onRefreshSessions}
       />
       <NewSessionButton onClick={props.onNewSession} />
     </div>
