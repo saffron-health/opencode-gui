@@ -184,7 +184,10 @@ export function useOpenCode() {
     setHostError,
     clearHostError: () => setHostError(null),
     // Expose SDK methods directly
-    listSessions: () => client()?.session.list(),
+    listSessions: () => {
+      const dir = workspaceRoot();
+      return client()?.session.list(dir ? { query: { directory: dir } } : undefined);
+    },
     getSession: (id: string) => client()?.session.get({ path: { id } }),
     createSession: () => client()?.session.create({ body: {} }),
     getAgents: () => client()?.app.agents(),
