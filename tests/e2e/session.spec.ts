@@ -52,13 +52,10 @@ test.describe("Session Management", () => {
     const dropdown = page.locator(".session-dropdown");
     await expect(dropdown).toBeVisible();
 
-    // Wait for either loading state or session items to appear
-    await page.waitForSelector(".session-loading, .session-item", {
-      timeout: 5000,
-    });
-
-    // Wait a bit for the API call to complete
-    await page.waitForTimeout(1000);
+    // Wait for loading state to disappear and session items to appear
+    await expect(page.locator(".session-loading")).toBeVisible();
+    await expect(page.locator(".session-loading")).not.toBeVisible();
+    await expect(page.locator(".session-item")).toBeVisible();
 
     // Verify that at least one session list API call was made after clicking
     expect(sessionRequests.length).toBeGreaterThan(0);

@@ -16,8 +16,11 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
   const toggleDropdown = async () => {
     if (!isOpen()) {
       setIsLoading(true);
-      await props.onRefreshSessions();
-      setIsLoading(false);
+      try {
+        await props.onRefreshSessions();
+      } finally {
+        setIsLoading(false);
+      }
     }
     setIsOpen(!isOpen());
   };
