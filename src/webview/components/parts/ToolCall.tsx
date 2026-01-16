@@ -703,42 +703,67 @@ export function ToolCall(props: ToolCallProps) {
             {hasOutput && <ChevronDownIcon isOpen={isOpen()} />}
           </div>
           <Show when={needsPermission()}>
-            <div class="tool-permission-buttons" role="group" aria-label="Permission request">
-              <button
-                class="permission-button permission-button--quiet"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  console.log("[ToolCall] Reject button clicked");
-                  handlePermissionResponse("reject");
-                }}
-                aria-label="Reject"
-              >
-                reject
-              </button>
-              <div class="permission-spacer" />
-              <button
-                class="permission-button permission-button--quiet"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  console.log("[ToolCall] Always button clicked");
-                  handlePermissionResponse("always");
-                }}
-                aria-label="Allow always"
-              >
-                always
-              </button>
-              <button
-                class="permission-button permission-button--primary"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  console.log("[ToolCall] Once button clicked");
-                  handlePermissionResponse("once");
-                }}
-                aria-label="Allow once"
-              >
-                once
-                <EnterIcon />
-              </button>
+            <div class="tool-permission-prompt">
+              <div class="tool-permission-message">
+                {(() => {
+                  const perm = permission();
+                  if (!perm) return "";
+                  const type = perm.permission;
+                  const meta = perm.metadata || {};
+                  
+                  switch (type) {
+                    case "external_directory": {
+                      const dir = (meta.parentDir as string) || (meta.filepath as string) || (perm.patterns?.[0]) || "unknown";
+                      return `Allow access to ${dir}?`;
+                    }
+                    case "edit":
+                      return `Allow editing ${(meta.filepath as string) || "this file"}?`;
+                    case "read":
+                      return `Allow reading ${(meta.filepath as string) || "this file"}?`;
+                    case "bash":
+                      return `Allow running: ${(meta.command as string) || "this command"}?`;
+                    default:
+                      return `Allow ${type}?`;
+                  }
+                })()}
+              </div>
+              <div class="tool-permission-buttons" role="group" aria-label="Permission request">
+                <button
+                  class="permission-button permission-button--quiet"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    console.log("[ToolCall] Reject button clicked");
+                    handlePermissionResponse("reject");
+                  }}
+                  aria-label="Reject"
+                >
+                  reject
+                </button>
+                <div class="permission-spacer" />
+                <button
+                  class="permission-button permission-button--quiet"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    console.log("[ToolCall] Always button clicked");
+                    handlePermissionResponse("always");
+                  }}
+                  aria-label="Allow always"
+                >
+                  always
+                </button>
+                <button
+                  class="permission-button permission-button--primary"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    console.log("[ToolCall] Once button clicked");
+                    handlePermissionResponse("once");
+                  }}
+                  aria-label="Allow once"
+                >
+                  once
+                  <EnterIcon />
+                </button>
+              </div>
             </div>
           </Show>
           <Show when={hasOutput && isOpen()}>
