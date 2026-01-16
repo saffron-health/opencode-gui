@@ -62,4 +62,27 @@ test.describe("Permissions", () => {
     // Permission card should disappear
     await expect(permissionGroup).not.toBeVisible({ timeout: 5000 });
   });
+
+  test.skip("should show standalone permission for external directory", async ({ openWebview }) => {
+    const page = await openWebview();
+    
+    // Send a prompt that will try to edit a file outside the workspace
+    const textarea = page.getByRole("textbox", { name: "Message input" });
+    await textarea.fill("Edit the file /tmp/test-external.txt and add the line 'hello world'");
+    
+    const submitButton = page.getByRole("button", { name: "Submit" });
+    await submitButton.click();
+    
+    // Wait for standalone permission prompt to appear
+    const permissionGroup = page.getByRole("group", { name: "Permission request" });
+    await expect(permissionGroup).toBeVisible({ timeout: 30000 });
+    
+    // Should have the external directory message
+    await expect(page.locator(".permission-prompt__message")).toContainText(/external directory|tmp/i);
+    
+    // Permission buttons should be visible
+    await expect(page.getByRole("button", { name: "Allow once" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reject" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Allow always" })).toBeVisible();
+  });
 });

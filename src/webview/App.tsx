@@ -1,9 +1,10 @@
-import { createSignal, createMemo, Show, onMount, onCleanup, createEffect } from "solid-js";
+import { createSignal, createMemo, Show, onMount, onCleanup, createEffect, For } from "solid-js";
 import { InputBar } from "./components/InputBar";
 import { MessageList } from "./components/MessageList";
 import { TopBar } from "./components/TopBar";
 import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
+import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type Event as OpenCodeEvent, type Session as SDKSession, type Agent as SDKAgent } from "./hooks/useOpenCode";
 import { applyPartUpdate, applyMessageUpdate } from "./utils/messageUtils";
 import type { Message, Agent, Session, Permission, ContextInfo, FileChangesInfo, MessagePart, IncomingMessage } from "./types";
@@ -112,6 +113,54 @@ function App() {
       return next;
     });
   };
+
+  // Find permissions that don't have matching tool calls (standalone permissions)
+  const standalonePermissions = createMemo(() => {
+    const perms = pendingPermissions();
+    const msgs = messages();
+    const result: Permission[] = [];
+    
+    console.log("[App] standalonePermissions check:", {
+      pendingPermissionsCount: perms.size,
+      permissions: Array.from(perms.entries()).map(([k, p]) => ({ 
+        key: k, 
+        id: p.id, 
+        permission: p.permission, 
+        toolCallID: p.tool?.callID 
+      })),
+    });
+    
+    // Collect all callIDs from tool parts in messages
+    const toolCallIDs = new Set<string>();
+    for (const msg of msgs) {
+      if (msg.parts) {
+        for (const part of msg.parts) {
+          if (part.type === "tool" && part.callID) {
+            toolCallIDs.add(part.callID);
+          }
+        }
+      }
+    }
+    
+    console.log("[App] toolCallIDs found:", Array.from(toolCallIDs));
+    
+    // Find permissions that don't match any tool call
+    // Since we now tie permissions to tool calls via tool.callID,
+    // all permissions should show up in their respective tool calls
+    // So standalone permissions are now rare/unused
+    for (const [key, perm] of perms.entries()) {
+      if (perm.tool?.callID && toolCallIDs.has(perm.tool.callID)) {
+        // This permission has a matching tool call, skip it
+        console.log("[App] Skipping permission with matching tool call:", perm.id, perm.tool.callID);
+        continue;
+      }
+      console.log("[App] Found standalone permission:", perm.id, perm.permission, perm.tool?.callID);
+      result.push(perm);
+    }
+    
+    console.log("[App] Standalone permissions result:", result.length);
+    return result;
+  });
 
   const sessionsToShow = createMemo(() => {
     const root = sdkWorkspaceRoot();
@@ -269,6 +318,8 @@ function App() {
 
   // Handle SSE events
   function handleEvent(event: OpenCodeEvent) {
+    console.log("[App] Received SSE event:", event.type);
+    
     const activeSessionId = currentSessionId();
 
     // Helper to get session ID from event
@@ -290,6 +341,23 @@ function App() {
     }
 
     if (DEBUG) console.log("[App] SSE event:", event.type, event);
+
+    // Handle permission.asked (same as permission.updated)
+    // Note: permission.asked is not in the SDK Event type yet, so we cast to string
+    const eventType = event.type as string;
+    if (eventType === "permission.asked" || eventType === "permission.updated") {
+      const permission = (event as unknown as { properties: Permission }).properties;
+      console.log("[App] Permission required:", permission);
+      // Use tool.callID if available (ties permission to specific tool call)
+      // Otherwise use permission.id (standalone permission)
+      const key = permission.tool?.callID || permission.id;
+      setPendingPermissions((prev) => {
+        const next = new Map(prev);
+        next.set(key, permission);
+        return next;
+      });
+      return;
+    }
 
     switch (event.type) {
       case "message.part.updated": {
@@ -359,18 +427,6 @@ function App() {
         setSessions((prev) => {
           if (prev.some((s) => s.id === session.id)) return prev;
           return [...prev, session];
-        });
-        break;
-      }
-
-      case "permission.updated": {
-        const permission = (event as unknown as { properties: Permission }).properties;
-        console.log("[App] Permission required:", permission);
-        const key = permission.callID || permission.id;
-        setPendingPermissions((prev) => {
-          const next = new Map(prev);
-          next.set(key, permission);
-          return next;
         });
         break;
       }
@@ -766,6 +822,19 @@ function App() {
       />
 
       <Show when={!hasMessages()}>
+        <Show when={standalonePermissions().length > 0}>
+          <div class="standalone-permissions">
+            <For each={standalonePermissions()}>
+              {(permission) => (
+                <PermissionPrompt
+                  permission={permission}
+                  onResponse={handlePermissionResponse}
+                />
+              )}
+            </For>
+          </div>
+        </Show>
+        
         <InputBar
           value={input()}
           onInput={setInput}
@@ -803,6 +872,20 @@ function App() {
           <FileChangesSummary fileChanges={fileChanges()} />
           <ContextIndicator contextInfo={contextInfo()} />
         </div>
+        
+        <Show when={standalonePermissions().length > 0}>
+          <div class="standalone-permissions">
+            <For each={standalonePermissions()}>
+              {(permission) => (
+                <PermissionPrompt
+                  permission={permission}
+                  onResponse={handlePermissionResponse}
+                />
+              )}
+            </For>
+          </div>
+        </Show>
+        
         <InputBar
           value={input()}
           onInput={setInput}

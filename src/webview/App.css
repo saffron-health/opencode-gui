@@ -721,12 +721,8 @@ body {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Tool Permission Buttons */
-.tool-permission-buttons {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-xs);
+/* Tool Permission Prompt */
+.tool-permission-prompt {
   border-top: 1px solid var(--border-color-muted);
   background: repeating-linear-gradient(
     -45deg,
@@ -735,6 +731,20 @@ body {
     light-dark(rgba(255, 165, 0, 0.3), rgba(255, 165, 0, 0.15)) 8px,
     light-dark(rgba(255, 165, 0, 0.3), rgba(255, 165, 0, 0.15)) 16px
   );
+}
+
+.tool-permission-message {
+  padding: var(--spacing-sm) var(--spacing-xs);
+  font-size: var(--font-size-small);
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.tool-permission-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs);
 }
 
 .permission-spacer {
@@ -781,6 +791,54 @@ body {
 .permission-button--primary:focus-visible {
   outline: 2px solid var(--focus-border);
   outline-offset: 1px;
+}
+
+/* Standalone Permission Prompts */
+.standalone-permissions {
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.permission-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: repeating-linear-gradient(
+    -45deg,
+    light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.2)),
+    light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.2)) 8px,
+    light-dark(rgba(255, 165, 0, 0.2), rgba(255, 165, 0, 0.1)) 8px,
+    light-dark(rgba(255, 165, 0, 0.2), rgba(255, 165, 0, 0.1)) 16px
+  );
+}
+
+.permission-prompt__content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.permission-prompt__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.permission-prompt__message {
+  flex: 1;
+  font-size: var(--font-size);
+  color: var(--foreground);
+  word-break: break-word;
+}
+
+.permission-prompt__buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
 }
 
 /* Reasoning Block */

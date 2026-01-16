@@ -96,16 +96,15 @@ export type IncomingMessage = z.infer<typeof IncomingMessageSchema>;
 
 export const PermissionSchema = z.object({
   id: z.string(),
-  type: z.string(),
-  pattern: z.union([z.string(), z.array(z.string())]).optional(),
+  permission: z.string(),
+  patterns: z.array(z.string()).optional(),
   sessionID: z.string(),
-  messageID: z.string(),
-  callID: z.string().optional(),
-  title: z.string(),
   metadata: z.record(z.string(), z.unknown()),
-  time: z.object({
-    created: z.number(),
-  }),
+  always: z.array(z.string()).optional(),
+  tool: z.object({
+    messageID: z.string(),
+    callID: z.string(),
+  }).optional(),
 });
 export type Permission = z.infer<typeof PermissionSchema>;
 
