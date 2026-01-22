@@ -1,6 +1,7 @@
 
 import { createSignal, For, Show } from "solid-js";
 import { render } from "solid-js/web";
+import "./uikit.css";
 import "./App.css";
 import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
@@ -178,7 +179,32 @@ const fakeMessages: Message[] = [
         state: {
           input: { pattern: "password.*===" },
           status: "completed",
-          output: "login.ts:45:  if (user.password === inputPassword) {",
+          output: `login.ts:45:  if (user.password === inputPassword) {
+signup.ts:23:  if (password === confirmPassword) {
+resetPassword.ts:67:  if (oldPassword === newPassword) {
+validators.ts:12:  return password === user.hashedPassword;`,
+        },
+      },
+      {
+        id: "part-6b",
+        type: "tool",
+        tool: "edit",
+        messageID: "msg-4",
+        state: {
+          input: { filePath: "/src/auth/validators.ts" },
+          status: "completed",
+          metadata: {
+            diff: `@@ -10,5 +10,5 @@ export function validateUser(user: User) {
++  return user.email && user.password;
+ }`,
+            diagnostics: {
+              "/src/auth/validators.ts": [
+                { severity: 1, message: "Property 'email' does not exist on type 'User'" },
+                { severity: 1, message: "Cannot find name 'validateEmail'" },
+                { severity: 2, message: "Variable 'user' is declared but never used" },
+              ],
+            },
+          },
         },
       },
     ],
@@ -260,6 +286,63 @@ const fakeMessages: Message[] = [
               status: "in-progress",
             },
           ]),
+        },
+      },
+    ],
+  },
+  {
+    id: "msg-7",
+    type: "user",
+    text: "Can you run the tests?",
+  },
+  {
+    id: "msg-8",
+    type: "assistant",
+    text: "I'll run the test suite for you.",
+    parts: [
+      {
+        id: "part-11",
+        type: "text",
+        text: "I'll run the test suite for you.",
+        messageID: "msg-8",
+      },
+      {
+        id: "part-12",
+        type: "tool",
+        tool: "bash",
+        messageID: "msg-8",
+        state: {
+          input: {
+            command: "npm test",
+            description: "Run test suite",
+          },
+          status: "error",
+          error: "Error: ENOENT: no such file or directory, open 'package.json'",
+        },
+      },
+      {
+        id: "part-13",
+        type: "tool",
+        tool: "bash",
+        messageID: "msg-8",
+        state: {
+          input: {
+            command: "npm run build",
+            description: "Build project",
+          },
+          status: "error",
+          error: "interrupted",
+        },
+      },
+      {
+        id: "part-14",
+        type: "tool",
+        tool: "read",
+        messageID: "msg-8",
+        state: {
+          input: { filePath: "/nonexistent/file.ts" },
+          status: "error",
+          error: "File not found: /nonexistent/file.ts",
         },
       },
     ],

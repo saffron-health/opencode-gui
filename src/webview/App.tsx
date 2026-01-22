@@ -44,6 +44,9 @@ function App() {
   
   // Message queue for queuing messages while generating
   const [messageQueue, setMessageQueue] = createSignal<QueuedMessage[]>([]);
+  
+  // Session errors (shown inline like tool call errors)
+  const [sessionErrors, setSessionErrors] = createSignal<Map<string, string>>(new Map());
 
   // Get SDK hook
   const {
@@ -365,6 +368,16 @@ function App() {
         const part = props.part;
         if (DEBUG) console.log("[App] Part update:", part);
         setMessages((prev) => applyPartUpdate(prev, part));
+        
+        // Clear session error on successful message
+        const sessionId = evSessionId || activeSessionId;
+        if (sessionId) {
+          setSessionErrors((prev) => {
+            const next = new Map(prev);
+            next.delete(sessionId);
+            return next;
+          });
+        }
         break;
       }
 
@@ -442,15 +455,14 @@ function App() {
         const errorMessage = props.error?.data?.message || "Unknown error";
         const sessionId = evSessionId || activeSessionId;
         console.error("[App] Session error:", errorMessage);
-        if (sessionId) setIsThinking(sessionId, false);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "assistant",
-            text: `Error: ${errorMessage}`,
-          },
-        ]);
+        if (sessionId) {
+          setIsThinking(sessionId, false);
+          setSessionErrors((prev) => {
+            const next = new Map(prev);
+            next.set(sessionId, errorMessage);
+            return next;
+          });
+        }
         break;
       }
 
@@ -522,20 +534,23 @@ function App() {
       await sendPrompt(sessionId, text, agent);
     } catch (err) {
       console.error("[App] sendPrompt failed:", err);
-      // Don't clear thinking state or show error for "Proxy fetch timed out" or "Aborted"
-      // The session will continue via SSE and session.idle will clear thinking state
       const errorMessage = (err as Error).message;
-      if (errorMessage !== "Proxy fetch timed out" && errorMessage !== "Aborted") {
-        setIsThinking(sessionId, false);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "assistant",
-            text: `Error: ${errorMessage}`,
-          },
-        ]);
+      const lowerMsg = errorMessage.toLowerCase();
+      
+      // Ignore "Proxy fetch timed out" and "Aborted" errors
+      // These are expected because sendPrompt returns immediately but the session continues via SSE
+      if (lowerMsg.includes("proxy fetch timed out") || lowerMsg.includes("aborted")) {
+        console.log("[App] Ignoring expected timeout/abort error");
+        return;
       }
+      
+      // For real errors, show them inline
+      setIsThinking(sessionId, false);
+      setSessionErrors((prev) => {
+        const next = new Map(prev);
+        next.set(sessionId, errorMessage);
+        return next;
+      });
     }
   };
 
@@ -556,19 +571,22 @@ function App() {
     } catch (err) {
       console.error("[App] Queue sendPrompt failed:", err);
       const errorMessage = (err as Error).message;
-      // Don't clear thinking state or show error for "Proxy fetch timed out" or "Aborted"
-      if (errorMessage !== "Proxy fetch timed out" && errorMessage !== "Aborted") {
-        setIsThinking(sessionId, false);
-        setMessageQueue([]); // Clear queue on error
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "assistant",
-            text: `Error: ${errorMessage}`,
-          },
-        ]);
+      const lowerMsg = errorMessage.toLowerCase();
+      
+      // Ignore "Proxy fetch timed out" and "Aborted" errors
+      if (lowerMsg.includes("proxy fetch timed out") || lowerMsg.includes("aborted")) {
+        console.log("[App] Ignoring expected timeout/abort error");
+        return;
       }
+      
+      // For real errors, show them inline and clear queue
+      setIsThinking(sessionId, false);
+      setMessageQueue([]);
+      setSessionErrors((prev) => {
+        const next = new Map(prev);
+        next.set(sessionId, errorMessage);
+        return next;
+      });
     }
   };
 
@@ -751,18 +769,21 @@ function App() {
     } catch (err) {
       console.error("[App] Failed to edit message:", err);
       const errorMessage = (err as Error).message;
-      // Don't clear thinking state or show error for "Proxy fetch timed out" or "Aborted"
-      if (errorMessage !== "Proxy fetch timed out" && errorMessage !== "Aborted") {
-        setIsThinking(sessionId, false);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "assistant",
-            text: `Error editing message: ${errorMessage}`,
-          },
-        ]);
+      const lowerMsg = errorMessage.toLowerCase();
+      
+      // Ignore "Proxy fetch timed out" and "Aborted" errors
+      if (lowerMsg.includes("proxy fetch timed out") || lowerMsg.includes("aborted")) {
+        console.log("[App] Ignoring expected timeout/abort error");
+        return;
       }
+      
+      // For real errors, show them inline
+      setIsThinking(sessionId, false);
+      setSessionErrors((prev) => {
+        const next = new Map(prev);
+        next.set(sessionId, `Error editing message: ${errorMessage}`);
+        return next;
+      });
     }
   };
 
@@ -864,6 +885,7 @@ function App() {
         onCancelEdit={handleCancelEdit}
         onSubmitEdit={handleSubmitEdit}
         onEditTextChange={setEditingText}
+        sessionError={currentSessionId() ? sessionErrors().get(currentSessionId()!) : null}
       />
 
       <Show when={hasMessages()}>

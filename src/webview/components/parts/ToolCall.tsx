@@ -296,6 +296,7 @@ interface ToolDisplayInfo {
   isFilePath?: boolean; // For file paths that need special rendering
   dirPath?: string; // Directory part of the path
   fileName?: string; // File name part
+  slash?: string; // Separator between dir and file
 }
 
 function toRelativePath(
@@ -324,6 +325,7 @@ function toRelativePath(
 function splitFilePath(filePath: string): {
   dirPath: string;
   fileName: string;
+  slash: string;
 } {
   const lastSlash = Math.max(
     filePath.lastIndexOf("/"),
@@ -332,40 +334,52 @@ function splitFilePath(filePath: string): {
 
   if (lastSlash === -1) {
     // No directory, just filename
-    return { dirPath: "", fileName: filePath };
+    return { dirPath: "", fileName: filePath, slash: "/" };
   }
 
   return {
-    dirPath: filePath.substring(0, lastSlash + 1), // Include trailing slash
+    dirPath: filePath.substring(0, lastSlash),
     fileName: filePath.substring(lastSlash + 1),
+    slash: "/",
   };
+}
+
+// Safely extract the tool inputs from either state.input or part.input (SDK may send either)
+function getToolInputs(state: ToolState, part?: MessagePart): Record<string, unknown> {
+  const raw = (state?.input ?? (part as unknown as { input?: unknown })?.input) as unknown;
+  return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 }
 
 function getToolDisplayInfo(
   tool: ToolName | string | undefined,
   state: ToolState,
+  part: MessagePart | undefined,
   workspaceRoot?: string
 ): ToolDisplayInfo {
   if (!tool) return { icon: GenericToolIcon, text: "Tool", monospace: false };
 
-  const inputs = state.input || {};
+  const inputs = getToolInputs(state, part);
 
   switch (tool) {
     // File reads
     case "read": {
-      const relativePath = toRelativePath(
-        (inputs as ReadInput).filePath || (inputs as ReadInput).path,
-        workspaceRoot
-      );
-      if (relativePath) {
-        const { dirPath, fileName } = splitFilePath(relativePath);
+      // Accept filePath, filepath (lowercase), or path
+      const inputPath = (inputs as any).filePath || (inputs as any).filepath || (inputs as any).path;
+      const relativePath = toRelativePath(inputPath, workspaceRoot);
+      
+      // Always show the path if we have one
+      const pathToShow = relativePath || inputPath;
+      
+      if (pathToShow) {
+        const { dirPath, fileName, slash } = splitFilePath(pathToShow);
         return {
           icon: FileIcon,
-          text: relativePath,
+          text: pathToShow,
           monospace: false,
           isFilePath: true,
           dirPath,
           fileName,
+          slash,
         };
       }
       return {
@@ -378,24 +392,28 @@ function getToolDisplayInfo(
     // File writes/edits
     case "write":
     case "edit": {
-      const relativePath = toRelativePath(
-        (inputs as WriteInput).filePath || (inputs as WriteInput).path,
-        workspaceRoot
-      );
-      if (relativePath) {
-        const { dirPath, fileName } = splitFilePath(relativePath);
+      // Accept filePath, filepath (lowercase), or path
+      const filePath = (inputs as any).filePath || (inputs as any).filepath || (inputs as any).path;
+      const relativePath = toRelativePath(filePath, workspaceRoot);
+      
+      // Always show the path if we have one, even if we couldn't make it relative
+      const pathToShow = relativePath || filePath;
+      
+      if (pathToShow) {
+        const { dirPath, fileName, slash } = splitFilePath(pathToShow);
         return {
           icon: FileDiffIcon,
-          text: relativePath,
+          text: pathToShow,
           monospace: false,
           isFilePath: true,
           dirPath,
           fileName,
+          slash,
         };
       }
       return {
         icon: FileDiffIcon,
-        text: "Edit file",
+        text: tool === "edit" ? "Edit file" : "Write file",
         monospace: false,
       };
     }
@@ -568,17 +586,44 @@ export function ToolCall(props: ToolCallProps) {
   const [toolCallRef, setToolCallRef] = createSignal<HTMLDivElement | null>(
     null
   );
-  const displayInfo = getToolDisplayInfo(tool, state, props.workspaceRoot);
-  const Icon = displayInfo.icon;
+  
+  // Make displayInfo reactive so it updates when state.input changes
+  const displayInfo = createMemo(() => 
+    getToolDisplayInfo(tool, props.part.state as ToolState, props.part, props.workspaceRoot)
+  );
+  const Icon = displayInfo().icon;
   const hasDiff = !!(state.metadata?.diff);
   const isEditTool = tool === "edit" || tool === "write";
-  const hasOutput = !!(state.output || state.error || (isEditTool && hasDiff));
+  const hasTextOutput = !!state.output;
+  const hasOutput = !!(hasTextOutput || (isEditTool && hasDiff));
+  const hasError = !!state.error;
+  const isInterrupted = state.error?.toLowerCase().includes("interrupted");
   
   const diffStats = createMemo(() => {
     if (isEditTool && hasDiff && state.metadata?.diff) {
       return getDiffStats(state.metadata.diff);
     }
     return null;
+  });
+  
+  const diagnosticsCount = createMemo(() => {
+    const diagnosticsMap = state.metadata?.diagnostics as Record<string, Array<{ severity: number }>> | undefined;
+    if (!diagnosticsMap) return null;
+    
+    const allDiagnostics = Object.values(diagnosticsMap).flat();
+    const errorCount = allDiagnostics.filter(d => d.severity === 1).length;
+    const warningCount = allDiagnostics.filter(d => d.severity === 2).length;
+    
+    return { errors: errorCount, warnings: warningCount };
+  });
+  
+  const resultsCount = createMemo(() => {
+    if (tool !== "grep" && tool !== "glob") return null;
+    if (!state.output) return null;
+    
+    // Count lines in output (each line is a result)
+    const lines = state.output.trim().split('\n').filter(line => line.trim().length > 0);
+    return lines.length;
   });
   
   // Look up permission from pendingPermissions map using callID
@@ -640,17 +685,25 @@ export function ToolCall(props: ToolCallProps) {
 
   return (
     <Switch>
-      <Match when={displayInfo.isLight}>
+      <Match when={displayInfo().isLight}>
         <div class="tool-call-light">
           {Icon && <Icon />}
-          {displayInfo.text}
+          {displayInfo().text}
         </div>
       </Match>
-      <Match when={!displayInfo.isLight}>
+      <Match when={!displayInfo().isLight}>
+        {/* 
+          Tool block structure:
+          - tool header (overview of tool call args, etc.) - required
+          - tool output (expandable) - optional
+          - tool footer (errors/metadata about output) - optional
+        */}
         <div
           ref={setToolCallRef}
           class="tool-call"
-          classList={{ "tool-call--needs-permission": needsPermission() }}
+          classList={{ 
+            "tool-call--needs-permission": needsPermission()
+          }}
           tabIndex={needsPermission() ? 0 : undefined}
           onKeyDown={(e) => {
             if (needsPermission() && e.key === "Enter") {
@@ -663,6 +716,7 @@ export function ToolCall(props: ToolCallProps) {
             }
           }}
         >
+          {/* Tool header - required */}
           <div
             class="tool-header"
             onClick={() => hasOutput && setIsOpen(!isOpen())}
@@ -670,24 +724,25 @@ export function ToolCall(props: ToolCallProps) {
           >
             {Icon && <span class="tool-icon"><Icon /></span>}
             <Show
-              when={displayInfo.isFilePath}
+              when={displayInfo().isFilePath}
               fallback={
                 <span
                   class="tool-text"
                   classList={{ "tool-text--bash": tool === "bash" }}
                   style={{
-                    "font-family": displayInfo.monospace
+                    "font-family": displayInfo().monospace
                       ? "monospace"
                       : "inherit",
                   }}
                 >
-                  {displayInfo.text}
+                  {displayInfo().text}
                 </span>
               }
             >
               <span class="tool-text tool-file-path">
-                <span class="tool-file-dir">{displayInfo.dirPath}</span>
-                <span class="tool-file-name">{displayInfo.fileName}</span>
+                <span class="tool-file-dir">{displayInfo().dirPath}</span>
+                <span class="tool-file-slash">{displayInfo().slash}</span>
+                <span class="tool-file-name">{displayInfo().fileName}</span>
               </span>
             </Show>
             <Show when={diffStats()}>
@@ -700,8 +755,14 @@ export function ToolCall(props: ToolCallProps) {
                 </Show>
               </span>
             </Show>
+            <Show when={resultsCount() !== null && resultsCount()! > 0}>
+              <span class="tool-results-count">
+                {resultsCount()}
+              </span>
+            </Show>
             {hasOutput && <ChevronDownIcon isOpen={isOpen()} />}
           </div>
+          {/* Tool output - optional, expandable */}
           <Show when={needsPermission()}>
             <div class="tool-permission-prompt">
               <div class="tool-permission-message">
@@ -766,15 +827,37 @@ export function ToolCall(props: ToolCallProps) {
               </div>
             </div>
           </Show>
-          <Show when={hasOutput && isOpen()}>
-            <div class="tool-output-container">
-              <Show when={isEditTool && hasDiff} fallback={
-                <pre class="tool-output" classList={{ "tool-output--bash": tool === "bash" }}>{state.error || state.output}</pre>
-              }>
+          <Show when={isOpen()}>
+            <Show when={hasDiff}>
+              <div class="tool-output-container">
                 <DiffViewer diff={state.metadata?.diff || ""} />
-                <Show when={state.output}>
-                  <pre class="tool-output" classList={{ "tool-output--bash": tool === "bash" }}>{state.output}</pre>
-                </Show>
+              </div>
+            </Show>
+            <Show when={hasTextOutput}>
+              <div class="tool-output-container">
+                <pre class="tool-output" classList={{ "tool-output--bash": tool === "bash" }}>{state.output}</pre>
+              </div>
+            </Show>
+          </Show>
+          {/* Tool footer - optional, shows errors/metadata */}
+          <Show when={hasError}>
+            <div class="tool-footer tool-footer--error">
+              <Show when={isInterrupted} fallback={state.error}>
+                Interrupted
+              </Show>
+            </div>
+          </Show>
+          <Show when={diagnosticsCount() && (diagnosticsCount()!.errors > 0 || diagnosticsCount()!.warnings > 0)}>
+            <div class="tool-footer tool-footer--diagnostics">
+              <Show when={diagnosticsCount()!.errors > 0}>
+                <span class="tool-diagnostics__errors">
+                  {diagnosticsCount()!.errors} diagnostic error{diagnosticsCount()!.errors !== 1 ? 's' : ''}
+                </span>
+              </Show>
+              <Show when={diagnosticsCount()!.warnings > 0}>
+                <span class="tool-diagnostics__warnings">
+                  {diagnosticsCount()!.warnings} warning{diagnosticsCount()!.warnings !== 1 ? 's' : ''}
+                </span>
               </Show>
             </div>
           </Show>
