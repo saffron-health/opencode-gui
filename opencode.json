@@ -15,11 +15,11 @@
   "username": "",
   "provider": {
     "google-vertex": {
-			"options": {
-				"project": "saffron-health",
-				"location": "global"
-			}
-		},
+      "options": {
+        "project": "saffron-health",
+        "location": "global"
+      }
+    },
     "openai": {
       "models": {
         "gpt-5": {
@@ -53,11 +53,5 @@
       "*NODE_ENV=production*": "ask"
     }
   },
-  "mcp": {
-    "playwright": {
-      "type": "local",
-      "command": ["npx", "@playwright/mcp@latest", "--headless"],
-      "enabled": true
-    }
-  }
+  "mcp": {}
 }

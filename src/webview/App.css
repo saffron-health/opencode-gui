@@ -585,8 +585,16 @@ body {
   flex-shrink: 0;
 }
 
-.tool-text {
+.tool-header-text {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
   flex: 1;
+  overflow: hidden;
+}
+
+.tool-text {
   color: var(--foreground);
   font-size: var(--font-size-base);
   line-height: 20px;
@@ -612,15 +620,20 @@ body {
 .tool-file-dir {
   color: color-mix(in oklab, var(--foreground) 50%, transparent);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   flex-shrink: 1;
+  text-overflow: ellipsis;
+}
+
+.tool-file-slash {
+  color: color-mix(in oklab, var(--foreground) 50%, transparent);
+  flex-shrink: 0;
 }
 
 .tool-file-name {
-  color: var(--foreground);
   white-space: nowrap;
   flex-shrink: 0;
+  color: var(--foreground);
 }
 
 .tool-diff-stats {
@@ -639,6 +652,21 @@ body {
 
 .tool-diff-stats__deletions {
   color: var(--git-deleted-foreground);
+}
+
+.tool-results-count {
+  font-size: var(--font-size-small);
+  font-weight: 500;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.tool-sub-text {
+  font-size: 11px;
+  font-weight: 400;
+  color: color-mix(in oklab, var(--foreground) 50%, transparent);
+  flex-shrink: 0;
 }
 
 .tool-output-container {
@@ -665,6 +693,44 @@ body {
 
 .tool-output--bash {
   font-size: var(--font-size-small);
+}
+
+.tool-footer {
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-base);
+  font-family: var(--font-family);
+  border-top: 1px solid var(--border-color-muted);
+}
+
+.tool-footer--error {
+  color: var(--error-foreground);
+}
+
+.tool-footer--results {
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+
+.tool-footer--diagnostics {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.session-error {
+  border: 1px solid var(--border-color-muted);
+  border-radius: 4px;
+  background-color: var(--input-background-muted);
+  padding: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-base);
+  color: var(--error-foreground);
+  margin-bottom: var(--spacing-md);
+}
+
+.tool-diagnostics__errors {
+  color: var(--error-foreground);
+}
+
+.tool-diagnostics__warnings {
+  color: var(--warning-foreground);
 }
 
 .tool-content a {
@@ -1358,9 +1424,9 @@ body.vscode-high-contrast {
   font-size: var(--font-size-small);
   line-height: 1.4;
   overflow-x: auto;
-  max-height: 300px;
   overflow-y: auto;
-  min-width: fit-content;
+  max-height: 300px;
+  tab-size: 2;
 }
 
 .diff-line-range {
@@ -1377,7 +1443,7 @@ body.vscode-high-contrast {
 .diff-line {
   display: flex;
   white-space: pre;
-  min-width: 100%;
+  min-width: max-content;
 }
 
 .diff-line--add {

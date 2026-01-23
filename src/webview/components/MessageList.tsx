@@ -17,6 +17,7 @@ interface MessageListProps {
   onCancelEdit?: () => void;
   onSubmitEdit?: (newText: string) => void;
   onEditTextChange?: (text: string) => void;
+  sessionError?: string | null;
 }
 
 export function MessageList(props: MessageListProps) {
@@ -198,6 +199,12 @@ export function MessageList(props: MessageListProps) {
         </For>
 
         <ThinkingIndicator when={props.isThinking} />
+        
+        <Show when={props.sessionError}>
+          <div class="session-error">
+            {props.sessionError}
+          </div>
+        </Show>
       </div>
     </div>
   );
