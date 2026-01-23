@@ -585,8 +585,16 @@ body {
   flex-shrink: 0;
 }
 
-.tool-text {
+.tool-header-text {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
   flex: 1;
+  overflow: hidden;
+}
+
+.tool-text {
   color: var(--foreground);
   font-size: var(--font-size-base);
   line-height: 20px;
@@ -652,6 +660,13 @@ body {
   color: color-mix(in oklab, var(--foreground) 60%, transparent);
   flex-shrink: 0;
   margin-left: auto;
+}
+
+.tool-sub-text {
+  font-size: 11px;
+  font-weight: 400;
+  color: color-mix(in oklab, var(--foreground) 50%, transparent);
+  flex-shrink: 0;
 }
 
 .tool-output-container {
@@ -1414,9 +1429,9 @@ body.vscode-high-contrast {
   font-size: var(--font-size-small);
   line-height: 1.4;
   overflow-x: auto;
-  max-height: 300px;
   overflow-y: auto;
-  min-width: fit-content;
+  max-height: 300px;
+  tab-size: 2;
 }
 
 .diff-line-range {
@@ -1433,7 +1448,7 @@ body.vscode-high-contrast {
 .diff-line {
   display: flex;
   white-space: pre;
-  min-width: 100%;
+  min-width: max-content;
 }
 
 .diff-line--add {
