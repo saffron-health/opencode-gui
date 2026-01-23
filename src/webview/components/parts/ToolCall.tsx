@@ -28,7 +28,7 @@ export function ToolCall(props: ToolCallProps) {
       <Match when={tool() === "read"}>
         <ReadToolCall {...props} />
       </Match>
-      <Match when={tool() === "edit"}>
+      <Match when={tool() === "edit" || tool() === "write"}>
         <EditToolCall {...props} />
       </Match>
       <Match when={tool() === "grep"}>
