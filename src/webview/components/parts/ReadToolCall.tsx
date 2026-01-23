@@ -6,6 +6,8 @@ import {
   getToolInputs,
   toRelativePath,
   splitFilePath,
+  usePermission,
+  ErrorFooter,
   type ToolState,
 } from "./ToolCallHelpers";
 
@@ -41,18 +43,7 @@ export function ReadToolCall(props: ReadToolCallProps) {
     return undefined;
   });
 
-  const permission = createMemo(() => {
-    const perms = props.pendingPermissions;
-    if (!perms) return undefined;
-    const callID = props.part.callID;
-    if (callID && perms.has(callID)) {
-      return perms.get(callID);
-    }
-    if (perms.has(props.part.id)) {
-      return perms.get(props.part.id);
-    }
-    return undefined;
-  });
+  const permission = usePermission(props.part, props.pendingPermissions);
 
   const Header = () => (
     <span class="tool-header-text">
@@ -77,18 +68,12 @@ export function ReadToolCall(props: ReadToolCallProps) {
 
   const Output = () => <pre class="tool-output">{state().output}</pre>;
 
-  const Footer = () => (
-    <Show when={state().error}>
-      <div class="tool-footer tool-footer--error">{state().error}</div>
-    </Show>
-  );
-
   return (
     <ToolCallTemplate
       icon={FileIcon}
       header={Header}
       output={state().output ? Output : undefined}
-      footer={state().error ? Footer : undefined}
+      footer={state().error ? () => <ErrorFooter error={state().error} /> : undefined}
       needsPermission={!!permission()}
       permission={permission()}
       onPermissionResponse={(response) => {

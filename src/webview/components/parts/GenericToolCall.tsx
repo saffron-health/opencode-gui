@@ -1,8 +1,8 @@
-import { Show, createMemo } from "solid-js";
+import { createMemo } from "solid-js";
 import type { MessagePart, Permission } from "../../types";
 import { ToolCallTemplate } from "./ToolCallTemplate";
 import { GenericToolIcon } from "./ToolCallIcons";
-import { type ToolState } from "./ToolCallHelpers";
+import { usePermission, ErrorFooter, type ToolState } from "./ToolCallHelpers";
 
 interface GenericToolCallProps {
   part: MessagePart;
@@ -18,18 +18,7 @@ export function GenericToolCall(props: GenericToolCallProps) {
   const state = () => props.part.state as ToolState;
   const tool = () => props.part.tool as string;
 
-  const permission = createMemo(() => {
-    const perms = props.pendingPermissions;
-    if (!perms) return undefined;
-    const callID = props.part.callID;
-    if (callID && perms.has(callID)) {
-      return perms.get(callID);
-    }
-    if (perms.has(props.part.id)) {
-      return perms.get(props.part.id);
-    }
-    return undefined;
-  });
+  const permission = usePermission(props.part, props.pendingPermissions);
 
   // Convert tool name to action form: "web_search" -> "Web searching"
   const displayText = createMemo(() => {
@@ -55,18 +44,12 @@ export function GenericToolCall(props: GenericToolCallProps) {
 
   const Output = () => <pre class="tool-output">{state().output}</pre>;
 
-  const Footer = () => (
-    <Show when={state().error}>
-      <div class="tool-footer tool-footer--error">{state().error}</div>
-    </Show>
-  );
-
   return (
     <ToolCallTemplate
       icon={GenericToolIcon}
       header={Header}
       output={state().output ? Output : undefined}
-      footer={state().error ? Footer : undefined}
+      footer={state().error ? () => <ErrorFooter error={state().error} /> : undefined}
       needsPermission={!!permission()}
       permission={permission()}
       onPermissionResponse={(response) => {

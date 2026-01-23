@@ -6,6 +6,8 @@ import {
   getToolInputs,
   toRelativePath,
   splitFilePath,
+  usePermission,
+  ErrorFooter,
   type ToolState,
 } from "./ToolCallHelpers";
 import { DiffViewer, getDiffStats } from "./DiffViewer";
@@ -49,18 +51,7 @@ export function EditToolCall(props: EditToolCallProps) {
     return { errors: errorCount, warnings: warningCount };
   });
 
-  const permission = createMemo(() => {
-    const perms = props.pendingPermissions;
-    if (!perms) return undefined;
-    const callID = props.part.callID;
-    if (callID && perms.has(callID)) {
-      return perms.get(callID);
-    }
-    if (perms.has(props.part.id)) {
-      return perms.get(props.part.id);
-    }
-    return undefined;
-  });
+  const permission = usePermission(props.part, props.pendingPermissions);
 
   const Header = () => (
     <>
@@ -107,13 +98,7 @@ export function EditToolCall(props: EditToolCallProps) {
 
   const Footer = () => (
     <>
-      <Show when={state().error}>
-        <div class="tool-footer tool-footer--error">
-          {state().error?.includes("interrupted")
-            ? "Interrupted"
-            : state().error}
-        </div>
-      </Show>
+      <ErrorFooter error={state().error} />
       <Show
         when={
           diagnosticsCount() &&

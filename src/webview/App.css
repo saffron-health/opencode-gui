@@ -725,11 +725,6 @@ body {
   margin-bottom: var(--spacing-md);
 }
 
-.tool-footer--diagnostics {
-  display: flex;
-  gap: var(--spacing-sm);
-}
-
 .tool-diagnostics__errors {
   color: var(--error-foreground);
 }

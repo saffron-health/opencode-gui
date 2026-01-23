@@ -1,8 +1,8 @@
-import { Show, createMemo } from "solid-js";
+import { Show } from "solid-js";
 import type { MessagePart, Permission } from "../../types";
 import { ToolCallTemplate } from "./ToolCallTemplate";
 import { TerminalIcon } from "./ToolCallIcons";
-import { getToolInputs, type ToolState } from "./ToolCallHelpers";
+import { getToolInputs, usePermission, ErrorFooter, type ToolState } from "./ToolCallHelpers";
 
 interface BashToolCallProps {
   part: MessagePart;
@@ -18,18 +18,7 @@ export function BashToolCall(props: BashToolCallProps) {
   const state = () => props.part.state as ToolState;
   const inputs = () => getToolInputs(state(), props.part);
 
-  const permission = createMemo(() => {
-    const perms = props.pendingPermissions;
-    if (!perms) return undefined;
-    const callID = props.part.callID;
-    if (callID && perms.has(callID)) {
-      return perms.get(callID);
-    }
-    if (perms.has(props.part.id)) {
-      return perms.get(props.part.id);
-    }
-    return undefined;
-  });
+  const permission = usePermission(props.part, props.pendingPermissions);
 
   const Header = () => {
     const description = inputs().description as string | undefined;
@@ -58,22 +47,12 @@ export function BashToolCall(props: BashToolCallProps) {
     <pre class="tool-output tool-output--bash">{state().output}</pre>
   );
 
-  const Footer = () => (
-    <Show when={state().error}>
-      <div class="tool-footer tool-footer--error">
-        {state().error?.includes("interrupted")
-          ? "Interrupted"
-          : state().error}
-      </div>
-    </Show>
-  );
-
   return (
     <ToolCallTemplate
       icon={TerminalIcon}
       header={Header}
       output={state().output ? Output : undefined}
-      footer={state().error ? Footer : undefined}
+      footer={state().error ? () => <ErrorFooter error={state().error} /> : undefined}
       defaultOpen={true}
       needsPermission={!!permission()}
       permission={permission()}
