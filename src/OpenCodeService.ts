@@ -44,7 +44,7 @@ export class OpenCodeService {
         console.log(`✓ Found workspace config at: ${configPath}`);
       } else {
         console.log(
-          "No workspace config found, OpenCode will use default/global config"
+          "No workspace config found, OpenCode will use default/global config",
         );
       }
 
@@ -64,7 +64,7 @@ export class OpenCodeService {
     } catch (error) {
       console.error("Failed to initialize OpenCode:", error);
       vscode.window.showErrorMessage(
-        `Failed to start OpenCode: ${(error as Error).message}`
+        `Failed to start OpenCode: ${(error as Error).message}`,
       );
       throw error;
     } finally {
@@ -88,7 +88,7 @@ export class OpenCodeService {
   }
 
   async getMessages(
-    sessionId: string
+    sessionId: string,
   ): Promise<Array<{ info: unknown; parts: unknown[] }>> {
     if (!this.opencode) {
       throw new Error("OpenCode not initialized");
@@ -100,7 +100,7 @@ export class OpenCodeService {
 
     if (result.error) {
       throw new Error(
-        `Failed to get messages: ${JSON.stringify(result.error)}`
+        `Failed to get messages: ${JSON.stringify(result.error)}`,
       );
     }
 

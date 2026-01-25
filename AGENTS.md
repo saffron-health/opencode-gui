@@ -30,3 +30,7 @@ VSCode extension with SolidJS webview. Two build targets:
 ## Publishing
 
 Use the `pnpm run publish` script to publish the extension to the VSCode and OVSX marketplaces.
+
+## Logging into gcloud
+
+CRITICAL: If you try to run a command get an error related to the user not being logged into Gcloud e.g. `{"error":"invalid_grant","error_description":"reauth related error (invalid_rapt)","error_uri":"https://support.google.com/a/answer/9368756","error_subtype":"invalid_rapt"}`, then you MUST instruct the user to log into gcloud before you can continue.

@@ -11,6 +11,8 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _sseConnections = new Map<string, { close: () => void }>();
   private _proxyFetchControllers = new Map<string, AbortController>();
+  private _webviewReady = false;
+  private _pendingMessages: HostMessage[] = [];
 
   constructor(
     private readonly _extensionUri: vscode.Uri,
@@ -27,6 +29,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     logger.info('resolveWebviewView called');
     
     this._view = webviewView;
+    this._webviewReady = false;
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -78,6 +81,30 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       case 'agent-changed':
         await this._handleAgentChanged(message.agent);
         break;
+      case 'open-file':
+        await this._handleOpenFile(message.url, message.startLine, message.endLine);
+        break;
+    }
+  }
+
+  private async _handleOpenFile(url: string, startLine?: number, endLine?: number) {
+    try {
+      const uri = vscode.Uri.parse(url);
+      const document = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(document, {
+        preview: true,
+      });
+      if (startLine !== undefined) {
+        const start = new vscode.Position(Math.max(startLine - 1, 0), 0);
+        const end = new vscode.Position(Math.max((endLine ?? startLine) - 1, 0), 0);
+        const range = new vscode.Range(start, end);
+        editor.selection = new vscode.Selection(range.start, range.end);
+        editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+      }
+    } catch (error) {
+      const logger = getLogger();
+      logger.error('[ViewProvider] Failed to open file', { url, error });
+      vscode.window.showErrorMessage('OpenCode: Failed to open file.');
     }
   }
 
@@ -106,6 +133,8 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         currentSessionMessages: messages as IncomingMessage[] | undefined,
         defaultAgent: this._globalState.get<string>(LAST_AGENT_KEY),
       });
+      this._webviewReady = true;
+      this._flushPendingMessages();
     } catch (error) {
       console.error('Error handling ready:', error);
       this._sendMessage({ type: 'error', message: `Failed to initialize: ${(error as Error).message}` });
@@ -116,6 +145,8 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         serverUrl: this._openCodeService.getServerUrl(),
         currentSessionId: undefined
       });
+      this._webviewReady = true;
+      this._flushPendingMessages();
     }
   }
 
@@ -344,6 +375,23 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   private _sendMessage(message: HostMessage) {
     if (this._view) {
       this._view.webview.postMessage(message);
+    }
+  }
+
+  public sendHostMessage(message: HostMessage) {
+    if (this._view && this._webviewReady) {
+      this._view.webview.postMessage(message);
+      return;
+    }
+    this._pendingMessages.push(message);
+  }
+
+  private _flushPendingMessages() {
+    if (!this._view || this._pendingMessages.length === 0) return;
+    const pending = this._pendingMessages;
+    this._pendingMessages = [];
+    for (const message of pending) {
+      this._sendMessage(message);
     }
   }
 

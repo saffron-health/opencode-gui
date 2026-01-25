@@ -168,6 +168,17 @@ export const HostMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("sseClosed"),
     id: z.string(),
   }),
+  z.object({
+    type: z.literal("editor-selection"),
+    filePath: z.string(),
+    fileUrl: z.string(),
+    selection: z
+      .object({
+        startLine: z.number(),
+        endLine: z.number(),
+      })
+      .optional(),
+  }),
 ]);
 export type HostMessage = z.infer<typeof HostMessageSchema>;
 
@@ -186,6 +197,12 @@ export const WebviewMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("agent-changed"),
     agent: z.string(),
+  }),
+  z.object({
+    type: z.literal("open-file"),
+    url: z.string(),
+    startLine: z.number().optional(),
+    endLine: z.number().optional(),
   }),
 ]);
 export type WebviewMessage = z.infer<typeof WebviewMessageSchema>;

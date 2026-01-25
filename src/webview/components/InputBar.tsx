@@ -17,6 +17,14 @@ interface InputBarProps {
   queuedMessages: QueuedMessage[];
   onRemoveFromQueue: (id: string) => void;
   onEditQueuedMessage: (id: string) => void;
+  attachments: InputAttachment[];
+  onRemoveAttachment: (id: string) => void;
+}
+
+interface InputAttachment {
+  id: string;
+  label: string;
+  title?: string;
 }
 
 export function InputBar(props: InputBarProps) {
@@ -134,6 +142,25 @@ export function InputBar(props: InputBarProps) {
         </div>
       </Show>
       <form class="input-container" onSubmit={handleSubmit} onClick={handleContainerClick}>
+        <Show when={props.attachments.length > 0}>
+          <div class="input-attachments">
+            <For each={props.attachments}>
+              {(attachment) => (
+                <div class="input-attachment" title={attachment.title ?? attachment.label}>
+                  <span class="input-attachment__text">{attachment.label}</span>
+                  <button
+                    type="button"
+                    class="input-attachment__remove"
+                    onClick={() => props.onRemoveAttachment(attachment.id)}
+                    aria-label="Remove attachment"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
         <textarea
           ref={inputRef!}
           class="prompt-input"

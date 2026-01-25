@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { OpenCodeService } from "./OpenCodeService";
 import { OpenCodeViewProvider } from "./OpenCodeViewProvider";
+import type { HostMessage } from "./shared/messages";
 
 let logger: vscode.LogOutputChannel;
 
@@ -47,6 +48,42 @@ export async function activate(context: vscode.ExtensionContext) {
       provider
     )
   );
+
+  const addSelectionDisposable = vscode.commands.registerCommand(
+    "opencode.addSelectionToPrompt",
+    async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showInformationMessage("OpenCode: No active editor selection.");
+        return;
+      }
+
+      const document = editor.document;
+      const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+      const filePath = workspaceFolder
+        ? vscode.workspace.asRelativePath(document.uri)
+        : document.uri.fsPath;
+      const fileUrl = document.uri.toString();
+
+      const selection = editor.selection;
+      const message: HostMessage = {
+        type: "editor-selection",
+        filePath,
+        fileUrl,
+        selection: selection.isEmpty
+          ? undefined
+          : {
+              startLine: selection.start.line + 1,
+              endLine: selection.end.line + 1,
+            },
+      };
+
+      await vscode.commands.executeCommand("workbench.view.extension.opencode");
+      provider.sendHostMessage(message);
+    }
+  );
+
+  context.subscriptions.push(addSelectionDisposable);
 
   // Cleanup on deactivation
   context.subscriptions.push(openCodeService);

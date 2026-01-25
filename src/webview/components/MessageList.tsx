@@ -157,7 +157,12 @@ export function MessageList(props: MessageListProps) {
               if (message.text) return message.text;
               if (message.parts) {
                 return message.parts
-                  .filter(p => p.type === "text" && p.text)
+                  .filter(
+                    (p) =>
+                      p.type === "text" &&
+                      p.text &&
+                      !(p as { synthetic?: boolean }).synthetic
+                  )
                   .map(p => p.text)
                   .join("\n");
               }

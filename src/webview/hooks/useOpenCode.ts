@@ -7,6 +7,10 @@ import {
   type Session,
   type Message as SDKMessage,
   type Part,
+  type TextPartInput,
+  type FilePartInput,
+  type AgentPartInput,
+  type SubtaskPartInput,
 } from "@opencode-ai/sdk/client";
 
 import { hasVscodeApi, vscode } from "../utils/vscode";
@@ -15,6 +19,7 @@ import { proxyEventSource } from "../utils/proxyEventSource";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
+export type PromptPartInput = TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput;
 
 interface GlobalConfig {
   serverUrl: string;
@@ -103,7 +108,12 @@ export function useOpenCode() {
   });
 
   // High-level helper to send a prompt
-  async function sendPrompt(sessionId: string, text: string, agent?: string | null) {
+  async function sendPrompt(
+    sessionId: string,
+    text: string,
+    agent?: string | null,
+    extraParts: PromptPartInput[] = []
+  ) {
     const c = client();
     if (!c) throw new Error("Not connected");
 
@@ -115,7 +125,7 @@ export function useOpenCode() {
       path: { id: sessionId },
       body: {
         model: { providerID, modelID },
-        parts: [{ type: "text", text }],
+        parts: [{ type: "text", text }, ...extraParts],
         ...(agent ? { agent } : {}),
       },
     });

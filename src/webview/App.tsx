@@ -5,14 +5,23 @@ import { TopBar } from "./components/TopBar";
 import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
 import { PermissionPrompt } from "./components/PermissionPrompt";
-import { useOpenCode, type Event as OpenCodeEvent, type Session as SDKSession, type Agent as SDKAgent } from "./hooks/useOpenCode";
+import { useOpenCode, type Event as OpenCodeEvent, type Session as SDKSession, type Agent as SDKAgent, type PromptPartInput } from "./hooks/useOpenCode";
 import { applyPartUpdate, applyMessageUpdate } from "./utils/messageUtils";
 import type { Message, Agent, Session, Permission, ContextInfo, FileChangesInfo, MessagePart, IncomingMessage } from "./types";
+import { parseHostMessage } from "./types";
 
 export interface QueuedMessage {
   id: string;
   text: string;
   agent: string | null;
+  attachments: SelectionAttachment[];
+}
+interface SelectionAttachment {
+  id: string;
+  filePath: string;
+  fileUrl: string;
+  startLine?: number;
+  endLine?: number;
 }
 import { vscode } from "./utils/vscode";
 
@@ -34,6 +43,9 @@ function App() {
   // Per-session drafts and agent selection
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
+  const [selectionAttachmentsBySession, setSelectionAttachmentsBySession] = createSignal<
+    Map<string, SelectionAttachment[]>
+  >(new Map());
   
   // Pending permissions
   const [pendingPermissions, setPendingPermissions] = createSignal<Map<string, Permission>>(new Map());
@@ -95,6 +107,72 @@ function App() {
       return next;
     });
   };
+
+  const selectionAttachments = () => selectionAttachmentsBySession().get(sessionKey()) || [];
+  const setSelectionAttachmentsForKey = (
+    key: string,
+    value: SelectionAttachment[] | ((prev: SelectionAttachment[]) => SelectionAttachment[])
+  ) => {
+    setSelectionAttachmentsBySession((prev) => {
+      const next = new Map(prev);
+      const current = next.get(key) || [];
+      const updated = typeof value === "function" ? value(current) : value;
+      next.set(key, updated);
+      return next;
+    });
+  };
+  const setSelectionAttachments = (
+    value: SelectionAttachment[] | ((prev: SelectionAttachment[]) => SelectionAttachment[])
+  ) => {
+    setSelectionAttachmentsForKey(sessionKey(), value);
+  };
+
+  const getFilename = (filePath: string) => {
+    const normalized = filePath.replace(/\\/g, "/");
+    const parts = normalized.split("/");
+    return parts[parts.length - 1] || filePath;
+  };
+
+  const formatSelectionLabel = (attachment: SelectionAttachment) => {
+    const filename = getFilename(attachment.filePath);
+    if (attachment.startLine && attachment.endLine && attachment.startLine !== attachment.endLine) {
+      return `${filename} L${attachment.startLine}-${attachment.endLine}`;
+    }
+    if (attachment.startLine) {
+      return `${filename} L${attachment.startLine}`;
+    }
+    return filename;
+  };
+
+  const buildSelectionParts = (attachments: SelectionAttachment[]): PromptPartInput[] => {
+    return attachments.map((attachment) => {
+      const url = new URL(attachment.fileUrl);
+      if (attachment.startLine) {
+        const start = attachment.endLine
+          ? Math.min(attachment.startLine, attachment.endLine)
+          : attachment.startLine;
+        const end = attachment.endLine
+          ? Math.max(attachment.startLine, attachment.endLine)
+          : attachment.startLine;
+        url.searchParams.set("start", String(start));
+        url.searchParams.set("end", String(end));
+      }
+      return {
+        type: "file" as const,
+        mime: "text/plain",
+        url: url.toString(),
+        filename: getFilename(attachment.filePath),
+      };
+    });
+  };
+
+  const attachmentChips = createMemo(() =>
+    selectionAttachments().map((attachment) => ({
+      id: attachment.id,
+      label: formatSelectionLabel(attachment),
+      title: attachment.filePath,
+    }))
+  );
 
   const hasMessages = createMemo(() =>
     messages().some((m) => m.type === "user" || m.type === "assistant")
@@ -193,23 +271,76 @@ function App() {
       const r = raw as Record<string, unknown>;
       const m = (r?.info ?? r) as Record<string, unknown>;
       const parts = (r?.parts ?? m?.parts ?? []) as MessagePart[];
+      const textParts = Array.isArray(parts)
+        ? parts.filter(
+            (p) =>
+              p?.type === "text" &&
+              typeof p.text === "string" &&
+              !(p as { synthetic?: boolean }).synthetic &&
+              !(p as { ignored?: boolean }).ignored
+          )
+        : [];
       const text =
         (m?.text as string) ??
-        (Array.isArray(parts)
-          ? parts
-              .filter((p) => p?.type === "text" && typeof p.text === "string")
-              .map((p) => p.text)
-              .join("\n")
-          : "");
+        (textParts.length ? textParts.map((p) => p.text as string).join("\n") : "");
       const role = (m?.role as string) ?? "assistant";
+      let normalizedParts = parts;
+      if (role === "user") {
+        normalizedParts = parts.filter(
+          (p) =>
+            p.type !== "text" ||
+            (!(p as { synthetic?: boolean }).synthetic && !(p as { ignored?: boolean }).ignored)
+        );
+      }
       return {
         id: m.id as string,
         type: role === "user" ? "user" : "assistant",
         text,
-        parts,
+        parts: normalizedParts,
       } as Message;
     });
   }
+
+  onMount(() => {
+    const handleHostMessage = (event: MessageEvent) => {
+      const parsed = parseHostMessage(event.data);
+      if (!parsed) return;
+      if (parsed.type !== "editor-selection") return;
+
+      const startLine = parsed.selection?.startLine;
+      const endLine = parsed.selection?.endLine ?? startLine;
+      const normalizedStart =
+        startLine !== undefined && endLine !== undefined ? Math.min(startLine, endLine) : startLine;
+      const normalizedEnd =
+        startLine !== undefined && endLine !== undefined ? Math.max(startLine, endLine) : endLine;
+
+      setSelectionAttachments((prev) => {
+        if (
+          prev.some(
+            (item) =>
+              item.fileUrl === parsed.fileUrl &&
+              item.startLine === normalizedStart &&
+              item.endLine === normalizedEnd
+          )
+        ) {
+          return prev;
+        }
+        return [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            filePath: parsed.filePath,
+            fileUrl: parsed.fileUrl,
+            startLine: normalizedStart,
+            endLine: normalizedEnd,
+          },
+        ];
+      });
+    };
+
+    window.addEventListener("message", handleHostMessage);
+    onCleanup(() => window.removeEventListener("message", handleHostMessage));
+  });
 
   // Initialize from initData when SDK is ready
   createEffect(async () => {
@@ -506,6 +637,9 @@ function App() {
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
       : null;
+    const attachmentsKey = sessionKey();
+    const attachments = selectionAttachments();
+    const extraParts = buildSelectionParts(attachments);
 
     // Ensure we have a session
     let sessionId = currentSessionId();
@@ -531,7 +665,10 @@ function App() {
     setIsThinking(sessionId, true);
 
     try {
-      await sendPrompt(sessionId, text, agent);
+      await sendPrompt(sessionId, text, agent, extraParts);
+      if (attachments.length > 0) {
+        setSelectionAttachmentsForKey(attachmentsKey, []);
+      }
     } catch (err) {
       console.error("[App] sendPrompt failed:", err);
       const errorMessage = (err as Error).message;
@@ -567,7 +704,8 @@ function App() {
     setIsThinking(sessionId, true);
     
     try {
-      await sendPrompt(sessionId, next.text, next.agent);
+      const extraParts = buildSelectionParts(next.attachments);
+      await sendPrompt(sessionId, next.text, next.agent, extraParts);
     } catch (err) {
       console.error("[App] Queue sendPrompt failed:", err);
       const errorMessage = (err as Error).message;
@@ -597,15 +735,21 @@ function App() {
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
       : null;
+    const attachmentsKey = sessionKey();
+    const attachments = selectionAttachments();
     
     const queuedMessage: QueuedMessage = {
       id: crypto.randomUUID(),
       text,
       agent,
+      attachments,
     };
     
     setMessageQueue((prev) => [...prev, queuedMessage]);
     setInput("");
+    if (attachments.length > 0) {
+      setSelectionAttachmentsForKey(attachmentsKey, []);
+    }
   };
 
   const handleRemoveFromQueue = (id: string) => {
@@ -622,10 +766,15 @@ function App() {
     setMessageQueue(queue.slice(0, index));
     // Put the message text in the input
     setInput(message.text);
+    setSelectionAttachments(message.attachments);
     // Set the agent if different
     if (message.agent) {
       setSelectedAgent(message.agent);
     }
+  };
+
+  const handleRemoveAttachment = (id: string) => {
+    setSelectionAttachments((prev) => prev.filter((item) => item.id !== id));
   };
 
   const handleSessionSelect = async (sessionId: string) => {
@@ -765,7 +914,7 @@ function App() {
 
     try {
       await revertToMessage(sessionId, messageId);
-      await sendPrompt(sessionId, newText.trim(), agent);
+      await sendPrompt(sessionId, newText.trim(), agent, []);
     } catch (err) {
       console.error("[App] Failed to edit message:", err);
       const errorMessage = (err as Error).message;
@@ -870,6 +1019,8 @@ function App() {
           queuedMessages={messageQueue()}
           onRemoveFromQueue={handleRemoveFromQueue}
           onEditQueuedMessage={handleEditQueuedMessage}
+          attachments={attachmentChips()}
+          onRemoveAttachment={handleRemoveAttachment}
         />
       </Show>
 
@@ -922,6 +1073,8 @@ function App() {
           queuedMessages={messageQueue()}
           onRemoveFromQueue={handleRemoveFromQueue}
           onEditQueuedMessage={handleEditQueuedMessage}
+          attachments={attachmentChips()}
+          onRemoveAttachment={handleRemoveAttachment}
         />
       </Show>
     </div>

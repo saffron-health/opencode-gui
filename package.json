@@ -35,6 +35,22 @@
           "name": ""
         }
       ]
+    },
+    "commands": [
+      {
+        "command": "opencode.addSelectionToPrompt",
+        "title": "OpenCode: Add Selection to Prompt",
+        "category": "OpenCode"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "opencode.addSelectionToPrompt",
+          "when": "editorTextFocus",
+          "group": "navigation@9"
+        }
+      ]
     }
   },
   "scripts": {
@@ -54,7 +70,8 @@
     "test:e2e:ui": "playwright test --ui",
     "demo:standalone": "./scripts/demo-standalone.sh",
     "package": "vsce package",
-    "publish": "vsce publish --skip-duplicate --no-dependencies && source .env && ovsx publish -p \"$OPEN_VSX_KEY\" --no-dependencies"
+    "publish": "vsce publish --skip-duplicate --no-dependencies && source .env && ovsx publish -p \"$OPEN_VSX_KEY\" --no-dependencies",
+    "google-login": "gcloud auth application-default login"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
