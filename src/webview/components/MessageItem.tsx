@@ -1,6 +1,6 @@
 
 import { For, Show, createMemo } from "solid-js";
-import type { Message, Permission } from "../types";
+import type { Message, Permission, MessagePart } from "../types";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 import { Streamdown } from "../lib/streamdown";
 import { vscode } from "../utils/vscode";

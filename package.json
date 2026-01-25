@@ -39,7 +39,7 @@
     "commands": [
       {
         "command": "opencode.addSelectionToPrompt",
-        "title": "OpenCode: Add Selection to Prompt",
+        "title": "Add Selection to Prompt",
         "category": "OpenCode"
       }
     ],

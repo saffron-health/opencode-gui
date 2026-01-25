@@ -107,7 +107,7 @@ export class OpenCodeService {
     return (result.data || []) as Array<{ info: unknown; parts: unknown[] }>;
   }
 
-  async dispose(): Promise<void> {
+  dispose(): void {
     if (this.opencode) {
       this.opencode.server.close();
       this.opencode = null;

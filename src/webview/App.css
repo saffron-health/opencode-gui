@@ -272,7 +272,7 @@ body {
 .message-attachments {
   display: flex;
   flex-wrap: wrap;
-  padding-top: 2px 0;
+  padding-top: 2px;
 }
 
 .message-attachment {
