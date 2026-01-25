@@ -3,13 +3,14 @@ import { OpenCodeService } from './OpenCodeService';
 import { getLogger } from './extension';
 import type { HostMessage, WebviewMessage, IncomingMessage } from './shared/messages';
 import { parseWebviewMessage } from './shared/messages';
+import { SseClient, SseConnectionState, SseEvent, SseLogger } from './transport/SseClient';
 
 const LAST_AGENT_KEY = 'opencode.lastUsedAgent';
 
 export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'opencode.chatView';
   private _view?: vscode.WebviewView;
-  private _sseConnections = new Map<string, { close: () => void }>();
+  private _sseClients = new Map<string, SseClient>();
   private _proxyFetchControllers = new Map<string, AbortController>();
   private _webviewReady = false;
   private _pendingMessages: HostMessage[] = [];
@@ -156,7 +157,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     logger.info('[ViewProvider] Agent selection persisted:', agent);
   }
 
-  // SSE Proxy handlers
+  // SSE Proxy handlers using resilient SseClient
   private _handleSSESubscribe(message: { id: string; url: string }) {
     const { id, url } = message;
     const logger = getLogger();
@@ -187,76 +188,45 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    // Close existing connection with this id
     this._handleSSEClose(id);
 
-    const controller = new AbortController();
+    // Create logger adapter for SseClient
+    const sseLogger: SseLogger = {
+      info: (msg, ...args) => logger.info(msg, ...args),
+      warn: (msg, ...args) => logger.warn(msg, ...args),
+      error: (msg, ...args) => logger.error(msg, ...args),
+    };
 
-    fetch(url, {
-      headers: { Accept: 'text/event-stream' },
-      signal: controller.signal,
-    })
-      .then(async (res) => {
-        if (!res.ok || !res.body) {
-          this._sendMessage({ type: 'sseError', id, error: `SSE connection failed: ${res.status}` } as HostMessage);
-          return;
+    const client = new SseClient(url, {
+      onEvent: (event: SseEvent) => {
+        this._sendMessage({ type: 'sseEvent', id, data: event.data } as HostMessage);
+      },
+      onStateChange: (state: SseConnectionState) => {
+        logger.info('[ViewProvider] SSE state change', { id, state });
+        if (state.status === 'closed') {
+          this._sendMessage({ type: 'sseClosed', id } as HostMessage);
+          this._sseClients.delete(id);
         }
+      },
+      onError: (error: Error) => {
+        logger.error('[ViewProvider] SSE unrecoverable error', { id, error: error.message });
+        this._sendMessage({ type: 'sseError', id, error: error.message } as HostMessage);
+        this._sseClients.delete(id);
+      },
+      logger: sseLogger,
+    });
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        const processChunk = async () => {
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) {
-                this._sendMessage({ type: 'sseClosed', id } as HostMessage);
-                this._sseConnections.delete(id);
-                break;
-              }
-
-              buffer += decoder.decode(value, { stream: true });
-
-              const messages = buffer.split('\n\n');
-              buffer = messages.pop() || '';
-
-              for (const msg of messages) {
-                const lines = msg.split('\n');
-                for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                    const data = line.slice(6);
-                    this._sendMessage({ type: 'sseEvent', id, data } as HostMessage);
-                  }
-                }
-              }
-            }
-          } catch (err) {
-            if ((err as Error).name !== 'AbortError') {
-              this._sendMessage({ type: 'sseError', id, error: String((err as Error)?.message ?? err) } as HostMessage);
-            }
-            this._sseConnections.delete(id);
-          }
-        };
-
-        processChunk();
-      })
-      .catch((err) => {
-        if ((err as Error).name !== 'AbortError') {
-          logger.error('[ViewProvider] SSE connection failed', { url, err });
-          this._sendMessage({ type: 'sseError', id, error: String((err as Error)?.message ?? err) } as HostMessage);
-        }
-        this._sseConnections.delete(id);
-      });
-
-    this._sseConnections.set(id, { close: () => controller.abort() });
-    logger.info('[ViewProvider] SSE subscription started:', id);
+    this._sseClients.set(id, client);
+    client.connect();
+    logger.info('[ViewProvider] SSE subscription started with resilient client:', id);
   }
 
   private _handleSSEClose(id: string) {
-    const conn = this._sseConnections.get(id);
-    if (conn) {
-      conn.close();
-      this._sseConnections.delete(id);
+    const client = this._sseClients.get(id);
+    if (client) {
+      client.close();
+      this._sseClients.delete(id);
     }
   }
 
