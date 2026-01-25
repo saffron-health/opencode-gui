@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   HostMessageSchema,
   WebviewMessageSchema,
@@ -91,30 +91,24 @@ describe("SessionSchema", () => {
 });
 
 describe("PermissionSchema", () => {
-  it("parses permission with string pattern", () => {
+  it("parses permission with patterns", () => {
     const perm = {
       id: "perm1",
-      type: "file.write",
-      pattern: "*.ts",
+      permission: "file.write",
+      patterns: ["*.ts"],
       sessionID: "s1",
-      messageID: "m1",
-      title: "Write TypeScript files",
       metadata: { path: "/home/user/file.ts" },
-      time: { created: 1000 },
+      tool: { messageID: "m1", callID: "c1" },
     };
     expect(PermissionSchema.parse(perm)).toEqual(perm);
   });
 
-  it("parses permission with array pattern", () => {
+  it("parses permission without optional fields", () => {
     const perm = {
       id: "perm2",
-      type: "file.write",
-      pattern: ["*.ts", "*.js"],
+      permission: "file.write",
       sessionID: "s1",
-      messageID: "m1",
-      title: "Write files",
       metadata: {},
-      time: { created: 1000 },
     };
     expect(PermissionSchema.parse(perm)).toEqual(perm);
   });
@@ -177,14 +171,18 @@ describe("parseHostMessage", () => {
   });
 
   it("returns null for invalid input", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = parseHostMessage({ type: "invalid" });
     expect(result).toBeNull();
+    vi.restoreAllMocks();
   });
 
   it("returns null for non-object input", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(parseHostMessage("not an object")).toBeNull();
     expect(parseHostMessage(null)).toBeNull();
     expect(parseHostMessage(undefined)).toBeNull();
+    vi.restoreAllMocks();
   });
 });
 
@@ -195,12 +193,16 @@ describe("parseWebviewMessage", () => {
   });
 
   it("returns null for invalid input", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = parseWebviewMessage({ type: "invalid" });
     expect(result).toBeNull();
+    vi.restoreAllMocks();
   });
 
   it("returns null for missing required fields", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = parseWebviewMessage({ type: "agent-changed" });
     expect(result).toBeNull();
+    vi.restoreAllMocks();
   });
 });

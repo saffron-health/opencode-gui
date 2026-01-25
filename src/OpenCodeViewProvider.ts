@@ -204,7 +204,27 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       },
       onStateChange: (state: SseConnectionState) => {
         logger.info('[ViewProvider] SSE state change', { id, state });
-        if (state.status === 'closed') {
+        
+        // Send status to webview for observability
+        if (state.status === 'connecting') {
+          this._sendMessage({ type: 'sseStatus', id, status: 'connecting' } as HostMessage);
+        } else if (state.status === 'connected') {
+          this._sendMessage({ type: 'sseStatus', id, status: 'connected' } as HostMessage);
+        } else if (state.status === 'reconnecting') {
+          this._sendMessage({ 
+            type: 'sseStatus', 
+            id, 
+            status: 'reconnecting', 
+            attempt: state.attempt, 
+            nextRetryMs: state.nextRetryMs 
+          } as HostMessage);
+        } else if (state.status === 'closed') {
+          this._sendMessage({ 
+            type: 'sseStatus', 
+            id, 
+            status: 'closed', 
+            reason: state.reason 
+          } as HostMessage);
           this._sendMessage({ type: 'sseClosed', id } as HostMessage);
           this._sseClients.delete(id);
         }

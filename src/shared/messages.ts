@@ -169,6 +169,14 @@ export const HostMessageSchema = z.discriminatedUnion("type", [
     id: z.string(),
   }),
   z.object({
+    type: z.literal("sseStatus"),
+    id: z.string(),
+    status: z.enum(["connecting", "connected", "reconnecting", "closed"]),
+    attempt: z.number().optional(),
+    nextRetryMs: z.number().optional(),
+    reason: z.enum(["aborted", "error", "manual"]).optional(),
+  }),
+  z.object({
     type: z.literal("editor-selection"),
     filePath: z.string(),
     fileUrl: z.string(),

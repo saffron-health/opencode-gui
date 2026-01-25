@@ -21,6 +21,13 @@ import { proxyEventSource } from "../utils/proxyEventSource";
 export type { Event, Agent, Session, SDKMessage, Part };
 export type PromptPartInput = TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput;
 
+export type SSEStatus = {
+  status: "connecting" | "connected" | "reconnecting" | "closed";
+  attempt?: number;
+  nextRetryMs?: number;
+  reason?: "aborted" | "error" | "manual";
+};
+
 interface GlobalConfig {
   serverUrl: string;
   workspaceRoot?: string;
@@ -133,7 +140,10 @@ export function useOpenCode() {
 
   // Subscribe to events for the workspace through the extension proxy
   // (native EventSource has CORS issues in webview)
-  function subscribeToEvents(onEvent: (event: Event) => void): () => void {
+  function subscribeToEvents(
+    onEvent: (event: Event) => void,
+    onStatus?: (status: SSEStatus) => void
+  ): () => void {
     const baseUrl = serverUrl();
     const dir = workspaceRoot();
     if (!baseUrl) throw new Error("Not connected");
@@ -155,7 +165,8 @@ export function useOpenCode() {
       },
       (err) => {
         console.error("[SSE] EventSource error:", err);
-      }
+      },
+      onStatus
     );
   }
 

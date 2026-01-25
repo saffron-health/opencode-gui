@@ -2,10 +2,17 @@ import { hasVscodeApi, vscode } from "./vscode";
 
 type SSEEventHandler = (data: string) => void;
 type SSEErrorHandler = (error: Error) => void;
+type SSEStatusHandler = (status: {
+  status: "connecting" | "connected" | "reconnecting" | "closed";
+  attempt?: number;
+  nextRetryMs?: number;
+  reason?: "aborted" | "error" | "manual";
+}) => void;
 
 interface ProxySSESubscription {
   onMessage: SSEEventHandler;
   onError?: SSEErrorHandler;
+  onStatus?: SSEStatusHandler;
 }
 
 const activeSubscriptions = new Map<string, ProxySSESubscription>();
@@ -30,6 +37,12 @@ window.addEventListener("message", (event) => {
   } else if (message?.type === "sseClosed") {
     const { id } = message;
     activeSubscriptions.delete(id);
+  } else if (message?.type === "sseStatus") {
+    const { id, status, attempt, nextRetryMs, reason } = message;
+    const sub = activeSubscriptions.get(id);
+    if (sub?.onStatus) {
+      sub.onStatus({ status, attempt, nextRetryMs, reason });
+    }
   }
 });
 
@@ -49,11 +62,19 @@ window.addEventListener("beforeunload", () => {
 export function proxyEventSource(
   url: string,
   onMessage: SSEEventHandler,
-  onError?: SSEErrorHandler
+  onError?: SSEErrorHandler,
+  onStatus?: SSEStatusHandler
 ): () => void {
   // Use native EventSource when running outside VSCode
   if (!hasVscodeApi) {
     const eventSource = new EventSource(url);
+    
+    // Simulate status callbacks for native EventSource
+    onStatus?.({ status: "connecting" });
+    
+    eventSource.onopen = () => {
+      onStatus?.({ status: "connected" });
+    };
     eventSource.onmessage = (event) => {
       onMessage(event.data);
     };
@@ -62,12 +83,13 @@ export function proxyEventSource(
     };
     return () => {
       eventSource.close();
+      onStatus?.({ status: "closed", reason: "manual" });
     };
   }
 
   const id = crypto.randomUUID();
 
-  activeSubscriptions.set(id, { onMessage, onError });
+  activeSubscriptions.set(id, { onMessage, onError, onStatus });
 
   vscode.postMessage({
     type: "sseSubscribe",
