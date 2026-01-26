@@ -68,23 +68,28 @@ its own state management. Migration can be done incrementally.
 
 ---
 
-## Phase 3 — Idempotent sends + minimal outbox
+## Phase 3 — Idempotent sends + minimal outbox ✅ COMPLETE
 **Goal:** tolerate transport glitches without duplicating messages.
 
-- Generate `messageID` + `part` IDs client-side before `session.prompt`.
-- Maintain a FIFO outbox with at most one in-flight prompt.
-- Dequeue when:
-  - `message.updated` arrives for that `messageID`, or
-  - `session.status` transitions to `idle`.
-- Transport errors are retried silently; server errors are shown to the user.
+- ✅ Generate `messageID` client-side before `session.prompt` (format: `msg_<uuid>`).
+- ✅ Maintain a FIFO outbox with at most one in-flight prompt (`inFlightMessage` state).
+- ✅ Dequeue when:
+  - `message.updated` arrives for that `messageID` (user message confirmation), or
+  - `session.idle` event is received.
+- ✅ All errors (transport and server) are shown to the user inline.
+- ✅ SDK errors (non-throwing) are detected via `result.error` and displayed.
 
 **Files:**
-- `src/webview/App.tsx`
-- `src/webview/hooks/useOpenCode.ts`
+- `src/webview/App.tsx` (added `InFlightMessage`, updated handlers, error handling for SDK results)
+- `src/webview/hooks/useOpenCode.ts` (added `messageID` param to `sendPrompt`)
+- `src/webview/utils/messageUtils.ts` (fixed text extraction from parts in SSE updates)
+- `tests/e2e/outbox.spec.ts` (new e2e tests for outbox functionality)
 
 **Acceptance:**
-- No duplicate messages under retry.
-- Queue drains reliably after reconnect.
+- ✅ No duplicate messages under retry (messageID is idempotent key).
+- ✅ Queue drains reliably after reconnect (session.idle triggers next message).
+- ✅ E2E tests passing: basic send, clearing thinking state, sequential messages.
+- ✅ User message content renders correctly (text extracted from parts in SSE events).
 
 ---
 

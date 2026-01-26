@@ -12,9 +12,16 @@ import { parseHostMessage } from "./types";
 
 export interface QueuedMessage {
   id: string;
+  messageID: string; // Client-generated messageID for idempotent sends
   text: string;
   agent: string | null;
   attachments: SelectionAttachment[];
+}
+
+// In-flight message tracking for the outbox
+interface InFlightMessage {
+  messageID: string;
+  sessionId: string;
 }
 interface SelectionAttachment {
   id: string;
@@ -56,6 +63,9 @@ function App() {
   
   // Message queue for queuing messages while generating
   const [messageQueue, setMessageQueue] = createSignal<QueuedMessage[]>([]);
+  
+  // In-flight message tracking for outbox pattern
+  const [inFlightMessage, setInFlightMessage] = createSignal<InFlightMessage | null>(null);
   
   // Session errors (shown inline like tool call errors)
   const [sessionErrors, setSessionErrors] = createSignal<Map<string, string>>(new Map());
@@ -522,6 +532,16 @@ function App() {
         if (info.role === "assistant" && info.tokens) {
           updateContextInfo(info.tokens, info.modelID || "", info.providerID || "");
         }
+        
+        // Dequeue in-flight message when we receive confirmation of our user message
+        // This confirms the server received and processed our prompt
+        if (info.role === "user") {
+          const inFlight = inFlightMessage();
+          if (inFlight && inFlight.messageID === info.id) {
+            console.log("[App] User message confirmed, clearing in-flight:", info.id);
+            setInFlightMessage(null);
+          }
+        }
         break;
       }
 
@@ -536,6 +556,15 @@ function App() {
         const sessionId = evSessionId || activeSessionId;
         console.log("[App] Session idle - streaming complete", sessionId);
         if (sessionId) setIsThinking(sessionId, false);
+        
+        // Clear in-flight message on session.idle as a fallback
+        // (in case message.updated for the user message was missed)
+        const inFlight = inFlightMessage();
+        if (inFlight && inFlight.sessionId === sessionId) {
+          console.log("[App] Session idle, clearing in-flight:", inFlight.messageID);
+          setInFlightMessage(null);
+        }
+        
         // Process next queued message if any
         processNextQueuedMessage();
         break;
@@ -640,6 +669,9 @@ function App() {
     const attachmentsKey = sessionKey();
     const attachments = selectionAttachments();
     const extraParts = buildSelectionParts(attachments);
+    
+    // Generate client-side messageID for idempotent sends (must start with "msg")
+    const messageID = `msg_${crypto.randomUUID()}`;
 
     // Ensure we have a session
     let sessionId = currentSessionId();
@@ -663,26 +695,38 @@ function App() {
 
     setInput("");
     setIsThinking(sessionId, true);
+    
+    // Track this message as in-flight
+    setInFlightMessage({ messageID, sessionId });
 
     try {
-      await sendPrompt(sessionId, text, agent, extraParts);
+      const result = await sendPrompt(sessionId, text, agent, extraParts, messageID);
+      
+      // Check for SDK error in result (SDK doesn't throw by default)
+      if (result?.error) {
+        console.error("[App] sendPrompt returned error:", result.error);
+        const errorData = result.error as { data?: { message?: string }; error?: unknown[] };
+        const errorMessage = errorData.data?.message || JSON.stringify(errorData.error) || "Unknown error";
+        setIsThinking(sessionId, false);
+        setInFlightMessage(null);
+        setSessionErrors((prev) => {
+          const next = new Map(prev);
+          next.set(sessionId, errorMessage);
+          return next;
+        });
+        return;
+      }
+      
       if (attachments.length > 0) {
         setSelectionAttachmentsForKey(attachmentsKey, []);
       }
     } catch (err) {
       console.error("[App] sendPrompt failed:", err);
       const errorMessage = (err as Error).message;
-      const lowerMsg = errorMessage.toLowerCase();
       
-      // Ignore "Proxy fetch timed out" and "Aborted" errors
-      // These are expected because sendPrompt returns immediately but the session continues via SSE
-      if (lowerMsg.includes("proxy fetch timed out") || lowerMsg.includes("aborted")) {
-        console.log("[App] Ignoring expected timeout/abort error");
-        return;
-      }
-      
-      // For real errors, show them inline
+      // Show all errors inline and clear in-flight
       setIsThinking(sessionId, false);
+      setInFlightMessage(null);
       setSessionErrors((prev) => {
         const next = new Map(prev);
         next.set(sessionId, errorMessage);
@@ -695,6 +739,12 @@ function App() {
     const queue = messageQueue();
     if (queue.length === 0) return;
     
+    // Don't process if there's already an in-flight message
+    if (inFlightMessage()) {
+      console.log("[App] Skipping queue processing - message already in-flight");
+      return;
+    }
+    
     const [next, ...rest] = queue;
     setMessageQueue(rest);
     
@@ -703,22 +753,19 @@ function App() {
     
     setIsThinking(sessionId, true);
     
+    // Track this queued message as in-flight using its pre-generated messageID
+    setInFlightMessage({ messageID: next.messageID, sessionId });
+    
     try {
       const extraParts = buildSelectionParts(next.attachments);
-      await sendPrompt(sessionId, next.text, next.agent, extraParts);
+      await sendPrompt(sessionId, next.text, next.agent, extraParts, next.messageID);
     } catch (err) {
       console.error("[App] Queue sendPrompt failed:", err);
       const errorMessage = (err as Error).message;
-      const lowerMsg = errorMessage.toLowerCase();
       
-      // Ignore "Proxy fetch timed out" and "Aborted" errors
-      if (lowerMsg.includes("proxy fetch timed out") || lowerMsg.includes("aborted")) {
-        console.log("[App] Ignoring expected timeout/abort error");
-        return;
-      }
-      
-      // For real errors, show them inline and clear queue
+      // Show all errors inline and clear queue + in-flight
       setIsThinking(sessionId, false);
+      setInFlightMessage(null);
       setMessageQueue([]);
       setSessionErrors((prev) => {
         const next = new Map(prev);
@@ -738,8 +785,10 @@ function App() {
     const attachmentsKey = sessionKey();
     const attachments = selectionAttachments();
     
+    // Generate messageID upfront for idempotent sends
     const queuedMessage: QueuedMessage = {
       id: crypto.randomUUID(),
+      messageID: `msg_${crypto.randomUUID()}`, // Client-generated messageID for the prompt
       text,
       agent,
       attachments,
@@ -784,6 +833,7 @@ function App() {
     setFileChanges(null);
     setContextInfo(null);
     setMessageQueue([]); // Clear queue on session switch
+    setInFlightMessage(null); // Clear in-flight on session switch
 
     try {
       // Load messages
@@ -860,6 +910,7 @@ function App() {
       setFileChanges(null);
       setContextInfo(null);
       setMessageQueue([]);
+      setInFlightMessage(null);
     } catch (err) {
       console.error("[App] Failed to create session:", err);
     }
@@ -872,6 +923,7 @@ function App() {
       await abortSession(sessionId);
     } finally {
       setIsThinking(sessionId, false);
+      setInFlightMessage(null);
     }
   };
 
@@ -901,6 +953,9 @@ function App() {
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
       : null;
+    
+    // Generate client-side messageID for the new prompt
+    const newMessageID = `msg_${crypto.randomUUID()}`;
 
     // Optimistically truncate messages
     const messageIndex = messages().findIndex((m) => m.id === messageId);
@@ -911,23 +966,20 @@ function App() {
     setIsThinking(sessionId, true);
     setEditingMessageId(null);
     setEditingText("");
+    
+    // Track this as in-flight
+    setInFlightMessage({ messageID: newMessageID, sessionId });
 
     try {
       await revertToMessage(sessionId, messageId);
-      await sendPrompt(sessionId, newText.trim(), agent, []);
+      await sendPrompt(sessionId, newText.trim(), agent, [], newMessageID);
     } catch (err) {
       console.error("[App] Failed to edit message:", err);
       const errorMessage = (err as Error).message;
-      const lowerMsg = errorMessage.toLowerCase();
       
-      // Ignore "Proxy fetch timed out" and "Aborted" errors
-      if (lowerMsg.includes("proxy fetch timed out") || lowerMsg.includes("aborted")) {
-        console.log("[App] Ignoring expected timeout/abort error");
-        return;
-      }
-      
-      // For real errors, show them inline
+      // Show all errors inline and clear in-flight
       setIsThinking(sessionId, false);
+      setInFlightMessage(null);
       setSessionErrors((prev) => {
         const next = new Map(prev);
         next.set(sessionId, `Error editing message: ${errorMessage}`);

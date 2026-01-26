@@ -65,7 +65,7 @@
     "dev": "vite",
     "dev:standalone": "vite --open /src/webview/standalone.html",
     "uikit": "vite --open /src/webview/uikit.html",
-    "test": "vitest run",
+    "test": "vitest run && playwright test",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "demo:standalone": "./scripts/demo-standalone.sh",

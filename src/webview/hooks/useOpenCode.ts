@@ -115,11 +115,13 @@ export function useOpenCode() {
   });
 
   // High-level helper to send a prompt
+  // Accepts optional messageID for idempotent sends
   async function sendPrompt(
     sessionId: string,
     text: string,
     agent?: string | null,
-    extraParts: PromptPartInput[] = []
+    extraParts: PromptPartInput[] = [],
+    messageID?: string
   ) {
     const c = client();
     if (!c) throw new Error("Not connected");
@@ -134,6 +136,7 @@ export function useOpenCode() {
         model: { providerID, modelID },
         parts: [{ type: "text", text }, ...extraParts],
         ...(agent ? { agent } : {}),
+        ...(messageID ? { messageID } : {}),
       },
     });
   }

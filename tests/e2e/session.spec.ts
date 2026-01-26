@@ -31,6 +31,15 @@ test.describe("Session Management", () => {
   }) => {
     const page = await openWebview();
 
+    // First create a session by sending a message so we have something to show
+    const textarea = page.getByRole("textbox", { name: "Message input" });
+    await textarea.fill("Test message for session");
+    const submitButton = page.getByRole("button", { name: "Submit" });
+    await submitButton.click();
+    
+    // Wait for the response to complete
+    await expect(page.getByRole("article", { name: "assistant message" })).toBeVisible({ timeout: 30000 });
+
     // Click the session switcher to open dropdown
     const sessionSwitcher = page.getByRole("button", {
       name: "Switch session",
@@ -48,14 +57,12 @@ test.describe("Session Management", () => {
     // Open the dropdown
     await sessionSwitcher.click();
 
-    // Verify the dropdown is showing (either loading or sessions)
+    // Verify the dropdown is showing
     const dropdown = page.locator(".session-dropdown");
     await expect(dropdown).toBeVisible();
 
-    // Wait for loading state to disappear and session items to appear
-    await expect(page.locator(".session-loading")).toBeVisible();
-    await expect(page.locator(".session-loading")).not.toBeVisible();
-    await expect(page.locator(".session-item")).toBeVisible();
+    // Wait for at least one session item to appear (loading may be too fast to catch)
+    await expect(page.locator(".session-item").first()).toBeVisible({ timeout: 10000 });
 
     // Verify that at least one session list API call was made after clicking
     expect(sessionRequests.length).toBeGreaterThan(0);
