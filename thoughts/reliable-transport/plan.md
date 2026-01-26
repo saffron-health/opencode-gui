@@ -93,19 +93,24 @@ its own state management. Migration can be done incrementally.
 
 ---
 
-## Phase 4 — Attachment/selection parity
+## Phase 4 — Attachment/selection parity ✅ COMPLETE
 **Goal:** keep selection semantics identical to TUI.
 
-- Ensure selections use `file://` with `start/end` query params.
-- Preserve metadata (`source`) when possible.
-- Maintain attachment consistency through queue/retry.
+- ✅ Ensure selections use `file://` with `start/end` query params.
+- ✅ Preserve metadata (`source`) with FilePartInput.source field (type: "file", path, text).
+- ✅ Maintain attachment consistency through queue/retry (attachments stored with QueuedMessage).
+- ✅ Filename display matches TUI format: `filename#L10-25` for ranges.
+- ✅ Line selection normalization (handles reversed selections).
+- ✅ E2E tests for attachment handling.
 
 **Files:**
-- `src/webview/App.tsx`
-- `src/shared/messages.ts` (if selection metadata expands)
+- `src/webview/App.tsx` (updated buildSelectionParts with source metadata)
+- `src/webview/hooks/useOpenCode.ts` (exported FilePartInput and FilePartSource types)
+- `tests/e2e/attachments.spec.ts` (new - 7 tests)
 
 **Acceptance:**
-- Ranges expand server-side the same way as CLI/TUI.
+- ✅ Ranges expand server-side the same way as CLI/TUI.
+- ✅ Source metadata included for server-side processing parity.
 
 ---
 

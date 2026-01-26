@@ -6,6 +6,7 @@ import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
 import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type Event as OpenCodeEvent, type Session as SDKSession, type Agent as SDKAgent, type PromptPartInput } from "./hooks/useOpenCode";
+import type { FilePartInput } from "@opencode-ai/sdk/client";
 import { applyPartUpdate, applyMessageUpdate } from "./utils/messageUtils";
 import type { Message, Agent, Session, Permission, ContextInfo, FileChangesInfo, MessagePart, IncomingMessage } from "./types";
 import { parseHostMessage } from "./types";
@@ -154,10 +155,11 @@ function App() {
     return filename;
   };
 
-  const buildSelectionParts = (attachments: SelectionAttachment[]): PromptPartInput[] => {
+  const buildSelectionParts = (attachments: SelectionAttachment[]): FilePartInput[] => {
     return attachments.map((attachment) => {
       const url = new URL(attachment.fileUrl);
-      if (attachment.startLine) {
+      
+      if (attachment.startLine !== undefined) {
         const start = attachment.endLine
           ? Math.min(attachment.startLine, attachment.endLine)
           : attachment.startLine;
@@ -167,11 +169,21 @@ function App() {
         url.searchParams.set("start", String(start));
         url.searchParams.set("end", String(end));
       }
+      
       return {
         type: "file" as const,
         mime: "text/plain",
         url: url.toString(),
         filename: getFilename(attachment.filePath),
+        source: {
+          type: "file" as const,
+          path: attachment.filePath,
+          text: {
+            value: "",
+            start: 0,
+            end: 0,
+          },
+        },
       };
     });
   };
