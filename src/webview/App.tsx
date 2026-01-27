@@ -629,6 +629,7 @@ function App() {
         console.error("[App] Session error:", errorMessage);
         if (sessionId) {
           setIsThinking(sessionId, false);
+          setInFlightMessage(null);
           setSessionErrors((prev) => {
             const next = new Map(prev);
             next.set(sessionId, errorMessage);
