@@ -127,6 +127,14 @@ export function MessageList(props: MessageListProps) {
     )
   );
 
+  // Handle session error appearing/disappearing
+  createEffect(
+    on(
+      () => props.sessionError,
+      () => scheduleAutoScroll()
+    )
+  );
+
   const getMessageIndex = (messageId: string) => {
     return props.messages.findIndex(m => m.id === messageId);
   };
@@ -206,7 +214,7 @@ export function MessageList(props: MessageListProps) {
         <ThinkingIndicator when={props.isThinking} />
         
         <Show when={props.sessionError}>
-          <div class="session-error">
+          <div class="session-error" role="alert">
             {props.sessionError}
           </div>
         </Show>

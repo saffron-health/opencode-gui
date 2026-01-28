@@ -5,10 +5,10 @@ import { TopBar } from "./components/TopBar";
 import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
 import { PermissionPrompt } from "./components/PermissionPrompt";
-import { useOpenCode, type Event as OpenCodeEvent, type Session as SDKSession, type Agent as SDKAgent, type PromptPartInput } from "./hooks/useOpenCode";
+import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
+import { useSync } from "./state/sync";
 import type { FilePartInput } from "@opencode-ai/sdk/client";
-import { applyPartUpdate, applyMessageUpdate } from "./utils/messageUtils";
-import type { Message, Agent, Session, Permission, ContextInfo, FileChangesInfo, MessagePart, IncomingMessage } from "./types";
+import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart } from "./types";
 import { parseHostMessage } from "./types";
 
 export interface QueuedMessage {
@@ -32,31 +32,21 @@ interface SelectionAttachment {
   endLine?: number;
 }
 import { vscode } from "./utils/vscode";
+import { Id } from "./utils/id";
 
-const DEBUG = false;
 const NEW_SESSION_KEY = "__new__";
 
 function App() {
-  const [messages, setMessages] = createSignal<Message[]>([]);
-  const [thinkingSessions, setThinkingSessions] = createSignal<Set<string>>(new Set());
-  const [agents, setAgents] = createSignal<Agent[]>([]);
-  const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
-  const [sessions, setSessions] = createSignal<Session[]>([]);
-  const [currentSessionId, setCurrentSessionId] = createSignal<string | null>(null);
-  const [currentSessionTitle, setCurrentSessionTitle] = createSignal<string>("New Session");
-  const [contextInfo, setContextInfo] = createSignal<ContextInfo | null>(null);
-  const [fileChanges, setFileChanges] = createSignal<FileChangesInfo | null>(null);
-  const [currentModelContextLimit, setCurrentModelContextLimit] = createSignal<number>(200000);
+  // Use the sync context for server-owned state
+  const sync = useSync();
   
-  // Per-session drafts and agent selection
+  // Local UI-only state
+  const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
   const [selectionAttachmentsBySession, setSelectionAttachmentsBySession] = createSignal<
     Map<string, SelectionAttachment[]>
   >(new Map());
-  
-  // Pending permissions
-  const [pendingPermissions, setPendingPermissions] = createSignal<Map<string, Permission>>(new Map());
   
   // Editing state for previous messages
   const [editingMessageId, setEditingMessageId] = createSignal<string | null>(null);
@@ -67,34 +57,32 @@ function App() {
   
   // In-flight message tracking for outbox pattern
   const [inFlightMessage, setInFlightMessage] = createSignal<InFlightMessage | null>(null);
-  
-  // Session errors (shown inline like tool call errors)
-  const [sessionErrors, setSessionErrors] = createSignal<Map<string, string>>(new Map());
 
-  // Get SDK hook
+  // Get SDK hook for actions only
   const {
-    isReady: sdkIsReady,
-    workspaceRoot: sdkWorkspaceRoot,
     initData,
-    listSessions,
-    getSession,
     createSession,
-    getAgents,
-    getMessages,
-    getConfig,
     abortSession,
     sendPrompt,
-    subscribeToEvents,
     respondToPermission,
     revertToMessage,
-    client,
     hostError,
-    setHostError,
     clearHostError,
   } = useOpenCode();
 
   // Get the current session key for drafts/agents
-  const sessionKey = () => currentSessionId() || NEW_SESSION_KEY;
+  const sessionKey = () => sync.currentSessionId() || NEW_SESSION_KEY;
+  
+  // Derive current session title from store
+  const isDefaultTitle = (title: string) => /^(New session|Child session) - \d{4}-\d{2}-\d{2}T/.test(title);
+  const currentSessionTitle = createMemo(() => {
+    const id = sync.currentSessionId();
+    if (!id) return "New Session";
+    const sessions = sync.sessions();
+    const session = sessions.find(s => s.id === id);
+    const title = session?.title;
+    return title && !isDefaultTitle(title) ? title : "New Session";
+  });
 
   // Current input for the active session
   const input = () => drafts().get(sessionKey()) || "";
@@ -118,6 +106,16 @@ function App() {
       return next;
     });
   };
+  
+  // Convenience accessors from sync store
+  const messages = () => sync.messages();
+  const agents = () => sync.agents();
+  const sessions = () => sync.sessions();
+  const pendingPermissions = () => sync.permissions();
+  const contextInfo = () => sync.contextInfo();
+  const fileChanges = () => sync.fileChanges();
+  const isThinking = () => sync.isThinking();
+  const sessionError = () => sync.sessionError();
 
   const selectionAttachments = () => selectionAttachmentsBySession().get(sessionKey()) || [];
   const setSelectionAttachmentsForKey = (
@@ -200,23 +198,6 @@ function App() {
     messages().some((m) => m.type === "user" || m.type === "assistant")
   );
 
-  const isThinking = () => {
-    const sessionId = currentSessionId();
-    return sessionId ? thinkingSessions().has(sessionId) : false;
-  };
-
-  const setIsThinking = (sessionId: string, thinking: boolean) => {
-    setThinkingSessions((prev) => {
-      const next = new Set(prev);
-      if (thinking) {
-        next.add(sessionId);
-      } else {
-        next.delete(sessionId);
-      }
-      return next;
-    });
-  };
-
   // Find permissions that don't have matching tool calls (standalone permissions)
   const standalonePermissions = createMemo(() => {
     const perms = pendingPermissions();
@@ -266,8 +247,8 @@ function App() {
   });
 
   const sessionsToShow = createMemo(() => {
-    const root = sdkWorkspaceRoot();
-    const currentId = currentSessionId();
+    const root = sync.workspaceRoot();
+    const currentId = sync.currentSessionId();
     
     return sessions()
       .filter(s => {
@@ -283,45 +264,6 @@ function App() {
       // Sort by edited time (updated) instead of started time (created)
       .sort((a, b) => b.time.updated - a.time.updated);
   });
-
-  // Helper: check if title is default timestamp-based
-  const isDefaultTitle = (title: string) => /^(New session|Child session) - \d{4}-\d{2}-\d{2}T/.test(title);
-
-  // Helper: map legacy/SDK messages to UI format
-  function mapMessagesToUI(incomingMessages: unknown[]): Message[] {
-    return incomingMessages.map((raw: unknown) => {
-      const r = raw as Record<string, unknown>;
-      const m = (r?.info ?? r) as Record<string, unknown>;
-      const parts = (r?.parts ?? m?.parts ?? []) as MessagePart[];
-      const textParts = Array.isArray(parts)
-        ? parts.filter(
-            (p) =>
-              p?.type === "text" &&
-              typeof p.text === "string" &&
-              !(p as { synthetic?: boolean }).synthetic &&
-              !(p as { ignored?: boolean }).ignored
-          )
-        : [];
-      const text =
-        (m?.text as string) ??
-        (textParts.length ? textParts.map((p) => p.text as string).join("\n") : "");
-      const role = (m?.role as string) ?? "assistant";
-      let normalizedParts = parts;
-      if (role === "user") {
-        normalizedParts = parts.filter(
-          (p) =>
-            p.type !== "text" ||
-            (!(p as { synthetic?: boolean }).synthetic && !(p as { ignored?: boolean }).ignored)
-        );
-      }
-      return {
-        id: m.id as string,
-        type: role === "user" ? "user" : "assistant",
-        text,
-        parts: normalizedParts,
-      } as Message;
-    });
-  }
 
   onMount(() => {
     const handleHostMessage = (event: MessageEvent) => {
@@ -364,317 +306,43 @@ function App() {
     onCleanup(() => window.removeEventListener("message", handleHostMessage));
   });
 
-  // Initialize from initData when SDK is ready
-  createEffect(async () => {
-    if (!sdkIsReady()) return;
+  // Set default agent from initData once available
+  createEffect(() => {
     const init = initData();
     if (!init) return;
-
-    // Restore current session
-    const sessionId = init.currentSessionId ?? null;
-    const title = init.currentSessionTitle ?? "New Session";
-    setCurrentSessionId(sessionId);
-    setCurrentSessionTitle(isDefaultTitle(title) ? "New Session" : title);
-
-    // Load messages for current session
-    if (sessionId && init.currentSessionMessages && init.currentSessionMessages.length > 0) {
-      const msgs = mapMessagesToUI(init.currentSessionMessages);
-      setMessages(msgs);
-
-      // Extract agent from last user message
-      const lastUserMsg = [...init.currentSessionMessages].reverse().find((raw: unknown) => {
-        const r = raw as Record<string, unknown>;
-        const m = (r?.info ?? r) as Record<string, unknown>;
-        return m?.role === "user";
-      });
-      if (lastUserMsg) {
-        const info = ((lastUserMsg as Record<string, unknown>)?.info ?? lastUserMsg) as Record<string, unknown>;
-        if (info?.agent) {
-          setSessionAgents((prev) => {
-            const next = new Map(prev);
-            next.set(sessionId, info.agent as string);
-            return next;
-          });
-        }
-      }
-    }
-  });
-
-  // Load agents when SDK is ready
-  createEffect(async () => {
-    if (!sdkIsReady()) return;
-    try {
-      const res = await getAgents();
-      const agentList = (res?.data ?? []) as Agent[];
-      // Filter to primary/all agents
-      const filteredAgents = agentList.filter(a => a.mode === "primary" || a.mode === "all");
-      setAgents(filteredAgents);
-
-      // Use persisted default from extension, or first agent
-      const init = initData();
-      const persistedDefault = init?.defaultAgent;
-      if (persistedDefault && filteredAgents.some(a => a.name === persistedDefault)) {
-        setDefaultAgent(persistedDefault);
-      } else if (!defaultAgent() && filteredAgents.length > 0) {
-        setDefaultAgent(filteredAgents[0].name);
-      }
-    } catch (err) {
-      console.error("[App] Failed to load agents:", err);
-    }
-  });
-
-  // Load sessions when SDK is ready
-  createEffect(async () => {
-    if (!sdkIsReady()) return;
-    await refreshSessions();
-  });
-
-  // Refresh sessions function
-  async function refreshSessions() {
-    try {
-      const res = await listSessions();
-      const sessionList = (res?.data ?? []) as Session[];
-      setSessions(sessionList);
-    } catch (err) {
-      console.error("[App] Failed to load sessions:", err);
-    }
-  }
-
-  // Update context info from assistant message tokens
-  async function updateContextInfo(tokens: Record<string, unknown>, modelID: string, providerID: string) {
-    try {
-      const c = client();
-      if (!c) return;
-
-      // Try to get model context limit from config
-      const configResult = await c.config.providers();
-      const providers = configResult?.data as Record<string, { models?: Record<string, { limit?: { context?: number } }> }> | undefined;
-      const contextLimit = providers?.[providerID]?.models?.[modelID]?.limit?.context;
-      if (contextLimit) {
-        setCurrentModelContextLimit(contextLimit);
-      }
-
-      const cache = tokens.cache as { read?: number } | undefined;
-      const usedTokens = ((tokens.input as number) || 0) + ((tokens.output as number) || 0) + (cache?.read || 0);
-      
-      if (usedTokens === 0) return;
-      
-      const limit = currentModelContextLimit();
-      const percentage = Math.min(100, (usedTokens / limit) * 100);
-
-      setContextInfo({
-        usedTokens,
-        limitTokens: limit,
-        percentage,
-      });
-    } catch (error) {
-      console.error("[App] Error updating context info:", error);
-    }
-  }
-
-  // Handle SSE events
-  function handleEvent(event: OpenCodeEvent) {
-    console.log("[App] Received SSE event:", event.type);
     
-    const activeSessionId = currentSessionId();
-
-    // Helper to get session ID from event
-    const getEventSessionId = (e: OpenCodeEvent): string | undefined => {
-      const props = (e as unknown as { properties: Record<string, unknown> }).properties;
-      return (props?.sessionID as string) ??
-             (props?.info as Record<string, unknown>)?.sessionID as string ??
-             ((props?.part as Record<string, unknown>)?.sessionID as string) ??
-             ((props?.info as Record<string, unknown>)?.id === activeSessionId ? activeSessionId : undefined);
-    };
-
-    const evSessionId = getEventSessionId(event);
-
-    // Filter events for current session only (for message/part events)
-    const shouldFilterBySession = ["message.updated", "message.removed", "message.part.updated", "message.part.removed"].includes(event.type);
-    if (shouldFilterBySession && activeSessionId && evSessionId && evSessionId !== activeSessionId) {
-      if (DEBUG) console.log("[App] Ignoring event for inactive session:", evSessionId);
-      return;
+    const agentList = agents();
+    const persistedDefault = init.defaultAgent;
+    if (persistedDefault && agentList.some(a => a.name === persistedDefault)) {
+      setDefaultAgent(persistedDefault);
+    } else if (!defaultAgent() && agentList.length > 0) {
+      setDefaultAgent(agentList[0].name);
     }
-
-    if (DEBUG) console.log("[App] SSE event:", event.type, event);
-
-    // Handle permission.asked (same as permission.updated)
-    // Note: permission.asked is not in the SDK Event type yet, so we cast to string
-    const eventType = event.type as string;
-    if (eventType === "permission.asked" || eventType === "permission.updated") {
-      const permission = (event as unknown as { properties: Permission }).properties;
-      console.log("[App] Permission required:", permission);
-      // Use tool.callID if available (ties permission to specific tool call)
-      // Otherwise use permission.id (standalone permission)
-      const key = permission.tool?.callID || permission.id;
-      setPendingPermissions((prev) => {
-        const next = new Map(prev);
-        next.set(key, permission);
-        return next;
-      });
-      return;
+  });
+  
+  // Process queued messages when thinking stops
+  createEffect(() => {
+    if (!isThinking()) {
+      processNextQueuedMessage();
     }
-
-    switch (event.type) {
-      case "message.part.updated": {
-        const props = (event as unknown as { properties: { part: MessagePart & { messageID: string }; delta?: string } }).properties;
-        const part = props.part;
-        if (DEBUG) console.log("[App] Part update:", part);
-        setMessages((prev) => applyPartUpdate(prev, part));
-        
-        // Clear session error on successful message
-        const sessionId = evSessionId || activeSessionId;
-        if (sessionId) {
-          setSessionErrors((prev) => {
-            const next = new Map(prev);
-            next.delete(sessionId);
-            return next;
-          });
-        }
-        break;
-      }
-
-      case "message.updated": {
-        const props = (event as unknown as { properties: { info: IncomingMessage & { tokens?: Record<string, unknown>; modelID?: string; providerID?: string } } }).properties;
-        const info = props.info;
-        if (DEBUG) console.log("[App] Message update:", info);
-        setMessages((prev) => applyMessageUpdate(prev, info));
-
-        // Update context info for assistant messages
-        if (info.role === "assistant" && info.tokens) {
-          updateContextInfo(info.tokens, info.modelID || "", info.providerID || "");
-        }
-        
-        // Dequeue in-flight message when we receive confirmation of our user message
-        // This confirms the server received and processed our prompt
-        if (info.role === "user") {
-          const inFlight = inFlightMessage();
-          if (inFlight && inFlight.messageID === info.id) {
-            console.log("[App] User message confirmed, clearing in-flight:", info.id);
-            setInFlightMessage(null);
-          }
-        }
-        break;
-      }
-
-      case "message.removed": {
-        const props = (event as unknown as { properties: { messageID: string } }).properties;
-        console.log("[App] Message removed:", props.messageID);
-        setMessages((prev) => prev.filter((m) => m.id !== props.messageID));
-        break;
-      }
-
-      case "session.idle": {
-        const sessionId = evSessionId || activeSessionId;
-        console.log("[App] Session idle - streaming complete", sessionId);
-        if (sessionId) setIsThinking(sessionId, false);
-        
-        // Clear in-flight message on session.idle as a fallback
-        // (in case message.updated for the user message was missed)
-        const inFlight = inFlightMessage();
-        if (inFlight && inFlight.sessionId === sessionId) {
-          console.log("[App] Session idle, clearing in-flight:", inFlight.messageID);
-          setInFlightMessage(null);
-        }
-        
-        // Process next queued message if any
-        processNextQueuedMessage();
-        break;
-      }
-
-      case "session.updated": {
-        const props = (event as unknown as { properties: { info: Session } }).properties;
-        const session = props.info;
-        
-        // Update session title if it changed
-        if (session.id === activeSessionId && session.title && !isDefaultTitle(session.title)) {
-          setCurrentSessionTitle(session.title);
-        }
-
-        // Update sessions list
-        setSessions((prev) => prev.map((s) => s.id === session.id ? { ...s, ...session } : s));
-
-        // Update file changes from session summary
-        if (session.summary?.diffs) {
-          const diffs = session.summary.diffs;
-          setFileChanges({
-            fileCount: diffs.length,
-            additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
-            deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
-          });
-        }
-        break;
-      }
-
-      case "session.created": {
-        const props = (event as unknown as { properties: { info: Session } }).properties;
-        const session = props.info;
-        setSessions((prev) => {
-          if (prev.some((s) => s.id === session.id)) return prev;
-          return [...prev, session];
-        });
-        break;
-      }
-
-      case "permission.replied": {
-        const props = (event as unknown as { properties: { permissionID: string } }).properties;
-        console.log("[App] Permission replied:", props.permissionID);
-        break;
-      }
-
-      case "session.error": {
-        const props = (event as unknown as { properties: { error?: { data?: { message?: string } } } }).properties;
-        const errorMessage = props.error?.data?.message || "Unknown error";
-        const sessionId = evSessionId || activeSessionId;
-        console.error("[App] Session error:", errorMessage);
-        if (sessionId) {
-          setIsThinking(sessionId, false);
-          setInFlightMessage(null);
-          setSessionErrors((prev) => {
-            const next = new Map(prev);
-            next.set(sessionId, errorMessage);
-            return next;
-          });
-        }
-        break;
-      }
-
-      default:
-        if (DEBUG) console.log("[App] Unhandled event:", event.type);
-    }
-  }
-
-  // Start SSE subscription
+  });
+  
+  // Clear inFlightMessage when session becomes idle (response complete)
   onMount(() => {
-    let cleanup: (() => void) | undefined;
-
-    const startSSE = async () => {
-      // Wait for SDK to be ready
-      while (!sdkIsReady()) {
-        await new Promise((r) => setTimeout(r, 100));
+    const cleanup = sync.onSessionIdle((sessionId) => {
+      const inflight = inFlightMessage();
+      if (inflight && inflight.sessionId === sessionId) {
+        console.log("[App] session.idle received, clearing inFlightMessage");
+        setInFlightMessage(null);
       }
-
-      try {
-        console.log("[App] Starting SSE subscription");
-        cleanup = subscribeToEvents((event) => {
-          handleEvent(event);
-        });
-      } catch (err) {
-        console.error("[App] SSE subscription failed:", err);
-      }
-    };
-
-    startSSE();
-
-    onCleanup(() => {
-      cleanup?.();
     });
+    onCleanup(cleanup);
   });
 
   // Handlers
   const handleSubmit = async () => {
     const text = input().trim();
-    if (!text || !sdkIsReady()) return;
+    if (!text || !sync.isReady()) return;
 
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
@@ -683,11 +351,11 @@ function App() {
     const attachments = selectionAttachments();
     const extraParts = buildSelectionParts(attachments);
     
-    // Generate client-side messageID for idempotent sends (must start with "msg")
-    const messageID = `msg_${crypto.randomUUID()}`;
+    // Generate sortable client-side messageID for idempotent sends
+    const messageID = Id.ascending("message");
 
     // Ensure we have a session
-    let sessionId = currentSessionId();
+    let sessionId = sync.currentSessionId();
     if (!sessionId) {
       try {
         const res = await createSession();
@@ -697,9 +365,7 @@ function App() {
           return;
         }
         sessionId = newSession.id;
-        setCurrentSessionId(sessionId);
-        setCurrentSessionTitle("New Session");
-        setSessions((prev) => [...prev, newSession]);
+        sync.setCurrentSessionId(sessionId);
       } catch (err) {
         console.error("[App] Failed to create session:", err);
         return;
@@ -707,7 +373,7 @@ function App() {
     }
 
     setInput("");
-    setIsThinking(sessionId, true);
+    sync.setThinking(sessionId, true);
     
     // Track this message as in-flight
     setInFlightMessage({ messageID, sessionId });
@@ -718,15 +384,16 @@ function App() {
       // Check for SDK error in result (SDK doesn't throw by default)
       if (result?.error) {
         console.error("[App] sendPrompt returned error:", result.error);
-        const errorData = result.error as { data?: { message?: string }; error?: unknown[] };
-        const errorMessage = errorData.data?.message || JSON.stringify(errorData.error) || "Unknown error";
-        setIsThinking(sessionId, false);
+        // Extract error message from nested structure: result.error may be { error: { data: { message } } } or { data: { message } }
+        const errorData = result.error as { data?: { message?: string }; error?: { data?: { message?: string } } };
+        const errorMessage = 
+          errorData.data?.message || 
+          errorData.error?.data?.message || 
+          (typeof errorData === 'string' ? errorData : JSON.stringify(errorData)) ||
+          "Unknown error";
+        sync.setThinking(sessionId, false);
         setInFlightMessage(null);
-        setSessionErrors((prev) => {
-          const next = new Map(prev);
-          next.set(sessionId, errorMessage);
-          return next;
-        });
+        sync.setSessionError(sessionId, errorMessage);
         return;
       }
       
@@ -738,13 +405,9 @@ function App() {
       const errorMessage = (err as Error).message;
       
       // Show all errors inline and clear in-flight
-      setIsThinking(sessionId, false);
+      sync.setThinking(sessionId, false);
       setInFlightMessage(null);
-      setSessionErrors((prev) => {
-        const next = new Map(prev);
-        next.set(sessionId, errorMessage);
-        return next;
-      });
+      sync.setSessionError(sessionId, errorMessage);
     }
   };
 
@@ -761,10 +424,10 @@ function App() {
     const [next, ...rest] = queue;
     setMessageQueue(rest);
     
-    const sessionId = currentSessionId();
-    if (!sessionId || !sdkIsReady()) return;
+    const sessionId = sync.currentSessionId();
+    if (!sessionId || !sync.isReady()) return;
     
-    setIsThinking(sessionId, true);
+    sync.setThinking(sessionId, true);
     
     // Track this queued message as in-flight using its pre-generated messageID
     setInFlightMessage({ messageID: next.messageID, sessionId });
@@ -777,20 +440,16 @@ function App() {
       const errorMessage = (err as Error).message;
       
       // Show all errors inline and clear queue + in-flight
-      setIsThinking(sessionId, false);
+      sync.setThinking(sessionId, false);
       setInFlightMessage(null);
       setMessageQueue([]);
-      setSessionErrors((prev) => {
-        const next = new Map(prev);
-        next.set(sessionId, errorMessage);
-        return next;
-      });
+      sync.setSessionError(sessionId, errorMessage);
     }
   };
 
   const handleQueueMessage = () => {
     const text = input().trim();
-    if (!text || !sdkIsReady()) return;
+    if (!text || !sync.isReady()) return;
     
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
@@ -798,10 +457,10 @@ function App() {
     const attachmentsKey = sessionKey();
     const attachments = selectionAttachments();
     
-    // Generate messageID upfront for idempotent sends
+    // Generate sortable messageID upfront for idempotent sends
     const queuedMessage: QueuedMessage = {
       id: crypto.randomUUID(),
-      messageID: `msg_${crypto.randomUUID()}`, // Client-generated messageID for the prompt
+      messageID: Id.ascending("message"), // Sortable client-generated messageID
       text,
       agent,
       attachments,
@@ -840,102 +499,47 @@ function App() {
   };
 
   const handleSessionSelect = async (sessionId: string) => {
-    if (!sdkIsReady()) return;
+    if (!sync.isReady()) return;
     
-    setCurrentSessionId(sessionId);
-    setFileChanges(null);
-    setContextInfo(null);
-    setMessageQueue([]); // Clear queue on session switch
-    setInFlightMessage(null); // Clear in-flight on session switch
-
-    try {
-      // Load messages
-      const res = await getMessages(sessionId);
-      const sdkMessages = (res?.data ?? []) as unknown[];
-      setMessages(mapMessagesToUI(sdkMessages));
-
-      // Extract agent from last user message
-      const lastUser = [...sdkMessages].reverse().find((m: unknown) => {
-        const msg = m as Record<string, unknown>;
-        const info = (msg?.info ?? msg) as Record<string, unknown>;
-        return info?.role === "user";
-      });
-      if (lastUser) {
-        const info = ((lastUser as Record<string, unknown>)?.info ?? lastUser) as Record<string, unknown>;
-        if (info?.agent) {
-          setSessionAgents((prev) => {
-            const next = new Map(prev);
-            next.set(sessionId, info.agent as string);
-            return next;
-          });
-        }
-      }
-
-      // Get session title
-      const sessionRes = await getSession(sessionId);
-      const session = sessionRes?.data as Session | undefined;
-      if (session?.title) {
-        setCurrentSessionTitle(isDefaultTitle(session.title) ? "New Session" : session.title);
-      }
-
-      // Update file changes if available
-      if (session?.summary?.diffs) {
-        const diffs = session.summary.diffs;
-        setFileChanges({
-          fileCount: diffs.length,
-          additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
-          deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
-        });
-      }
-
-      // Find last assistant message to restore context info
-      const lastAssistantMsg = [...sdkMessages].reverse().find((m: unknown) => {
-        const msg = m as Record<string, unknown>;
-        const info = (msg?.info ?? msg) as Record<string, unknown>;
-        return info?.role === "assistant" && info?.tokens;
-      });
-      if (lastAssistantMsg) {
-        const info = ((lastAssistantMsg as Record<string, unknown>)?.info ?? lastAssistantMsg) as Record<string, unknown>;
-        if (info.tokens) {
-          updateContextInfo(
-            info.tokens as Record<string, unknown>,
-            (info.modelID as string) || "",
-            (info.providerID as string) || ""
-          );
-        }
-      }
-    } catch (err) {
-      console.error("[App] Failed to switch session:", err);
-    }
+    // Clear local UI state
+    setMessageQueue([]);
+    setInFlightMessage(null);
+    setEditingMessageId(null);
+    setEditingText("");
+    
+    // Set session and bootstrap to load messages
+    sync.setCurrentSessionId(sessionId);
+    await sync.bootstrap();
   };
 
   const handleNewSession = async () => {
-    if (!sdkIsReady()) return;
+    if (!sync.isReady()) return;
     try {
       const res = await createSession();
       const newSession = res?.data as Session | undefined;
       if (!newSession?.id) return;
 
-      setSessions((prev) => [...prev, newSession]);
-      setCurrentSessionId(newSession.id);
-      setCurrentSessionTitle("New Session");
-      setMessages([]);
-      setFileChanges(null);
-      setContextInfo(null);
+      // Clear local UI state
       setMessageQueue([]);
       setInFlightMessage(null);
+      setEditingMessageId(null);
+      setEditingText("");
+      
+      // Set new session and bootstrap
+      sync.setCurrentSessionId(newSession.id);
+      await sync.bootstrap();
     } catch (err) {
       console.error("[App] Failed to create session:", err);
     }
   };
 
   const handleCancel = async () => {
-    const sessionId = currentSessionId();
-    if (!sdkIsReady() || !sessionId) return;
+    const sessionId = sync.currentSessionId();
+    if (!sync.isReady() || !sessionId) return;
     try {
       await abortSession(sessionId);
     } finally {
-      setIsThinking(sessionId, false);
+      sync.setThinking(sessionId, false);
       setInFlightMessage(null);
     }
   };
@@ -943,7 +547,7 @@ function App() {
   const handleAgentChange = (agent: string | null) => {
     setSelectedAgent(agent);
     // Persist as global default for new sessions
-    if (agent && !currentSessionId()) {
+    if (agent && !sync.currentSessionId()) {
       vscode.postMessage({ type: "agent-changed", agent });
     }
   };
@@ -960,23 +564,17 @@ function App() {
 
   const handleSubmitEdit = async (newText: string) => {
     const messageId = editingMessageId();
-    const sessionId = currentSessionId();
-    if (!messageId || !sessionId || !newText.trim() || !sdkIsReady()) return;
+    const sessionId = sync.currentSessionId();
+    if (!messageId || !sessionId || !newText.trim() || !sync.isReady()) return;
 
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
       : null;
     
-    // Generate client-side messageID for the new prompt
-    const newMessageID = `msg_${crypto.randomUUID()}`;
+    // Generate sortable client-side messageID for the new prompt
+    const newMessageID = Id.ascending("message");
 
-    // Optimistically truncate messages
-    const messageIndex = messages().findIndex((m) => m.id === messageId);
-    if (messageIndex !== -1) {
-      setMessages(messages().slice(0, messageIndex));
-    }
-
-    setIsThinking(sessionId, true);
+    sync.setThinking(sessionId, true);
     setEditingMessageId(null);
     setEditingText("");
     
@@ -991,13 +589,9 @@ function App() {
       const errorMessage = (err as Error).message;
       
       // Show all errors inline and clear in-flight
-      setIsThinking(sessionId, false);
+      sync.setThinking(sessionId, false);
       setInFlightMessage(null);
-      setSessionErrors((prev) => {
-        const next = new Map(prev);
-        next.set(sessionId, `Error editing message: ${errorMessage}`);
-        return next;
-      });
+      sync.setSessionError(sessionId, `Error editing message: ${errorMessage}`);
     }
   };
 
@@ -1016,26 +610,19 @@ function App() {
       }
     }
 
-    const sessionId = permission?.sessionID || currentSessionId();
-    if (!sessionId || !sdkIsReady()) {
+    const sessionId = permission?.sessionID || sync.currentSessionId();
+    if (!sessionId || !sync.isReady()) {
       console.error("[App] Cannot respond to permission: no session ID");
       return;
     }
 
-    try {
-      await respondToPermission(sessionId, permissionId, response);
-    } finally {
-      setPendingPermissions((prev) => {
-        const next = new Map(prev);
-        for (const [key, perm] of next.entries()) {
-          if (perm.id === permissionId) {
-            next.delete(key);
-            break;
-          }
-        }
-        return next;
-      });
-    }
+    await respondToPermission(sessionId, permissionId, response);
+    // Permission removal is handled by store via SSE events
+  };
+
+  // Refresh sessions - just re-bootstrap
+  const refreshSessions = async () => {
+    await sync.bootstrap();
   };
 
   return (
@@ -1049,7 +636,7 @@ function App() {
       
       <TopBar
         sessions={sessionsToShow()}
-        currentSessionId={currentSessionId()}
+        currentSessionId={sync.currentSessionId()}
         currentSessionTitle={currentSessionTitle()}
         onSessionSelect={handleSessionSelect}
         onNewSession={handleNewSession}
@@ -1076,7 +663,7 @@ function App() {
           onSubmit={handleSubmit}
           onCancel={handleCancel}
           onQueue={handleQueueMessage}
-          disabled={!sdkIsReady()}
+          disabled={!sync.isReady()}
           isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}
@@ -1092,7 +679,7 @@ function App() {
       <MessageList
         messages={messages()}
         isThinking={isThinking()}
-        workspaceRoot={sdkWorkspaceRoot()}
+        workspaceRoot={sync.workspaceRoot()}
         pendingPermissions={pendingPermissions()}
         onPermissionResponse={handlePermissionResponse}
         editingMessageId={editingMessageId()}
@@ -1101,7 +688,7 @@ function App() {
         onCancelEdit={handleCancelEdit}
         onSubmitEdit={handleSubmitEdit}
         onEditTextChange={setEditingText}
-        sessionError={currentSessionId() ? sessionErrors().get(currentSessionId()!) : null}
+        sessionError={sessionError()}
       />
 
       <Show when={hasMessages()}>
@@ -1130,7 +717,7 @@ function App() {
           onSubmit={handleSubmit}
           onCancel={handleCancel}
           onQueue={handleQueueMessage}
-          disabled={!sdkIsReady()}
+          disabled={!sync.isReady()}
           isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}

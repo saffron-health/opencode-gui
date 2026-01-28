@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup } from "solid-js";
+import { createSignal, onMount, onCleanup, createContext, useContext, type ParentProps } from "solid-js";
 import {
   createOpencodeClient,
   type OpencodeClient,
@@ -40,7 +40,7 @@ export interface InitData {
   defaultAgent?: string;
 }
 
-export function useOpenCode() {
+function createOpenCode() {
   const [client, setClient] = createSignal<OpencodeClient | null>(null);
   const [isReady, setIsReady] = createSignal(false);
   const [workspaceRoot, setWorkspaceRoot] = createSignal<string | undefined>(undefined);
@@ -224,4 +224,18 @@ export function useOpenCode() {
     respondToPermission,
     revertToMessage,
   };
+}
+
+// Context
+const OpenCodeContext = createContext<ReturnType<typeof createOpenCode>>();
+
+export function OpenCodeProvider(props: ParentProps) {
+  const value = createOpenCode();
+  return <OpenCodeContext.Provider value={value}>{props.children}</OpenCodeContext.Provider>;
+}
+
+export function useOpenCode() {
+  const context = useContext(OpenCodeContext);
+  if (!context) throw new Error("useOpenCode must be used within OpenCodeProvider");
+  return context;
 }

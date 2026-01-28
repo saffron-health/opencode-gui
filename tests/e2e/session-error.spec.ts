@@ -23,11 +23,19 @@ test.describe("Session Error Handling", () => {
   }) => {
     const webview = await openWebview();
 
-    // First prompt - make it fail by intercepting the prompt API call
-    let promptCallCount = 0;
-    await page.route("**/session/*/prompt", async (route) => {
-      promptCallCount++;
-      if (promptCallCount === 1) {
+    // First prompt - make it fail by intercepting the POST message API call
+    let postCallCount = 0;
+    await page.route("**/session/*/message", async (route) => {
+      const method = route.request().method();
+      
+      // Only intercept POST requests (sending messages)
+      if (method !== "POST") {
+        await route.continue();
+        return;
+      }
+      
+      postCallCount++;
+      if (postCallCount === 1) {
         // Fail the first prompt call with an error response
         await route.fulfill({
           status: 500,
@@ -49,10 +57,12 @@ test.describe("Session Error Handling", () => {
     await textarea.fill("Test message that will fail");
     
     const submitButton = webview.getByRole("button", { name: "Submit" });
+    await expect(submitButton).toBeEnabled({ timeout: 5000 });
     await submitButton.click();
 
-    // Wait for the error to be processed - the error should be shown inline
-    await expect(webview.getByText(/Simulated API error|error|failed/i)).toBeVisible({ timeout: 10000 });
+    // Wait for the error to be processed - the error should be shown inline as an alert
+    await expect(webview.getByRole("alert")).toBeVisible({ timeout: 10000 });
+    await expect(webview.getByRole("alert")).toContainText("Simulated API error for testing");
 
     // The submit button should be enabled again after the error
     await expect(submitButton).toBeDisabled(); // Input is empty after send
