@@ -150,53 +150,55 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
         ?? messageToSession.get(sdkPart.messageID)
         ?? currentSessionId();
 
-      if (sessionId) {
-        setStore("sessionError", produce((draft) => {
-          delete draft[sessionId];
-        }));
-      }
-
-      // Update store.part (single source of truth)
-      const parts = store.part[sdkPart.messageID];
-      if (!parts) {
-        setStore("part", sdkPart.messageID, [part]);
-      } else {
-        const result = binarySearch(parts, part.id, (p) => p.id);
-        if (result.found) {
-          setStore("part", sdkPart.messageID, result.index, reconcile(part));
-        } else {
-          setStore("part", sdkPart.messageID, produce((draft) => {
-            draft.splice(result.index, 0, part);
+      batch(() => {
+        if (sessionId) {
+          setStore("sessionError", produce((draft) => {
+            delete draft[sessionId];
           }));
         }
-      }
 
-      // Ensure the message exists (part may arrive before message.updated)
-      if (sessionId) {
-        messageToSession.set(sdkPart.messageID, sessionId);
-
-        const messages = store.message[sessionId];
-        if (!messages) {
-          const newMsg: Message = {
-            id: sdkPart.messageID,
-            type: "assistant",
-            text: "",
-          };
-          setStore("message", sessionId, [newMsg]);
+        // Update store.part (single source of truth)
+        const parts = store.part[sdkPart.messageID];
+        if (!parts) {
+          setStore("part", sdkPart.messageID, [part]);
         } else {
-          const msgResult = binarySearch(messages, sdkPart.messageID, (m) => m.id);
-          if (!msgResult.found) {
+          const result = binarySearch(parts, part.id, (p) => p.id);
+          if (result.found) {
+            setStore("part", sdkPart.messageID, result.index, reconcile(part));
+          } else {
+            setStore("part", sdkPart.messageID, produce((draft) => {
+              draft.splice(result.index, 0, part);
+            }));
+          }
+        }
+
+        // Ensure the message exists (part may arrive before message.updated)
+        if (sessionId) {
+          messageToSession.set(sdkPart.messageID, sessionId);
+
+          const messages = store.message[sessionId];
+          if (!messages) {
             const newMsg: Message = {
               id: sdkPart.messageID,
               type: "assistant",
               text: "",
             };
-            setStore("message", sessionId, produce((draft) => {
-              draft.splice(msgResult.index, 0, newMsg);
-            }));
+            setStore("message", sessionId, [newMsg]);
+          } else {
+            const msgResult = binarySearch(messages, sdkPart.messageID, (m) => m.id);
+            if (!msgResult.found) {
+              const newMsg: Message = {
+                id: sdkPart.messageID,
+                type: "assistant",
+                text: "",
+              };
+              setStore("message", sessionId, produce((draft) => {
+                draft.splice(msgResult.index, 0, newMsg);
+              }));
+            }
           }
         }
-      }
+      });
       break;
     }
 
@@ -218,23 +220,25 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
     case "session.updated": {
       const session = toSession(event.properties.info);
 
-      const result = binarySearch(store.sessions, session.id, (s) => s.id);
-      if (result.found) {
-        setStore("sessions", result.index, reconcile(session));
-      } else {
-        setStore("sessions", produce((draft) => {
-          draft.splice(result.index, 0, session);
-        }));
-      }
+      batch(() => {
+        const result = binarySearch(store.sessions, session.id, (s) => s.id);
+        if (result.found) {
+          setStore("sessions", result.index, reconcile(session));
+        } else {
+          setStore("sessions", produce((draft) => {
+            draft.splice(result.index, 0, session);
+          }));
+        }
 
-      if (session.summary?.diffs) {
-        const diffs = session.summary.diffs;
-        setStore("fileChanges", {
-          fileCount: diffs.length,
-          additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
-          deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
-        });
-      }
+        if (session.summary?.diffs) {
+          const diffs = session.summary.diffs;
+          setStore("fileChanges", {
+            fileCount: diffs.length,
+            additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
+            deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
+          });
+        }
+      });
       break;
     }
 
@@ -264,10 +268,14 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
 
     case "session.error": {
       const { sessionID, error } = event.properties;
-      const errorMessage = error?.data?.message ?? "Unknown error";
+      const errorMessage: string = String(error?.data?.message ?? "Unknown error");
       if (sessionID) {
-        setStore("thinking", sessionID, false);
-        setStore("sessionError", sessionID, errorMessage);
+        batch(() => {
+          setStore("thinking", sessionID, false);
+          setStore("sessionError", produce((draft: Record<string, string>) => {
+            draft[sessionID] = errorMessage;
+          }));
+        });
       }
       break;
     }
