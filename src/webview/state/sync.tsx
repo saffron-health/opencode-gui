@@ -79,6 +79,10 @@ function createSync() {
         }));
         setStore("permission", produce((draft) => { delete draft[prevId]; }));
       });
+      // Clean up messageToSession mapping
+      for (const msg of prevMessages) {
+        messageToSession.delete(msg.id);
+      }
     }
     setCurrentSessionIdInternal(id);
   }

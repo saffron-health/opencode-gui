@@ -1,3 +1,4 @@
+import { batch } from "solid-js";
 import { produce, reconcile, type SetStoreFunction } from "solid-js/store";
 import type {
   Event,
@@ -107,6 +108,17 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
           draft.splice(result.index, 0, msg);
         }));
       }
+
+      // Cap messages at 100 per session (matching TUI)
+      const updatedMessages = store.message[sessionId];
+      if (updatedMessages && updatedMessages.length > 100) {
+        const oldest = updatedMessages[0];
+        batch(() => {
+          setStore("message", sessionId, produce((draft) => { draft.shift(); }));
+          setStore("part", produce((draft) => { delete draft[oldest.id]; }));
+        });
+        messageToSession.delete(oldest.id);
+      }
       break;
     }
 
@@ -127,6 +139,7 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       setStore("part", produce((draft) => {
         delete draft[messageID];
       }));
+      messageToSession.delete(messageID);
       break;
     }
 
