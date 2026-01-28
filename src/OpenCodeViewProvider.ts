@@ -47,6 +47,23 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       // Handle proxy messages directly (they don't go through parseWebviewMessage)
       if (typeof data === 'object' && data !== null) {
         const msg = data as Record<string, unknown>;
+        
+        // Handle log messages from webview
+        if (msg.type === 'log') {
+          const logger = getLogger();
+          const level = msg.level as 'debug' | 'info' | 'error';
+          const message = msg.message as string;
+          const logData = msg.data;
+          if (level === 'error') {
+            logger.error(`[Webview] ${message}`, logData);
+          } else if (level === 'info') {
+            logger.info(`[Webview] ${message}`, logData);
+          } else {
+            logger.debug(`[Webview] ${message}`, logData);
+          }
+          return;
+        }
+        
         if (msg.type === 'proxyFetch') {
           await this._handleProxyFetch(msg as { id: string; url: string; init?: { method?: string; headers?: Record<string, string>; body?: string } });
           return;

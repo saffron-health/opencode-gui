@@ -20,6 +20,7 @@ import type { Message, Permission } from "../types";
 import { type SyncState, type SyncStatus, createEmptyState } from "./types";
 import { applyEvent, type EventHandlerContext } from "./eventHandlers";
 import { fetchBootstrapData, commitBootstrapData } from "./bootstrap";
+import { logger } from "../utils/logger";
 
 export type { SyncStatus } from "./types";
 
@@ -187,10 +188,15 @@ function createSync() {
   }
 
   function handleEvent(event: Event) {
+    // Log error events prominently
+    if (event.type === "session.error") {
+      logger.error("SSE session.error event received", { event });
+    }
+    
     if ((event.type as string) === "server.instance.disposed") {
       // Flush pending events before re-bootstrap
       flushEventQueue();
-      console.log("[Sync] Server disposed, re-bootstrapping...");
+      logger.info("Server disposed, re-bootstrapping...");
       setBootstrapCount((c) => c + 1);
       return;
     }

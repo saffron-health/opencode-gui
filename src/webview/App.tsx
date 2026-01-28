@@ -33,6 +33,7 @@ interface SelectionAttachment {
 }
 import { vscode } from "./utils/vscode";
 import { Id } from "./utils/id";
+import { logger } from "./utils/logger";
 
 const NEW_SESSION_KEY = "__new__";
 
@@ -341,7 +342,11 @@ function App() {
   // Handlers
   const handleSubmit = async () => {
     const text = input().trim();
-    if (!text || !sync.isReady()) return;
+    console.log("[App] handleSubmit called:", { text: text.slice(0, 50), isReady: sync.isReady() });
+    if (!text || !sync.isReady()) {
+      console.log("[App] handleSubmit early return:", { hasText: !!text, isReady: sync.isReady() });
+      return;
+    }
 
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
@@ -349,7 +354,7 @@ function App() {
     const attachmentsKey = sessionKey();
     const attachments = selectionAttachments();
     const extraParts = buildSelectionParts(attachments);
-    
+
     // Generate sortable client-side messageID for idempotent sends
     const messageID = Id.ascending("message");
 
@@ -373,16 +378,30 @@ function App() {
 
     setInput("");
     sync.setThinking(sessionId, true);
-    
+
     // Track this message as in-flight
     setInFlightMessage({ messageID, sessionId });
+
+    logger.info("Sending prompt", { sessionId, messageID, textLen: text.length });
 
     try {
       const result = await sendPrompt(sessionId, text, agent, extraParts, messageID);
       
+      // Log the full result for debugging
+      logger.info("sendPrompt result", { 
+        hasError: !!result?.error, 
+        hasData: !!result?.data,
+        response: result?.response?.status,
+      });
+      
       // Check for SDK error in result (SDK doesn't throw by default)
       if (result?.error) {
-        console.error("[App] sendPrompt returned error:", result.error);
+        // Log full error structure for debugging
+        logger.error("sendPrompt returned error", { 
+          error: result.error,
+          response: result?.response,
+        });
+        
         // Extract error message from nested structure: result.error may be { error: { data: { message } } } or { data: { message } }
         const errorData = result.error as { data?: { message?: string }; error?: { data?: { message?: string } } };
         const errorMessage = 
@@ -400,7 +419,7 @@ function App() {
         setSelectionAttachmentsForKey(attachmentsKey, []);
       }
     } catch (err) {
-      console.error("[App] sendPrompt failed:", err);
+      logger.error("sendPrompt exception", { error: String(err), stack: (err as Error).stack });
       const errorMessage = (err as Error).message;
       
       // Show all errors inline and clear in-flight
@@ -430,7 +449,7 @@ function App() {
     
     // Track this queued message as in-flight using its pre-generated messageID
     setInFlightMessage({ messageID: next.messageID, sessionId });
-    
+
     try {
       const extraParts = buildSelectionParts(next.attachments);
       await sendPrompt(sessionId, next.text, next.agent, extraParts, next.messageID);
@@ -459,7 +478,7 @@ function App() {
     // Generate sortable messageID upfront for idempotent sends
     const queuedMessage: QueuedMessage = {
       id: crypto.randomUUID(),
-      messageID: Id.ascending("message"), // Sortable client-generated messageID
+      messageID: Id.ascending("message"),
       text,
       agent,
       attachments,
@@ -569,14 +588,14 @@ function App() {
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
       : null;
-    
+
     // Generate sortable client-side messageID for the new prompt
     const newMessageID = Id.ascending("message");
 
     sync.setThinking(sessionId, true);
     setEditingMessageId(null);
     setEditingText("");
-    
+
     // Track this as in-flight
     setInFlightMessage({ messageID: newMessageID, sessionId });
 
@@ -693,7 +712,7 @@ function App() {
       <Show when={hasMessages()}>
         <div class="input-divider" />
         <div class="input-status-row">
-          <FileChangesSummary fileChanges={fileChanges()} />
+          {/* <FileChangesSummary fileChanges={fileChanges()} /> */}
           <ContextIndicator contextInfo={contextInfo()} />
         </div>
         

@@ -8,7 +8,8 @@ import type {
 } from "@opencode-ai/sdk/client";
 import type { Message, MessagePart, Session, Permission } from "../types";
 import type { SyncState } from "./types";
-import { binarySearch, extractTextFromParts } from "./utils";
+import { binarySearch, findById, extractTextFromParts } from "./utils";
+import { logger } from "../utils/logger";
 
 export interface EventHandlerContext {
   store: SyncState;
@@ -70,7 +71,8 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       }));
 
       const messages = store.message[sessionId] ?? [];
-      const result = binarySearch(messages, info.id, (m) => m.id);
+      // Use linear search for messages (client and server IDs have incompatible sort orders)
+      const result = findById(messages, info.id, (m) => m.id);
       const prev = result.found ? messages[result.index] : undefined;
 
       // The server may send parts with the message (not in SDK types but present at runtime)
@@ -104,8 +106,9 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       } else if (result.found) {
         setStore("message", sessionId, result.index, reconcile(msg));
       } else {
+        // Append new messages (SSE events arrive in chronological order)
         setStore("message", sessionId, produce((draft) => {
-          draft.splice(result.index, 0, msg);
+          draft.push(msg);
         }));
       }
 
@@ -129,7 +132,7 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
 
       const messages = store.message[sessionId];
       if (messages) {
-        const result = binarySearch(messages, messageID, (m) => m.id);
+        const result = findById(messages, messageID, (m) => m.id);
         if (result.found) {
           setStore("message", sessionId, produce((draft) => {
             draft.splice(result.index, 1);
@@ -157,17 +160,18 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
           }));
         }
 
-        // Update store.part (single source of truth)
+        // Update store.part (single source of truth) - use linear search + append
         const parts = store.part[sdkPart.messageID];
         if (!parts) {
           setStore("part", sdkPart.messageID, [part]);
         } else {
-          const result = binarySearch(parts, part.id, (p) => p.id);
+          const result = findById(parts, part.id, (p) => p.id);
           if (result.found) {
             setStore("part", sdkPart.messageID, result.index, reconcile(part));
           } else {
+            // Append new parts (SSE events arrive in order)
             setStore("part", sdkPart.messageID, produce((draft) => {
-              draft.splice(result.index, 0, part);
+              draft.push(part);
             }));
           }
         }
@@ -185,15 +189,16 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
             };
             setStore("message", sessionId, [newMsg]);
           } else {
-            const msgResult = binarySearch(messages, sdkPart.messageID, (m) => m.id);
+            const msgResult = findById(messages, sdkPart.messageID, (m) => m.id);
             if (!msgResult.found) {
               const newMsg: Message = {
                 id: sdkPart.messageID,
                 type: "assistant",
                 text: "",
               };
+              // Append new messages
               setStore("message", sessionId, produce((draft) => {
-                draft.splice(msgResult.index, 0, newMsg);
+                draft.push(newMsg);
               }));
             }
           }
@@ -206,7 +211,7 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       const { messageID, partID } = event.properties;
       const parts = store.part[messageID];
       if (parts) {
-        const result = binarySearch(parts, partID, (p) => p.id);
+        const result = findById(parts, partID, (p) => p.id);
         if (result.found) {
           setStore("part", messageID, produce((draft) => {
             draft.splice(result.index, 1);
@@ -269,6 +274,15 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
     case "session.error": {
       const { sessionID, error } = event.properties;
       const errorMessage: string = String(error?.data?.message ?? "Unknown error");
+      
+      // Log session errors for debugging
+      logger.error("Session error received", {
+        sessionID,
+        errorName: error?.name,
+        errorMessage,
+        errorData: error?.data,
+      });
+      
       if (sessionID) {
         batch(() => {
           setStore("thinking", sessionID, false);
