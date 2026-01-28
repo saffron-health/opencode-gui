@@ -270,6 +270,8 @@ function createSync() {
     if (cleanup) cleanup();
   });
 
+  const getParts = (messageId: string) => store.part[messageId] ?? [];
+
   return {
     messages,
     sessions,
@@ -280,6 +282,7 @@ function createSync() {
     contextInfo,
     fileChanges,
     status: () => store.status,
+    getParts,
 
     currentSessionId,
     setCurrentSessionId,

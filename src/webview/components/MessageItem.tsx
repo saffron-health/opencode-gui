@@ -4,6 +4,7 @@ import type { Message, Permission, MessagePart } from "../types";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 import { Streamdown } from "../lib/streamdown";
 import { vscode } from "../utils/vscode";
+import { useSync } from "../state/sync";
 
 interface MessageItemProps {
   message: Message;
@@ -14,11 +15,32 @@ interface MessageItemProps {
 }
 
 export function MessageItem(props: MessageItemProps) {
-  const hasParts = () => props.message.parts && props.message.parts.length > 0;
+  const sync = useSync();
+  const parts = () => sync.getParts(props.message.id);
+  const hasParts = () => parts().length > 0;
   const isUser = () => props.message.type === "user";
+  
+  // Derive user message text from parts (text parts only, excluding synthetic/ignored)
+  const userText = createMemo(() => {
+    if (!isUser()) return props.message.text ?? "";
+    // Prefer message.text if set, otherwise derive from parts
+    if (props.message.text) return props.message.text;
+    const messageParts = parts();
+    return messageParts
+      .filter(
+        (p) =>
+          p?.type === "text" &&
+          typeof p.text === "string" &&
+          !(p as { synthetic?: boolean }).synthetic &&
+          !(p as { ignored?: boolean }).ignored
+      )
+      .map((p) => p.text as string)
+      .join("\n");
+  });
+  
   const userAttachments = createMemo(() => {
-    const parts = props.message.parts ?? [];
-    return parts
+    const messageParts = parts();
+    return messageParts
       .filter((part) => part.type === "file")
       .map((part) => {
         const filePart = part as MessagePart & { url?: string; filename?: string };
@@ -90,8 +112,8 @@ export function MessageItem(props: MessageItemProps) {
               </For>
             </div>
           </Show>
-          <Show when={props.message.text}>
-            <div class="message-text user-message-text">{props.message.text}</div>
+          <Show when={userText()}>
+            <div class="message-text user-message-text">{userText()}</div>
           </Show>
         </Show>
         <Show
@@ -108,7 +130,7 @@ export function MessageItem(props: MessageItemProps) {
               </Show>
             }
           >
-            <For each={props.message.parts}>
+            <For each={parts()}>
               {(part) => <MessagePartRenderer part={part} workspaceRoot={props.workspaceRoot} pendingPermissions={props.pendingPermissions} onPermissionResponse={props.onPermissionResponse} isStreaming={props.isStreaming} />}
             </For>
           </Show>

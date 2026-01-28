@@ -1,12 +1,11 @@
 import { produce, reconcile, type SetStoreFunction } from "solid-js/store";
-import type { Event } from "../hooks/useOpenCode";
 import type {
-  Message,
-  MessagePart,
-  Session,
-  Permission,
-  IncomingMessage,
-} from "../types";
+  Event,
+  Part,
+  Session as SDKSession,
+  Permission as SDKPermission,
+} from "@opencode-ai/sdk/client";
+import type { Message, MessagePart, Session, Permission } from "../types";
 import type { SyncState } from "./types";
 import { binarySearch, extractTextFromParts } from "./utils";
 
@@ -18,14 +17,50 @@ export interface EventHandlerContext {
   sessionIdleCallbacks: Set<(sessionId: string) => void>;
 }
 
+/** Convert SDK Part to our internal MessagePart type */
+function toPart(sdkPart: Part): MessagePart {
+  return sdkPart as MessagePart;
+}
+
+/** Convert SDK Session to our internal Session type */
+function toSession(sdkSession: SDKSession): Session {
+  return {
+    id: sdkSession.id,
+    title: sdkSession.title,
+    projectID: sdkSession.projectID,
+    directory: sdkSession.directory,
+    parentID: sdkSession.parentID,
+    time: sdkSession.time,
+    summary: sdkSession.summary
+      ? { diffs: sdkSession.summary.diffs ?? [] }
+      : undefined,
+  };
+}
+
+/** Convert SDK Permission to our internal Permission type */
+function toPermission(sdkPerm: SDKPermission): Permission {
+  return {
+    id: sdkPerm.id,
+    permission: sdkPerm.type,
+    patterns: sdkPerm.pattern
+      ? Array.isArray(sdkPerm.pattern)
+        ? sdkPerm.pattern
+        : [sdkPerm.pattern]
+      : undefined,
+    sessionID: sdkPerm.sessionID,
+    metadata: sdkPerm.metadata,
+    tool: sdkPerm.messageID
+      ? { messageID: sdkPerm.messageID, callID: sdkPerm.callID ?? "" }
+      : undefined,
+  };
+}
+
 export function applyEvent(event: Event, ctx: EventHandlerContext): void {
   const { store, setStore, currentSessionId, messageToSession, sessionIdleCallbacks } = ctx;
-  const eventType = event.type as string;
 
-  switch (eventType) {
+  switch (event.type) {
     case "message.updated": {
-      const props = (event as unknown as { properties: { info: IncomingMessage & { sessionID?: string } } }).properties;
-      const info = props.info;
+      const { info } = event.properties;
       const sessionId = info.sessionID ?? currentSessionId();
       if (!sessionId) break;
 
@@ -37,18 +72,28 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       const result = binarySearch(messages, info.id, (m) => m.id);
       const prev = result.found ? messages[result.index] : undefined;
 
-      const nextParts = info.parts !== undefined ? info.parts : (prev?.parts ?? []);
-      const nextText = info.text !== undefined
-        ? info.text
-        : (info.parts !== undefined
-            ? extractTextFromParts(nextParts)
-            : (prev?.text ?? ""));
+      // The server may send parts with the message (not in SDK types but present at runtime)
+      const incomingParts = (info as unknown as { parts?: Part[] }).parts;
+      const incomingText = (info as unknown as { text?: string }).text;
+      
+      // If parts come with the message, store them in store.part (single source of truth)
+      if (incomingParts && incomingParts.length > 0) {
+        const sortedParts = incomingParts.map(toPart).sort((a, b) => a.id.localeCompare(b.id));
+        setStore("part", info.id, sortedParts);
+      }
+
+      // Compute text: prioritize incoming text, then derive from parts, then preserve previous
+      const partsForText = incomingParts?.map(toPart) ?? store.part[info.id] ?? [];
+      const nextText = incomingText !== undefined
+        ? incomingText
+        : (incomingParts !== undefined
+            ? extractTextFromParts(partsForText)
+            : (prev?.text ?? extractTextFromParts(partsForText)));
 
       const msg: Message = {
         id: info.id,
-        type: info.role === "user" ? "user" : "assistant",
+        type: info.role,
         text: nextText,
-        parts: nextParts,
       };
 
       messageToSession.set(info.id, sessionId);
@@ -58,7 +103,6 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       } else if (result.found) {
         setStore("message", sessionId, result.index, reconcile(msg));
       } else {
-        // Insert at sorted position (IDs are lexicographically sortable)
         setStore("message", sessionId, produce((draft) => {
           draft.splice(result.index, 0, msg);
         }));
@@ -67,13 +111,13 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
     }
 
     case "message.removed": {
-      const props = (event as unknown as { properties: { messageID: string; sessionID?: string } }).properties;
-      const sessionId = props.sessionID ?? currentSessionId();
+      const { sessionID, messageID } = event.properties;
+      const sessionId = sessionID ?? currentSessionId();
       if (!sessionId) break;
 
       const messages = store.message[sessionId];
       if (messages) {
-        const result = binarySearch(messages, props.messageID, (m) => m.id);
+        const result = binarySearch(messages, messageID, (m) => m.id);
         if (result.found) {
           setStore("message", sessionId, produce((draft) => {
             draft.splice(result.index, 1);
@@ -81,16 +125,16 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
         }
       }
       setStore("part", produce((draft) => {
-        delete draft[props.messageID];
+        delete draft[messageID];
       }));
       break;
     }
 
     case "message.part.updated": {
-      const props = (event as unknown as { properties: { part: MessagePart & { messageID: string; sessionID?: string } } }).properties;
-      const part = props.part;
-      const sessionId = props.part.sessionID 
-        ?? messageToSession.get(part.messageID) 
+      const { part: sdkPart } = event.properties;
+      const part = toPart(sdkPart);
+      const sessionId = sdkPart.sessionID
+        ?? messageToSession.get(sdkPart.messageID)
         ?? currentSessionId();
 
       if (sessionId) {
@@ -99,59 +143,40 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
         }));
       }
 
-      const parts = store.part[part.messageID];
+      // Update store.part (single source of truth)
+      const parts = store.part[sdkPart.messageID];
       if (!parts) {
-        setStore("part", part.messageID, [part]);
+        setStore("part", sdkPart.messageID, [part]);
       } else {
         const result = binarySearch(parts, part.id, (p) => p.id);
         if (result.found) {
-          setStore("part", part.messageID, result.index, reconcile(part));
+          setStore("part", sdkPart.messageID, result.index, reconcile(part));
         } else {
-          // Insert at sorted position (IDs are lexicographically sortable)
-          setStore("part", part.messageID, produce((draft) => {
+          setStore("part", sdkPart.messageID, produce((draft) => {
             draft.splice(result.index, 0, part);
           }));
         }
       }
 
+      // Ensure the message exists (part may arrive before message.updated)
       if (sessionId) {
-        messageToSession.set(part.messageID, sessionId);
-        
+        messageToSession.set(sdkPart.messageID, sessionId);
+
         const messages = store.message[sessionId];
         if (!messages) {
           const newMsg: Message = {
-            id: part.messageID,
+            id: sdkPart.messageID,
             type: "assistant",
             text: "",
-            parts: [part],
           };
           setStore("message", sessionId, [newMsg]);
         } else {
-          const msgResult = binarySearch(messages, part.messageID, (m) => m.id);
-          if (msgResult.found) {
-            const msg = messages[msgResult.index];
-            const existingParts = msg.parts ?? [];
-            const partResult = binarySearch(existingParts, part.id, (p) => p.id);
-            
-            const newParts = [...existingParts];
-            if (partResult.found) {
-              newParts[partResult.index] = part;
-            } else {
-              // Insert at sorted position (IDs are lexicographically sortable)
-              newParts.splice(partResult.index, 0, part);
-            }
-            setStore("message", sessionId, msgResult.index, "parts", newParts);
-
-            if (msg.type === "user") {
-              setStore("message", sessionId, msgResult.index, "text", extractTextFromParts(newParts));
-            }
-          } else {
-            // Insert new message at sorted position
+          const msgResult = binarySearch(messages, sdkPart.messageID, (m) => m.id);
+          if (!msgResult.found) {
             const newMsg: Message = {
-              id: part.messageID,
+              id: sdkPart.messageID,
               type: "assistant",
               text: "",
-              parts: [part],
             };
             setStore("message", sessionId, produce((draft) => {
               draft.splice(msgResult.index, 0, newMsg);
@@ -163,27 +188,14 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
     }
 
     case "message.part.removed": {
-      const props = (event as unknown as { properties: { partID: string; messageID: string } }).properties;
-      const parts = store.part[props.messageID];
+      const { messageID, partID } = event.properties;
+      const parts = store.part[messageID];
       if (parts) {
-        const result = binarySearch(parts, props.partID, (p) => p.id);
+        const result = binarySearch(parts, partID, (p) => p.id);
         if (result.found) {
-          setStore("part", props.messageID, produce((draft) => {
+          setStore("part", messageID, produce((draft) => {
             draft.splice(result.index, 1);
           }));
-        }
-      }
-
-      const sessionId = currentSessionId();
-      if (sessionId) {
-        const messages = store.message[sessionId];
-        if (messages) {
-          const msgResult = binarySearch(messages, props.messageID, (m) => m.id);
-          if (msgResult.found) {
-            const existingParts = messages[msgResult.index].parts ?? [];
-            const newParts = existingParts.filter((p) => p.id !== props.partID);
-            setStore("message", sessionId, msgResult.index, "parts", newParts);
-          }
         }
       }
       break;
@@ -191,9 +203,8 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
 
     case "session.created":
     case "session.updated": {
-      const props = (event as unknown as { properties: { info: Session } }).properties;
-      const session = props.info;
-      
+      const session = toSession(event.properties.info);
+
       const result = binarySearch(store.sessions, session.id, (s) => s.id);
       if (result.found) {
         setStore("sessions", result.index, reconcile(session));
@@ -215,8 +226,7 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
     }
 
     case "session.deleted": {
-      const props = (event as unknown as { properties: { info?: { id: string }; sessionID?: string } }).properties;
-      const sessionId = props.info?.id ?? props.sessionID;
+      const sessionId = event.properties.info.id;
       if (!sessionId) break;
 
       const result = binarySearch(store.sessions, sessionId, (s) => s.id);
@@ -229,31 +239,28 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
     }
 
     case "session.idle": {
-      const props = (event as unknown as { properties: { sessionID?: string } }).properties;
-      const sessionId = props.sessionID;
-      if (sessionId) {
-        setStore("thinking", sessionId, false);
+      const { sessionID } = event.properties;
+      if (sessionID) {
+        setStore("thinking", sessionID, false);
         for (const callback of sessionIdleCallbacks) {
-          callback(sessionId);
+          callback(sessionID);
         }
       }
       break;
     }
 
     case "session.error": {
-      const props = (event as unknown as { properties: { sessionID?: string; error?: { data?: { message?: string } } } }).properties;
-      const sessionId = props.sessionID;
-      const errorMessage = props.error?.data?.message || "Unknown error";
-      if (sessionId) {
-        setStore("thinking", sessionId, false);
-        setStore("sessionError", sessionId, errorMessage);
+      const { sessionID, error } = event.properties;
+      const errorMessage = error?.data?.message ?? "Unknown error";
+      if (sessionID) {
+        setStore("thinking", sessionID, false);
+        setStore("sessionError", sessionID, errorMessage);
       }
       break;
     }
 
-    case "permission.asked":
     case "permission.updated": {
-      const permission = (event as unknown as { properties: Permission }).properties;
+      const permission = toPermission(event.properties);
       const sessionId = permission.sessionID;
       if (!sessionId) break;
 
@@ -267,7 +274,6 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       if (result.found) {
         setStore("permission", sessionId, result.index, reconcile(permission));
       } else {
-        // Insert at sorted position
         setStore("permission", sessionId, produce((draft) => {
           draft.splice(result.index, 0, permission);
         }));
@@ -276,14 +282,14 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
     }
 
     case "permission.replied": {
-      const props = (event as unknown as { properties: { permissionID: string; sessionID?: string } }).properties;
-      const sessionId = props.sessionID ?? currentSessionId();
+      const { sessionID, permissionID } = event.properties;
+      const sessionId = sessionID ?? currentSessionId();
       if (!sessionId) break;
 
       const permissions = store.permission[sessionId];
       if (!permissions) break;
 
-      const result = binarySearch(permissions, props.permissionID, (p) => p.id);
+      const result = binarySearch(permissions, permissionID, (p) => p.id);
       if (result.found) {
         setStore("permission", sessionId, produce((draft) => {
           draft.splice(result.index, 1);
@@ -292,8 +298,13 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       break;
     }
 
-    case "server.instance.disposed": {
+    case "server.instance.disposed":
+      // Handled by sync.tsx separately
       break;
-    }
+
+    // Ignore events we don't handle
+    default:
+      // TypeScript will warn if we add new event types without handling them
+      break;
   }
 }

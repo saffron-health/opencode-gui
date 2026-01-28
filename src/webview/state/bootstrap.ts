@@ -1,6 +1,12 @@
 import { batch } from "solid-js";
 import { reconcile, type SetStoreFunction } from "solid-js/store";
 import type {
+  Agent as SDKAgent,
+  Session as SDKSession,
+  Message as SDKMessage,
+  Part as SDKPart,
+} from "@opencode-ai/sdk/client";
+import type {
   Message,
   MessagePart,
   Session,
@@ -11,13 +17,19 @@ import type {
 import type { SyncState } from "./types";
 import { extractTextFromParts } from "./utils";
 
+/** API response for session.messages endpoint */
+interface MessagesResponse {
+  info?: SDKMessage;
+  parts?: SDKPart[];
+}
+
 export interface BootstrapContext {
   client: {
-    app: { agents: () => Promise<{ data?: unknown[] }> };
+    app: { agents: () => Promise<{ data?: SDKAgent[] }> };
     session: {
-      list: (opts?: { query?: { directory?: string } }) => Promise<{ data?: unknown[] }>;
-      messages: (opts: { path: { id: string } }) => Promise<{ data?: unknown[] }>;
-      get: (opts: { path: { id: string } }) => Promise<{ data?: unknown }>;
+      list: (opts?: { query?: { directory?: string } }) => Promise<{ data?: SDKSession[] }>;
+      messages: (opts: { path: { id: string } }) => Promise<{ data?: MessagesResponse[] }>;
+      get: (opts: { path: { id: string } }) => Promise<{ data?: SDKSession }>;
     };
   };
   sessionId: string | null;
@@ -33,6 +45,37 @@ export interface BootstrapResult {
   fileChanges: FileChangesInfo | null;
 }
 
+/** Convert SDK Agent to internal Agent type */
+function toAgent(sdkAgent: SDKAgent): Agent {
+  return {
+    name: sdkAgent.name,
+    description: sdkAgent.description,
+    mode: sdkAgent.mode,
+    builtIn: sdkAgent.builtIn,
+    options: sdkAgent.color ? { color: sdkAgent.color } : undefined,
+  };
+}
+
+/** Convert SDK Session to internal Session type */
+function toSession(sdkSession: SDKSession): Session {
+  return {
+    id: sdkSession.id,
+    title: sdkSession.title,
+    projectID: sdkSession.projectID,
+    directory: sdkSession.directory,
+    parentID: sdkSession.parentID,
+    time: sdkSession.time,
+    summary: sdkSession.summary
+      ? { diffs: sdkSession.summary.diffs ?? [] }
+      : undefined,
+  };
+}
+
+/** Convert SDK Part to internal MessagePart type */
+function toPart(sdkPart: SDKPart): MessagePart {
+  return sdkPart as MessagePart;
+}
+
 export async function fetchBootstrapData(ctx: BootstrapContext): Promise<BootstrapResult> {
   const { client, sessionId, workspaceRoot } = ctx;
 
@@ -41,16 +84,19 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
     client.session.list(workspaceRoot ? { query: { directory: workspaceRoot } } : undefined),
   ]);
 
-  const agents = ((agentsRes?.data ?? []) as Agent[]).filter(
-    (a) => a.mode === "primary" || a.mode === "all"
-  );
-  const sessions = ((sessionsRes?.data ?? []) as Session[])
-    .filter((s) => !!s?.id)
+  const agents = (agentsRes?.data ?? [])
+    .filter((a): a is SDKAgent => a.mode === "primary" || a.mode === "all")
+    .map(toAgent);
+
+  const sessions = (sessionsRes?.data ?? [])
+    .filter((s): s is SDKSession => !!s?.id)
+    .map(toSession)
     .sort((a, b) => a.id.localeCompare(b.id));
 
   let messageList: Message[] = [];
   let contextInfo: ContextInfo | null = null;
   let fileChanges: FileChangesInfo | null = null;
+  const partMap: { [messageID: string]: MessagePart[] } = {};
 
   if (sessionId) {
     try {
@@ -59,34 +105,43 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
         client.session.get({ path: { id: sessionId } }),
       ]);
 
-      const rawMessages = (messagesRes?.data ?? []) as Array<{ info?: unknown; parts?: MessagePart[] }>;
+      const rawMessages = messagesRes?.data ?? [];
+
       messageList = rawMessages
         .map((raw) => {
-          const m = (raw.info ?? raw) as Record<string, unknown>;
-          const parts = (raw.parts ?? m.parts ?? []) as MessagePart[];
-          const text = (m.text as string) ?? extractTextFromParts(parts);
-          const role = (m.role as string) ?? "assistant";
-          
+          const msgInfo = raw.info ?? (raw as unknown as SDKMessage);
+          const parts = raw.parts ?? [];
+          const text = extractTextFromParts(parts.map(toPart));
+          const messageId = msgInfo.id;
+          const role = msgInfo.role;
+
+          // Filter parts for user messages (exclude synthetic/ignored text parts)
           let normalizedParts = parts;
           if (role === "user") {
-            normalizedParts = parts.filter(
-              (p) =>
-                p.type !== "text" ||
-                (!(p as { synthetic?: boolean }).synthetic && !(p as { ignored?: boolean }).ignored)
-            );
+            normalizedParts = parts.filter((p) => {
+              if (p.type !== "text") return true;
+              const textPart = p as SDKPart & { synthetic?: boolean; ignored?: boolean };
+              return !textPart.synthetic && !textPart.ignored;
+            });
           }
-          
+
+          // Store parts in partMap (single source of truth)
+          if (normalizedParts.length > 0) {
+            partMap[messageId] = normalizedParts
+              .map(toPart)
+              .sort((a, b) => a.id.localeCompare(b.id));
+          }
+
           return {
-            id: m.id as string,
-            type: role === "user" ? "user" : "assistant",
+            id: messageId,
+            type: role,
             text,
-            parts: normalizedParts,
           } as Message;
         })
         .filter((m) => !!m.id)
         .sort((a, b) => a.id.localeCompare(b.id));
 
-      const session = sessionRes?.data as Session | undefined;
+      const session = sessionRes?.data;
       if (session?.summary?.diffs) {
         const diffs = session.summary.diffs;
         fileChanges = {
@@ -96,15 +151,22 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
         };
       }
 
+      // Extract context info from the last assistant message
       const lastAssistant = [...rawMessages].reverse().find((raw) => {
-        const m = (raw.info ?? raw) as Record<string, unknown>;
-        return m.role === "assistant";
+        const msgInfo = raw.info ?? (raw as unknown as SDKMessage);
+        return msgInfo.role === "assistant";
       });
+
       if (lastAssistant) {
-        const m = (lastAssistant.info ?? lastAssistant) as Record<string, unknown>;
-        if (m.tokens) {
-          const tokens = m.tokens as { input?: number; output?: number; cache?: { read?: number } };
-          const usedTokens = (tokens.input || 0) + (tokens.output || 0) + (tokens.cache?.read || 0);
+        const msgInfo = lastAssistant.info ?? (lastAssistant as unknown as SDKMessage);
+        // AssistantMessage has tokens field
+        const assistantMsg = msgInfo as SDKMessage & {
+          tokens?: { input?: number; output?: number; cache?: { read?: number } };
+        };
+        if (assistantMsg.tokens) {
+          const tokens = assistantMsg.tokens;
+          const usedTokens =
+            (tokens.input || 0) + (tokens.output || 0) + (tokens.cache?.read || 0);
           if (usedTokens > 0) {
             const limit = 200000;
             contextInfo = {
@@ -117,14 +179,6 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
       }
     } catch (err) {
       console.error("[Sync] Failed to load session messages:", err);
-    }
-  }
-
-  const partMap: { [messageID: string]: MessagePart[] } = {};
-  for (const msg of messageList) {
-    if (msg.parts?.length) {
-      // Sort parts by ID for binary search
-      partMap[msg.id] = msg.parts.slice().sort((a, b) => a.id.localeCompare(b.id));
     }
   }
 

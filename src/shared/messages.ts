@@ -41,7 +41,7 @@ export const MessageSchema = z.object({
   id: z.string(),
   type: z.enum(["user", "assistant"]),
   text: z.string().optional(),
-  parts: z.array(MessagePartSchema).optional(),
+  // Note: parts are stored separately in store.part[messageID], not on Message
 });
 export type Message = z.infer<typeof MessageSchema>;
 

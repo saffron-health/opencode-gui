@@ -217,11 +217,10 @@ function App() {
     // Collect all callIDs from tool parts in messages
     const toolCallIDs = new Set<string>();
     for (const msg of msgs) {
-      if (msg.parts) {
-        for (const part of msg.parts) {
-          if (part.type === "tool" && part.callID) {
-            toolCallIDs.add(part.callID);
-          }
+      const msgParts = sync.getParts(msg.id);
+      for (const part of msgParts) {
+        if (part.type === "tool" && part.callID) {
+          toolCallIDs.add(part.callID);
         }
       }
     }
