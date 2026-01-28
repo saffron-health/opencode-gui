@@ -35,6 +35,11 @@ function createSync() {
   const messageToSession = new Map<string, string>();
   const sessionIdleCallbacks = new Set<(sessionId: string) => void>();
 
+  // Event batching: queue events and flush every 30ms
+  const EVENT_BATCH_MS = 30;
+  const eventQueue: Event[] = [];
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
   const eventContext: EventHandlerContext = {
     get store() { return store; },
     setStore,
@@ -42,6 +47,26 @@ function createSync() {
     messageToSession,
     sessionIdleCallbacks,
   };
+
+  function flushEventQueue() {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    if (eventQueue.length === 0) return;
+
+    const events = eventQueue.splice(0);
+    batch(() => {
+      for (const event of events) {
+        applyEvent(event, eventContext);
+      }
+    });
+  }
+
+  function scheduleFlush() {
+    if (flushTimer) return;
+    flushTimer = setTimeout(flushEventQueue, EVENT_BATCH_MS);
+  }
 
   function setCurrentSessionId(id: string | null) {
     const prevId = currentSessionId();
@@ -142,6 +167,9 @@ function createSync() {
         }
 
         commitBootstrapData(data, sessionId, setStore);
+
+        // Flush any events that arrived during bootstrap
+        flushEventQueue();
       } catch (err) {
         console.error("[Sync] Bootstrap failed:", err);
         setStore("status", { status: "error", message: (err as Error).message });
@@ -156,11 +184,20 @@ function createSync() {
 
   function handleEvent(event: Event) {
     if ((event.type as string) === "server.instance.disposed") {
+      // Flush pending events before re-bootstrap
+      flushEventQueue();
       console.log("[Sync] Server disposed, re-bootstrapping...");
       setBootstrapCount((c) => c + 1);
       return;
     }
-    applyEvent(event, eventContext);
+
+    // Buffer events during bootstrap, queue for batched processing
+    eventQueue.push(event);
+
+    // If bootstrapping, don't schedule flush - will flush after commit
+    if (store.status.status === "bootstrapping") return;
+
+    scheduleFlush();
   }
 
   function handleStatus(status: SSEStatus) {
@@ -227,6 +264,8 @@ function createSync() {
   });
 
   onCleanup(() => {
+    // Flush pending events before cleanup
+    flushEventQueue();
     const cleanup = sseCleanup();
     if (cleanup) cleanup();
   });
