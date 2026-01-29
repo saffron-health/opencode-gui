@@ -89,7 +89,7 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
     .map(toAgent);
 
   const sessions = (sessionsRes?.data ?? [])
-    .filter((s): s is SDKSession => !!s?.id)
+    .filter((s): s is SDKSession => !!s?.id && !s.parentID)
     .map(toSession)
     .sort((a, b) => a.id.localeCompare(b.id));
 

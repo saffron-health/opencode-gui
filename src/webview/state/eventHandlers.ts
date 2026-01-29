@@ -225,6 +225,9 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
     case "session.updated": {
       const session = toSession(event.properties.info);
 
+      // Skip child sessions (system agents like title, compaction, etc.)
+      if (session.parentID) break;
+
       batch(() => {
         const result = binarySearch(store.sessions, session.id, (s) => s.id);
         if (result.found) {
