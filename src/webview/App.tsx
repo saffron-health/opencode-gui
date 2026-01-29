@@ -452,7 +452,22 @@ function App() {
 
     try {
       const extraParts = buildSelectionParts(next.attachments);
-      await sendPrompt(sessionId, next.text, next.agent, extraParts, next.messageID);
+      const result = await sendPrompt(sessionId, next.text, next.agent, extraParts, next.messageID);
+      
+      // Check for SDK error in result (SDK doesn't throw by default)
+      if (result?.error) {
+        const errorData = result.error as { data?: { message?: string }; error?: { data?: { message?: string } } };
+        const errorMessage = 
+          errorData.data?.message || 
+          errorData.error?.data?.message || 
+          (typeof errorData === 'string' ? errorData : JSON.stringify(errorData)) ||
+          "Unknown error";
+        sync.setThinking(sessionId, false);
+        setInFlightMessage(null);
+        setMessageQueue([]);
+        sync.setSessionError(sessionId, errorMessage);
+        return;
+      }
     } catch (err) {
       console.error("[App] Queue sendPrompt failed:", err);
       const errorMessage = (err as Error).message;
@@ -601,7 +616,21 @@ function App() {
 
     try {
       await revertToMessage(sessionId, messageId);
-      await sendPrompt(sessionId, newText.trim(), agent, [], newMessageID);
+      const result = await sendPrompt(sessionId, newText.trim(), agent, [], newMessageID);
+      
+      // Check for SDK error in result (SDK doesn't throw by default)
+      if (result?.error) {
+        const errorData = result.error as { data?: { message?: string }; error?: { data?: { message?: string } } };
+        const errorMessage = 
+          errorData.data?.message || 
+          errorData.error?.data?.message || 
+          (typeof errorData === 'string' ? errorData : JSON.stringify(errorData)) ||
+          "Unknown error";
+        sync.setThinking(sessionId, false);
+        setInFlightMessage(null);
+        sync.setSessionError(sessionId, `Error editing message: ${errorMessage}`);
+        return;
+      }
     } catch (err) {
       console.error("[App] Failed to edit message:", err);
       const errorMessage = (err as Error).message;
