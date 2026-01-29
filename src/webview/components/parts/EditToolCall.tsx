@@ -88,10 +88,7 @@ export function EditToolCall(props: EditToolCallProps) {
   );
 
   const Output = () => (
-    <Show
-      when={state().metadata?.diff}
-      fallback={<pre class="tool-output">{state().output}</pre>}
-    >
+    <Show when={state().metadata?.diff}>
       <DiffViewer diff={state().metadata!.diff as string} />
     </Show>
   );
@@ -123,8 +120,7 @@ export function EditToolCall(props: EditToolCallProps) {
     </>
   );
 
-  const hasOutput = () =>
-    !!(state().output || state().metadata?.diff);
+  const hasOutput = () => !!state().metadata?.diff;
   const hasFooter = () =>
     !!(
       state().error ||

@@ -636,17 +636,18 @@ body {
   border: 1px solid transparent;
   background: 
     linear-gradient(var(--input-background-muted), var(--input-background-muted)) padding-box,
-    linear-gradient(135deg, var(--border-color-muted), var(--accent-color), var(--border-color-muted)) border-box;
-  background-size: 100% 100%, 200% 200%;
-  animation: gradient-border 2s linear infinite;
+    linear-gradient(90deg, color-mix(in srgb, var(--border-color) 75%, light-dark(white, black)) 0%, var(--border-color) 50%, color-mix(in srgb, var(--border-color) 75%, light-dark(white, black)) 100%) border-box;
+  background-size: 100% 100%, 200% 100%;
+  background-position: 0 0, 0% 0;
+  animation: pending-shimmer 1.5s linear infinite;
 }
 
-@keyframes gradient-border {
+@keyframes pending-shimmer {
   0% {
-    background-position: 0 0, 0% 0%;
+    background-position: 0 0, 100% 0;
   }
   100% {
-    background-position: 0 0, 200% 200%;
+    background-position: 0 0, -100% 0;
   }
 }
 

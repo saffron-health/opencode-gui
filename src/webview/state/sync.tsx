@@ -308,7 +308,7 @@ function createSync() {
   };
 }
 
-const SyncContext = createContext<ReturnType<typeof createSync>>();
+export const SyncContext = createContext<ReturnType<typeof createSync>>();
 
 export function SyncProvider(props: ParentProps) {
   const value = createSync();
@@ -320,3 +320,5 @@ export function useSync() {
   if (!context) throw new Error("useSync must be used within SyncProvider");
   return context;
 }
+
+export type SyncContextValue = ReturnType<typeof createSync>;

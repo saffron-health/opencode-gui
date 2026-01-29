@@ -22,20 +22,18 @@ export function TaskToolCall(props: TaskToolCallProps) {
 
   const isPending = () => props.part.state?.status === "pending";
 
-  const Header = () => {
-    const description = inputs().description as string | undefined;
-    const subagentType = inputs().subagent_type as string | undefined;
-    const mainText = isPending() ? "Running task" : (state().title || description || "Task");
+  const description = () => inputs().description as string | undefined;
+  const subagentType = () => inputs().subagent_type as string | undefined;
+  const mainText = () => state().title || description() || (isPending() ? "Running task" : "Task");
 
-    return (
-      <span class="tool-header-text">
-        <span class="tool-text">{mainText}</span>
-        <Show when={subagentType}>
-          <span class="tool-sub-text">{subagentType}</span>
-        </Show>
-      </span>
-    );
-  };
+  const Header = () => (
+    <span class="tool-header-text">
+      <span class="tool-text">{mainText()}</span>
+      <Show when={subagentType()}>
+        <span class="tool-sub-text">{subagentType()}</span>
+      </Show>
+    </span>
+  );
 
   const Output = () => <pre class="tool-output">{state().output}</pre>;
 

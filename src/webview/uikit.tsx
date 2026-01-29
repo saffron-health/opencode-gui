@@ -8,6 +8,7 @@ import { FileChangesSummary } from "./components/FileChangesSummary";
 import { InputBar } from "./components/InputBar";
 import { MessageList } from "./components/MessageList";
 import { TopBar } from "./components/TopBar";
+import { MockSyncProvider } from "./state/MockSyncProvider";
 import type { QueuedMessage } from "./App";
 import type {
   Agent,
@@ -102,8 +103,7 @@ const fakeMessages: Message[] = [
         messageID: "msg-2",
         state: {
           input: { filePath: "/src/auth/login.ts" },
-          status: "completed",
-          output: "// Authentication logic here...",
+          status: "pending",
         },
       },
       {
@@ -120,6 +120,20 @@ const fakeMessages: Message[] = [
   --watch=false \\
   --timeout=5000`,
             description: "Run authentication tests",
+          },
+          status: "pending",
+        },
+      },
+      {
+        id: "part-3b",
+        type: "tool",
+        tool: "task",
+        messageID: "msg-2",
+        callID: "call-task-1",
+        state: {
+          input: {
+            description: "Refactoring authentication module",
+            subagent_type: "code",
           },
           status: "pending",
         },
@@ -540,29 +554,39 @@ function UIKit() {
   ];
 
   return (
-    <div style={{ display: "flex", height: "100vh" }}>
-      {/* Sidebar Control Panel */}
-      <div
-        style={{
-          width: "180px",
-          padding: "12px",
-          background: "var(--vscode-sideBar-background, #252526)",
-          "border-right": "1px solid var(--vscode-panel-border, #3a3a3a)",
-          display: "flex",
-          "flex-direction": "column",
-          gap: "8px",
-          "overflow-y": "auto",
-        }}
-      >
-        <span
+    <MockSyncProvider
+      messages={messages()}
+      sessions={sessions()}
+      agents={agents()}
+      isThinking={isThinking()}
+      contextInfo={contextInfo()}
+      fileChanges={fileChanges()}
+      permissions={pendingPermissions()}
+      workspaceRoot="/Users/developer/project"
+    >
+      <div style={{ display: "flex", height: "100vh" }}>
+        {/* Sidebar Control Panel */}
+        <div
           style={{
-            color: "var(--vscode-descriptionForeground, #888)",
-            "font-size": "11px",
-            "text-transform": "uppercase",
-            "letter-spacing": "0.5px",
-            "margin-bottom": "4px",
+            width: "180px",
+            padding: "12px",
+            background: "var(--vscode-sideBar-background, #252526)",
+            "border-right": "1px solid var(--vscode-panel-border, #3a3a3a)",
+            display: "flex",
+            "flex-direction": "column",
+            gap: "8px",
+            "overflow-y": "auto",
           }}
         >
+          <span
+            style={{
+              color: "var(--vscode-descriptionForeground, #888)",
+              "font-size": "11px",
+              "text-transform": "uppercase",
+              "letter-spacing": "0.5px",
+              "margin-bottom": "4px",
+            }}
+          >
           UI Kit Controls
         </span>
         <For each={controlButtons}>
@@ -624,6 +648,8 @@ function UIKit() {
               queuedMessages={queuedMessages()}
               onRemoveFromQueue={(id) => setQueuedMessages((prev) => prev.filter((m) => m.id !== id))}
               onEditQueuedMessage={() => {}}
+              attachments={[]}
+              onRemoveAttachment={() => {}}
             />
           )}
 
@@ -656,12 +682,15 @@ function UIKit() {
                 queuedMessages={queuedMessages()}
                 onRemoveFromQueue={(id) => setQueuedMessages((prev) => prev.filter((m) => m.id !== id))}
                 onEditQueuedMessage={() => {}}
+                attachments={[]}
+                onRemoveAttachment={() => {}}
               />
             </>
           )}
         </div>
+        </div>
       </div>
-    </div>
+    </MockSyncProvider>
   );
 }
 
