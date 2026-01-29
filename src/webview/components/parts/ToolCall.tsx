@@ -8,6 +8,7 @@ import { BashToolCall } from "./BashToolCall";
 import { ListToolCall } from "./ListToolCall";
 import { WebfetchToolCall } from "./WebfetchToolCall";
 import { TodoToolCall } from "./TodoToolCall";
+import { TaskToolCall } from "./TaskToolCall";
 import { GenericToolCall } from "./GenericToolCall";
 
 interface ToolCallProps {
@@ -48,6 +49,9 @@ export function ToolCall(props: ToolCallProps) {
       </Match>
       <Match when={tool() === "todowrite" || tool() === "todoread"}>
         <TodoToolCall {...props} />
+      </Match>
+      <Match when={tool() === "task"}>
+        <TaskToolCall {...props} />
       </Match>
       <Match when={true}>
         <GenericToolCall {...props} />

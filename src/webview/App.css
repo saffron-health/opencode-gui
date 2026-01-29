@@ -631,6 +631,25 @@ body {
   outline: none;
 }
 
+.tool-call--pending {
+  position: relative;
+  border: 1px solid transparent;
+  background: 
+    linear-gradient(var(--input-background-muted), var(--input-background-muted)) padding-box,
+    linear-gradient(90deg, var(--border-color-muted), var(--accent-color), var(--border-color-muted)) border-box;
+  background-size: 100% 100%, 200% 100%;
+  animation: gradient-border 2s linear infinite;
+}
+
+@keyframes gradient-border {
+  0% {
+    background-position: 0 0, 0% 0;
+  }
+  100% {
+    background-position: 0 0, 200% 0;
+  }
+}
+
 .tool-call-light {
   display: flex;
   align-items: center;
@@ -1190,10 +1209,12 @@ body.vscode-high-contrast {
   color: var(--foreground);
 }
 
-.session-item.selected {
-  background-color: var(--hover-background);
-  color: var(--foreground);
-  border-left-color: var(--focus-border);
+.session-item.current {
+  color: var(--focus-border);
+}
+
+.session-item.current:hover {
+  color: var(--focus-border);
 }
 
 .session-item-title {

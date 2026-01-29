@@ -71,7 +71,7 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
                 {(session) => (
                   <div
                     class={`session-item ${
-                      session.id === props.currentSessionId ? "selected" : ""
+                      session.id === props.currentSessionId ? "current" : ""
                     }`}
                     onClick={() => handleSessionClick(session.id)}
                   >

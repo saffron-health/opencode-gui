@@ -74,6 +74,7 @@ export function ReadToolCall(props: ReadToolCallProps) {
       header={Header}
       output={state().output ? Output : undefined}
       footer={state().error ? () => <ErrorFooter error={state().error} /> : undefined}
+      isPending={props.part.state?.status === "pending"}
       needsPermission={!!permission()}
       permission={permission()}
       onPermissionResponse={(response) => {

@@ -139,6 +139,7 @@ export function EditToolCall(props: EditToolCallProps) {
       output={hasOutput() ? Output : undefined}
       footer={hasFooter() ? Footer : undefined}
       defaultOpen={true}
+      isPending={props.part.state?.status === "pending"}
       needsPermission={!!permission()}
       permission={permission()}
       onPermissionResponse={(response) => {
