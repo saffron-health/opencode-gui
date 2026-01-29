@@ -1,10 +1,10 @@
 import { Show } from "solid-js";
 import type { MessagePart, Permission } from "../../types";
 import { ToolCallTemplate } from "./ToolCallTemplate";
-import { TerminalIcon } from "./ToolCallIcons";
+import { GenericToolIcon } from "./ToolCallIcons";
 import { getToolInputs, usePermission, ErrorFooter, type ToolState } from "./ToolCallHelpers";
 
-interface BashToolCallProps {
+interface TaskToolCallProps {
   part: MessagePart;
   workspaceRoot?: string;
   pendingPermissions?: Map<string, Permission>;
@@ -14,39 +14,36 @@ interface BashToolCallProps {
   ) => void;
 }
 
-export function BashToolCall(props: BashToolCallProps) {
+export function TaskToolCall(props: TaskToolCallProps) {
   const state = () => props.part.state as ToolState;
   const inputs = () => getToolInputs(state(), props.part);
 
   const permission = usePermission(props.part, props.pendingPermissions);
 
-  const Header = () => {
-    const command = inputs().command as string | undefined;
+  const isPending = () => props.part.state?.status === "pending";
 
-    return (
-      <span class="tool-header-text">
-        <span
-          class="tool-text tool-text--bash"
-          style={{ "font-family": "monospace" }}
-        >
-          {command || "Running command"}
-        </span>
-      </span>
-    );
-  };
+  const description = () => inputs().description as string | undefined;
+  const subagentType = () => inputs().subagent_type as string | undefined;
+  const mainText = () => state().title || description() || (isPending() ? "Running task" : "Task");
 
-  const Output = () => (
-    <pre class="tool-output tool-output--bash">{state().output}</pre>
+  const Header = () => (
+    <span class="tool-header-text">
+      <span class="tool-text">{mainText()}</span>
+      <Show when={subagentType()}>
+        <span class="tool-sub-text">{subagentType()}</span>
+      </Show>
+    </span>
   );
+
+  const Output = () => <pre class="tool-output">{state().output}</pre>;
 
   return (
     <ToolCallTemplate
-      icon={TerminalIcon}
+      icon={GenericToolIcon}
       header={Header}
       output={state().output ? Output : undefined}
       footer={state().error ? () => <ErrorFooter error={state().error} /> : undefined}
-      defaultOpen={true}
-      isPending={props.part.state?.status === "pending"}
+      isPending={isPending()}
       needsPermission={!!permission()}
       permission={permission()}
       onPermissionResponse={(response) => {

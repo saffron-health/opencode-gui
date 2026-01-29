@@ -4,6 +4,9 @@ import { TextBlock } from "./parts/TextBlock";
 import { ReasoningBlock } from "./parts/ReasoningBlock";
 import { ToolCall } from "./parts/ToolCall";
 
+// System subagent types that should be hidden from the UI
+const HIDDEN_SUBAGENT_TYPES = new Set(["compaction", "title", "summary"]);
+
 interface MessagePartRendererProps {
   part: MessagePart;
   workspaceRoot?: string;
@@ -12,7 +15,20 @@ interface MessagePartRendererProps {
   isStreaming?: boolean;
 }
 
+function isHiddenSystemTask(part: MessagePart): boolean {
+  if (part.type !== "tool") return false;
+  const toolPart = part as MessagePart & { tool?: string; state?: { input?: Record<string, unknown> } };
+  if (toolPart.tool !== "task") return false;
+  const subagentType = toolPart.state?.input?.subagent_type as string | undefined;
+  return !!subagentType && HIDDEN_SUBAGENT_TYPES.has(subagentType);
+}
+
 export function MessagePartRenderer(props: MessagePartRendererProps) {
+  // Hide system task tool calls (compaction, title, summary)
+  if (isHiddenSystemTask(props.part)) {
+    return null;
+  }
+
   switch (props.part.type) {
     case "text":
       return <TextBlock part={props.part} isStreaming={props.isStreaming} />;

@@ -258,8 +258,7 @@ function App() {
         // Filter to sessions in the same repo/worktree
         if (root && s.directory !== root) return false;
         
-        // Filter out the current session from the switcher list
-        return s.id !== currentId;
+        return true;
       })
       // Sort by edited time (updated) instead of started time (created)
       .sort((a, b) => b.time.updated - a.time.updated);

@@ -76,6 +76,9 @@ function toPart(sdkPart: SDKPart): MessagePart {
   return sdkPart as MessagePart;
 }
 
+// System agents that should be hidden from the UI
+const HIDDEN_AGENTS = new Set(["compaction", "title", "summary"]);
+
 export async function fetchBootstrapData(ctx: BootstrapContext): Promise<BootstrapResult> {
   const { client, sessionId, workspaceRoot } = ctx;
 
@@ -85,11 +88,13 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
   ]);
 
   const agents = (agentsRes?.data ?? [])
-    .filter((a): a is SDKAgent => a.mode === "primary" || a.mode === "all")
+    .filter((a): a is SDKAgent => 
+      (a.mode === "primary" || a.mode === "all") && !HIDDEN_AGENTS.has(a.name)
+    )
     .map(toAgent);
 
   const sessions = (sessionsRes?.data ?? [])
-    .filter((s): s is SDKSession => !!s?.id)
+    .filter((s): s is SDKSession => !!s?.id && !s.parentID)
     .map(toSession)
     .sort((a, b) => a.id.localeCompare(b.id));
 

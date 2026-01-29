@@ -17,6 +17,7 @@ export interface ToolCallTemplateProps {
   footer?: Component;
   isLight?: boolean;
   defaultOpen?: boolean;
+  isPending?: boolean;
   needsPermission?: boolean;
   permission?: Permission;
   onPermissionResponse?: (response: "once" | "always" | "reject") => void;
@@ -125,7 +126,10 @@ export function ToolCallTemplate(props: ToolCallTemplateProps) {
         <div
           ref={setToolCallRef}
           class="tool-call"
-          classList={{ "tool-call--needs-permission": props.needsPermission }}
+          classList={{
+            "tool-call--needs-permission": props.needsPermission,
+            "tool-call--pending": props.isPending,
+          }}
           tabIndex={props.needsPermission ? 0 : undefined}
           onKeyDown={(e) => {
             if (props.needsPermission && e.key === "Enter") {

@@ -631,6 +631,26 @@ body {
   outline: none;
 }
 
+.tool-call--pending {
+  position: relative;
+  border: 1px solid transparent;
+  background: 
+    linear-gradient(var(--input-background-muted), var(--input-background-muted)) padding-box,
+    linear-gradient(90deg, color-mix(in srgb, var(--border-color) 75%, light-dark(white, black)) 0%, var(--border-color) 50%, color-mix(in srgb, var(--border-color) 75%, light-dark(white, black)) 100%) border-box;
+  background-size: 100% 100%, 200% 100%;
+  background-position: 0 0, 0% 0;
+  animation: pending-shimmer 1.5s linear infinite;
+}
+
+@keyframes pending-shimmer {
+  0% {
+    background-position: 0 0, 100% 0;
+  }
+  100% {
+    background-position: 0 0, -100% 0;
+  }
+}
+
 .tool-call-light {
   display: flex;
   align-items: center;
@@ -1190,10 +1210,12 @@ body.vscode-high-contrast {
   color: var(--foreground);
 }
 
-.session-item.selected {
-  background-color: var(--hover-background);
-  color: var(--foreground);
-  border-left-color: var(--focus-border);
+.session-item.current {
+  color: var(--focus-border);
+}
+
+.session-item.current:hover {
+  color: var(--focus-border);
 }
 
 .session-item-title {

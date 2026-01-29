@@ -1,7 +1,8 @@
+import { createMemo } from "solid-js";
 import type { MessagePart, Permission } from "../../types";
 import { ToolCallTemplate } from "./ToolCallTemplate";
 import { FolderIcon } from "./ToolCallIcons";
-import { getToolInputs, usePermission, ErrorFooter, type ToolState } from "./ToolCallHelpers";
+import { getToolInputs, toRelativePath, usePermission, ErrorFooter, type ToolState } from "./ToolCallHelpers";
 
 interface ListToolCallProps {
   part: MessagePart;
@@ -17,12 +18,16 @@ export function ListToolCall(props: ListToolCallProps) {
   const state = () => props.part.state as ToolState;
   const inputs = () => getToolInputs(state(), props.part);
 
+  const relativePath = createMemo(() =>
+    toRelativePath(inputs().path as string, props.workspaceRoot),
+  );
+
   const permission = usePermission(props.part, props.pendingPermissions);
 
   const Header = () => (
     <span class="tool-header-text">
       <span class="tool-text" style={{ "font-family": "monospace" }}>
-        {(inputs().path as string) || "Listing directory"}
+        {relativePath() || "Listing directory"}
       </span>
     </span>
   );
@@ -35,6 +40,7 @@ export function ListToolCall(props: ListToolCallProps) {
       header={Header}
       output={state().output ? Output : undefined}
       footer={state().error ? () => <ErrorFooter error={state().error} /> : undefined}
+      isPending={props.part.state?.status === "pending"}
       needsPermission={!!permission()}
       permission={permission()}
       onPermissionResponse={(response) => {

@@ -41,13 +41,15 @@ export function splitFilePath(filePath: string): {
 
   if (lastSlash === -1) {
     // No directory, just filename
-    return { dirPath: "", fileName: filePath, slash: "/" };
+    return { dirPath: "", fileName: filePath, slash: "" };
   }
 
+  const dirPath = filePath.substring(0, lastSlash);
   return {
-    dirPath: filePath.substring(0, lastSlash),
+    dirPath,
     fileName: filePath.substring(lastSlash + 1),
-    slash: "/",
+    // Only show slash if there's actually a directory
+    slash: dirPath ? "/" : "",
   };
 }
 
