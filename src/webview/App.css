@@ -636,17 +636,17 @@ body {
   border: 1px solid transparent;
   background: 
     linear-gradient(var(--input-background-muted), var(--input-background-muted)) padding-box,
-    linear-gradient(90deg, var(--border-color-muted), var(--accent-color), var(--border-color-muted)) border-box;
-  background-size: 100% 100%, 200% 100%;
+    linear-gradient(135deg, var(--border-color-muted), var(--accent-color), var(--border-color-muted)) border-box;
+  background-size: 100% 100%, 200% 200%;
   animation: gradient-border 2s linear infinite;
 }
 
 @keyframes gradient-border {
   0% {
-    background-position: 0 0, 0% 0;
+    background-position: 0 0, 0% 0%;
   }
   100% {
-    background-position: 0 0, 200% 0;
+    background-position: 0 0, 200% 200%;
   }
 }
 
