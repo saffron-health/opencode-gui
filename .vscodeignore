@@ -1,5 +1,12 @@
 .vscode/**
 .vscode-test/**
+tmp/**
+.opencode/**
+.agents/**
+.github/**
+playwright-report/**
+test-results/**
+tests/**
 src/**
 .gitignore
 .yarnrc
