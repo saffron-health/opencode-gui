@@ -1,4 +1,5 @@
-import { createOpencode, type OpencodeClient } from "@opencode-ai/sdk";
+import { createOpencode, type OpencodeClient } from "@opencode-ai/sdk/v2";
+import type { Message } from "@opencode-ai/sdk/v2/client";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -89,13 +90,13 @@ export class OpenCodeService {
 
   async getMessages(
     sessionId: string,
-  ): Promise<Array<{ info: unknown; parts: unknown[] }>> {
+  ): Promise<Message[]> {
     if (!this.opencode) {
       throw new Error("OpenCode not initialized");
     }
 
     const result = await this.opencode.client.session.messages({
-      path: { id: sessionId },
+      sessionID: sessionId,
     });
 
     if (result.error) {
@@ -104,7 +105,7 @@ export class OpenCodeService {
       );
     }
 
-    return (result.data || []) as Array<{ info: unknown; parts: unknown[] }>;
+    return result.data || [];
   }
 
   dispose(): void {

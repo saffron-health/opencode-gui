@@ -1,11 +1,17 @@
 import { test, expect } from "./fixtures";
 
+// Restrictive permission config for testing - ask for everything
+const restrictiveConfig = {
+  model: "anthropic/claude-sonnet-4-5-20250929",
+  permission: "ask"
+};
+
 // Permission tests are skipped by default because they depend on 
 // AI behavior (whether the model decides to use a tool that needs permission).
 // Enable these tests manually when testing permission flows.
 test.describe("Permissions", () => {
-  test.skip("should show permission card when tool needs approval", async ({ openWebview }) => {
-    const page = await openWebview();
+  test("should show permission card when tool needs approval", async ({ openWebview }) => {
+    const page = await openWebview({ opencodeConfig: restrictiveConfig });
     
     // Send a prompt that will trigger a tool call requiring permission
     const textarea = page.getByRole("textbox", { name: "Message input" });
@@ -23,8 +29,8 @@ test.describe("Permissions", () => {
     await expect(page.getByRole("button", { name: "Reject" })).toBeVisible();
   });
 
-  test.skip("should allow approving permission once", async ({ openWebview }) => {
-    const page = await openWebview();
+  test("should allow approving permission once", async ({ openWebview }) => {
+    const page = await openWebview({ opencodeConfig: restrictiveConfig });
     
     const textarea = page.getByRole("textbox", { name: "Message input" });
     await textarea.fill("Run the command: echo 'hello from e2e test'");
@@ -43,8 +49,8 @@ test.describe("Permissions", () => {
     await expect(permissionGroup).not.toBeVisible({ timeout: 5000 });
   });
 
-  test.skip("should allow rejecting permission", async ({ openWebview }) => {
-    const page = await openWebview();
+  test("should allow rejecting permission", async ({ openWebview }) => {
+    const page = await openWebview({ opencodeConfig: restrictiveConfig });
     
     const textarea = page.getByRole("textbox", { name: "Message input" });
     await textarea.fill("Run the command: echo 'this will be rejected'");
@@ -63,8 +69,8 @@ test.describe("Permissions", () => {
     await expect(permissionGroup).not.toBeVisible({ timeout: 5000 });
   });
 
-  test.skip("should show standalone permission for external directory", async ({ openWebview }) => {
-    const page = await openWebview();
+  test("should show standalone permission for external directory", async ({ openWebview }) => {
+    const page = await openWebview({ opencodeConfig: restrictiveConfig });
     
     // Send a prompt that will try to edit a file outside the workspace
     const textarea = page.getByRole("textbox", { name: "Message input" });

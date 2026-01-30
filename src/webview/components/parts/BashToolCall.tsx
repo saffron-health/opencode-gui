@@ -15,21 +15,25 @@ interface BashToolCallProps {
 }
 
 export function BashToolCall(props: BashToolCallProps) {
+  // IMPORTANT: don't memoize raw objects from the store.
+  // Returning the object from createMemo prevents downstream tracking of nested keys
+  // (e.g. state.input.command) when reconcile mutates in place. Use accessors.
   const state = () => props.part.state as ToolState;
   const inputs = () => getToolInputs(state(), props.part);
 
   const permission = usePermission(props.part, props.pendingPermissions);
 
-  const Header = () => {
-    const command = inputs().command as string | undefined;
+  // Show the actual bash command (e.g., "ls -la"), not the AI-generated description
+  const command = () => inputs().command as string | undefined;
 
+  const Header = () => {
     return (
       <span class="tool-header-text">
         <span
           class="tool-text tool-text--bash"
           style={{ "font-family": "monospace" }}
         >
-          {command || "Running command"}
+          {command() || "Running command"}
         </span>
       </span>
     );

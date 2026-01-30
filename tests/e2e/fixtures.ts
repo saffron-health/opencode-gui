@@ -1,9 +1,12 @@
 import { test as base, type Page } from "@playwright/test";
 import { spawn, type ChildProcess } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
 
 interface OpenCodeConfig {
   serverUrl: string;
   workspaceRoot?: string;
+  opencodeConfig?: Record<string, unknown>;
 }
 
 interface LogEntry {
@@ -230,7 +233,15 @@ export const test = base.extend<OpenCodeFixtures, OpenCodeWorkerFixtures>({
   // Share the server across all tests in a worker
   opencodeServer: [
     async ({}, use) => {
-      const workspaceRoot = process.env.OPENCODE_WORKSPACE_ROOT || process.cwd();
+      // Use sandbox directory for tests by default
+      const defaultRoot = path.join(process.cwd(), "tests", "sandbox");
+      const workspaceRoot = process.env.OPENCODE_WORKSPACE_ROOT || defaultRoot;
+      
+      // Ensure sandbox directory exists
+      if (!fs.existsSync(workspaceRoot)) {
+        fs.mkdirSync(workspaceRoot, { recursive: true });
+      }
+      
       console.log(`[fixture] Starting OpenCode server in ${workspaceRoot}`);
       const server = await startOpenCodeServer(workspaceRoot);
       console.log(`[fixture] OpenCode server started at ${server.url}`);
@@ -249,13 +260,27 @@ export const test = base.extend<OpenCodeFixtures, OpenCodeWorkerFixtures>({
 
   openWebview: async ({ page, opencodeServer }, use) => {
     const openWebview = async (config?: Partial<OpenCodeConfig>) => {
+      const defaultRoot = path.join(process.cwd(), "tests", "sandbox");
+      const workspaceRoot = process.env.OPENCODE_WORKSPACE_ROOT || defaultRoot;
+      
       const defaultConfig: OpenCodeConfig = {
         serverUrl: opencodeServer.url,
-        workspaceRoot: process.env.OPENCODE_WORKSPACE_ROOT || process.cwd(),
+        workspaceRoot,
       };
 
       const finalConfig = { ...defaultConfig, ...config };
-      console.log(`[fixture] Opening webview with config:`, finalConfig);
+      
+      // If custom opencode config is provided, write it to the sandbox
+      if (finalConfig.opencodeConfig) {
+        const configPath = path.join(workspaceRoot, "opencode.json");
+        fs.writeFileSync(configPath, JSON.stringify(finalConfig.opencodeConfig, null, 2));
+        console.log(`[fixture] Wrote custom opencode.json to ${configPath}`);
+      }
+      
+      console.log(`[fixture] Opening webview with config:`, { 
+        ...finalConfig, 
+        opencodeConfig: finalConfig.opencodeConfig ? "custom" : "default" 
+      });
 
       // Set up route to inject config before page loads
       await page.route("**/standalone.html", async (route) => {

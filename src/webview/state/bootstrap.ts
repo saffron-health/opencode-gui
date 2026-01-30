@@ -5,7 +5,8 @@ import type {
   Session as SDKSession,
   Message as SDKMessage,
   Part as SDKPart,
-} from "@opencode-ai/sdk/client";
+  AssistantMessage,
+} from "@opencode-ai/sdk/v2/client";
 import type {
   Message,
   MessagePart,
@@ -18,18 +19,18 @@ import type { SyncState } from "./types";
 import { extractTextFromParts } from "./utils";
 
 /** API response for session.messages endpoint */
-interface MessagesResponse {
-  info?: SDKMessage;
-  parts?: SDKPart[];
+interface MessageWithParts {
+  info: SDKMessage;
+  parts: SDKPart[];
 }
 
 export interface BootstrapContext {
   client: {
     app: { agents: () => Promise<{ data?: SDKAgent[] }> };
     session: {
-      list: (opts?: { query?: { directory?: string } }) => Promise<{ data?: SDKSession[] }>;
-      messages: (opts: { path: { id: string } }) => Promise<{ data?: MessagesResponse[] }>;
-      get: (opts: { path: { id: string } }) => Promise<{ data?: SDKSession }>;
+      list: (opts?: { directory?: string }) => Promise<{ data?: SDKSession[] }>;
+      messages: (opts: { sessionID: string }) => Promise<{ data?: MessageWithParts[] }>;
+      get: (opts: { sessionID: string }) => Promise<{ data?: SDKSession }>;
     };
   };
   sessionId: string | null;
@@ -84,7 +85,7 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
 
   const [agentsRes, sessionsRes] = await Promise.all([
     client.app.agents(),
-    client.session.list(workspaceRoot ? { query: { directory: workspaceRoot } } : undefined),
+    client.session.list(workspaceRoot ? { directory: workspaceRoot } : undefined),
   ]);
 
   const agents = (agentsRes?.data ?? [])
@@ -106,16 +107,16 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
   if (sessionId) {
     try {
       const [messagesRes, sessionRes] = await Promise.all([
-        client.session.messages({ path: { id: sessionId } }),
-        client.session.get({ path: { id: sessionId } }),
+        client.session.messages({ sessionID: sessionId }),
+        client.session.get({ sessionID: sessionId }),
       ]);
 
       const rawMessages = messagesRes?.data ?? [];
 
       messageList = rawMessages
         .map((raw) => {
-          const msgInfo = raw.info ?? (raw as unknown as SDKMessage);
-          const parts = raw.parts ?? [];
+          const msgInfo = raw.info;
+          const parts = raw.parts;
           const text = extractTextFromParts(parts.map(toPart));
           const messageId = msgInfo.id;
           const role = msgInfo.role;
@@ -125,8 +126,7 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
           if (role === "user") {
             normalizedParts = parts.filter((p) => {
               if (p.type !== "text") return true;
-              const textPart = p as SDKPart & { synthetic?: boolean; ignored?: boolean };
-              return !textPart.synthetic && !textPart.ignored;
+              return !p.synthetic && !p.ignored;
             });
           }
 
@@ -157,29 +157,26 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
       }
 
       // Extract context info from the last assistant message
-      const lastAssistant = [...rawMessages].reverse().find((raw) => {
-        const msgInfo = raw.info ?? (raw as unknown as SDKMessage);
-        return msgInfo.role === "assistant";
-      });
+      const lastAssistant = [...rawMessages]
+        .reverse()
+        .find((raw) => raw.info.role === "assistant");
 
-      if (lastAssistant) {
-        const msgInfo = lastAssistant.info ?? (lastAssistant as unknown as SDKMessage);
-        // AssistantMessage has tokens field
-        const assistantMsg = msgInfo as SDKMessage & {
-          tokens?: { input?: number; output?: number; cache?: { read?: number } };
-        };
-        if (assistantMsg.tokens) {
-          const tokens = assistantMsg.tokens;
-          const usedTokens =
-            (tokens.input || 0) + (tokens.output || 0) + (tokens.cache?.read || 0);
-          if (usedTokens > 0) {
-            const limit = 200000;
-            contextInfo = {
-              usedTokens,
-              limitTokens: limit,
-              percentage: Math.min(100, (usedTokens / limit) * 100),
-            };
-          }
+      if (lastAssistant && lastAssistant.info.role === "assistant") {
+        const assistantMsg = lastAssistant.info as AssistantMessage;
+        const tokens = assistantMsg.tokens;
+        const usedTokens =
+          tokens.input + 
+          tokens.output + 
+          tokens.reasoning +
+          tokens.cache.read + 
+          tokens.cache.write;
+        if (usedTokens > 0) {
+          const limit = 200000;
+          contextInfo = {
+            usedTokens,
+            limitTokens: limit,
+            percentage: Math.min(100, (usedTokens / limit) * 100),
+          };
         }
       }
     } catch (err) {

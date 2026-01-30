@@ -7,13 +7,12 @@ import { FileChangesSummary } from "./components/FileChangesSummary";
 import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
 import { useSync } from "./state/sync";
-import type { FilePartInput } from "@opencode-ai/sdk/client";
+import type { FilePartInput } from "@opencode-ai/sdk/v2/client";
 import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart } from "./types";
 import { parseHostMessage } from "./types";
 
 export interface QueuedMessage {
   id: string;
-  messageID: string; // Client-generated messageID for idempotent sends
   text: string;
   agent: string | null;
   attachments: SelectionAttachment[];
@@ -319,21 +318,56 @@ function App() {
     }
   });
   
-  // Process queued messages when thinking stops
+  // Process queued messages when thinking stops and queue is not empty
+  // This is a safety net; primary drain happens in onSessionIdle callback
   createEffect(() => {
-    if (!isThinking()) {
-      processNextQueuedMessage();
+    const thinking = isThinking();
+    const queueLength = messageQueue().length;
+    const inflight = inFlightMessage();
+    
+    console.log("[App] isThinking effect triggered:", { 
+      thinking, 
+      queueLength, 
+      hasInflight: !!inflight,
+      inFlightSessionId: inflight?.sessionId,
+      currentSessionId: sync.currentSessionId(),
+    });
+    
+    if (!thinking && queueLength > 0 && !inflight) {
+      console.log("[App] isThinking effect: calling processNextQueuedMessage");
+      void processNextQueuedMessage();
+    } else if (!thinking && queueLength > 0 && inflight) {
+      console.log("[App] isThinking effect: NOT processing - inFlightMessage still set!");
     }
   });
   
-  // Clear inFlightMessage when session becomes idle (response complete)
+  // Clear inFlightMessage when session becomes idle and trigger queue drain
   onMount(() => {
     const cleanup = sync.onSessionIdle((sessionId) => {
       const inflight = inFlightMessage();
-      if (inflight && inflight.sessionId === sessionId) {
-        console.log("[App] session.idle received, clearing inFlightMessage");
-        setInFlightMessage(null);
+      const queueLength = messageQueue().length;
+      
+      console.log("[App] onSessionIdle callback triggered:", { 
+        sessionId, 
+        inFlightSessionId: inflight?.sessionId,
+        hasInflight: !!inflight,
+        queueLength,
+        matches: inflight?.sessionId === sessionId,
+      });
+      
+      if (inflight?.sessionId !== sessionId) {
+        console.log("[App] onSessionIdle: session ID mismatch, ignoring");
+        return;
       }
+      
+      console.log("[App] onSessionIdle: clearing inFlightMessage and scheduling queue drain");
+      setInFlightMessage(null);
+      
+      // Schedule queue drain in a microtask to avoid interleaving with SSE batch
+      queueMicrotask(() => {
+        console.log("[App] onSessionIdle microtask: calling processNextQueuedMessage, queue length:", messageQueue().length);
+        void processNextQueuedMessage();
+      });
     });
     onCleanup(cleanup);
   });
@@ -430,28 +464,69 @@ function App() {
 
   const processNextQueuedMessage = async () => {
     const queue = messageQueue();
-    if (queue.length === 0) return;
+    const inflight = inFlightMessage();
+    const sessionId = sync.currentSessionId();
+    
+    console.log("[App] processNextQueuedMessage called:", {
+      queueLength: queue.length,
+      hasInflight: !!inflight,
+      inFlightSessionId: inflight?.sessionId,
+      currentSessionId: sessionId,
+      isReady: sync.isReady(),
+    });
+    
+    if (queue.length === 0) {
+      console.log("[App] processNextQueuedMessage: queue is empty");
+      return;
+    }
     
     // Don't process if there's already an in-flight message
-    if (inFlightMessage()) {
-      console.log("[App] Skipping queue processing - message already in-flight");
+    if (inflight) {
+      console.log("[App] processNextQueuedMessage: SKIPPING - message already in-flight");
+      return;
+    }
+    
+    if (!sessionId || !sync.isReady()) {
+      console.log("[App] processNextQueuedMessage: SKIPPING - no session or not ready");
       return;
     }
     
     const [next, ...rest] = queue;
+    
+    // Generate a FRESH messageID right before sending to ensure it's newer than the last assistant message
+    // This is critical - IDs generated earlier (when queueing) will be older than assistant responses
+    const messageID = Id.ascending("message");
+    
+    console.log("[App] processNextQueuedMessage: processing queued message:", {
+      messageID,
+      text: next.text.slice(0, 50),
+      remainingInQueue: rest.length,
+    });
+    
     setMessageQueue(rest);
-    
-    const sessionId = sync.currentSessionId();
-    if (!sessionId || !sync.isReady()) return;
-    
     sync.setThinking(sessionId, true);
     
-    // Track this queued message as in-flight using its pre-generated messageID
-    setInFlightMessage({ messageID: next.messageID, sessionId });
+    // Track this queued message as in-flight using the fresh messageID
+    setInFlightMessage({ messageID, sessionId });
 
     try {
       const extraParts = buildSelectionParts(next.attachments);
-      const result = await sendPrompt(sessionId, next.text, next.agent, extraParts, next.messageID);
+      console.log("[App] processNextQueuedMessage: calling sendPrompt with:", {
+        sessionId,
+        text: next.text.slice(0, 50),
+        agent: next.agent,
+        messageID,
+        extraPartsCount: extraParts.length,
+      });
+      
+      const result = await sendPrompt(sessionId, next.text, next.agent, extraParts, messageID);
+      
+      console.log("[App] processNextQueuedMessage: sendPrompt returned:", {
+        hasError: !!result?.error,
+        hasData: !!result?.data,
+        response: result?.response?.status,
+        result: result,
+      });
       
       // Check for SDK error in result (SDK doesn't throw by default)
       if (result?.error) {
@@ -489,14 +564,20 @@ function App() {
     const attachmentsKey = sessionKey();
     const attachments = selectionAttachments();
     
-    // Generate sortable messageID upfront for idempotent sends
+    // Queue the message without a messageID - we'll generate it fresh when sending
     const queuedMessage: QueuedMessage = {
       id: crypto.randomUUID(),
-      messageID: Id.ascending("message"),
       text,
       agent,
       attachments,
     };
+    
+    console.log("[App] handleQueueMessage: adding message to queue:", {
+      text: text.slice(0, 50),
+      currentQueueLength: messageQueue().length,
+      isThinking: isThinking(),
+      hasInflight: !!inFlightMessage(),
+    });
     
     setMessageQueue((prev) => [...prev, queuedMessage]);
     setInput("");
@@ -740,7 +821,7 @@ function App() {
       <Show when={hasMessages()}>
         <div class="input-divider" />
         <div class="input-status-row">
-          {/* <FileChangesSummary fileChanges={fileChanges()} /> */}
+          <FileChangesSummary fileChanges={fileChanges()} />
           <ContextIndicator contextInfo={contextInfo()} />
         </div>
         

@@ -2,7 +2,7 @@ import { z } from "zod/v4";
 
 export const ToolStateSchema = z.object({
   status: z.enum(["pending", "running", "completed", "error"]),
-  input: z.unknown().optional(),
+  input: z.record(z.string(), z.unknown()).optional(),
   output: z.string().optional(),
   error: z.string().optional(),
   title: z.string().optional(),
@@ -12,14 +12,7 @@ export const ToolStateSchema = z.object({
       end: z.number().optional(),
     })
     .optional(),
-  metadata: z
-    .object({
-      diff: z.string().optional(),
-      diagnostics: z.unknown().optional(),
-      filediff: z.unknown().optional(),
-    })
-    .catchall(z.unknown())
-    .optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type ToolState = z.infer<typeof ToolStateSchema>;
 

@@ -1,10 +1,6 @@
 import { createMemo } from "solid-js";
 import { Show } from "solid-js";
-import type { ToolState as BaseToolState, MessagePart, Permission } from "../../types";
-
-export type ToolState = Omit<BaseToolState, "input"> & {
-  input?: Record<string, unknown>;
-};
+import type { ToolState, MessagePart, Permission } from "../../types";
 
 export function toRelativePath(
   absolutePath: string | undefined,
@@ -53,14 +49,12 @@ export function splitFilePath(filePath: string): {
   };
 }
 
-// Safely extract the tool inputs from either state.input or part.input (SDK may send either)
+// Extract the tool inputs from state
 export function getToolInputs(
   state: ToolState,
-  part?: MessagePart,
+  _part?: MessagePart,
 ): Record<string, unknown> {
-  const raw = (state?.input ??
-    (part as unknown as { input?: unknown })?.input) as unknown;
-  return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return state?.input ?? {};
 }
 
 // Shared permission lookup logic

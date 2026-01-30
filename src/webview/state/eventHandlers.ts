@@ -4,8 +4,8 @@ import type {
   Event,
   Part,
   Session as SDKSession,
-  Permission as SDKPermission,
-} from "@opencode-ai/sdk/client";
+  PermissionRequest as SDKPermission,
+} from "@opencode-ai/sdk/v2/client";
 import type { Message, MessagePart, Session, Permission } from "../types";
 import type { SyncState } from "./types";
 import { binarySearch, findById, extractTextFromParts } from "./utils";
@@ -43,17 +43,12 @@ function toSession(sdkSession: SDKSession): Session {
 function toPermission(sdkPerm: SDKPermission): Permission {
   return {
     id: sdkPerm.id,
-    permission: sdkPerm.type,
-    patterns: sdkPerm.pattern
-      ? Array.isArray(sdkPerm.pattern)
-        ? sdkPerm.pattern
-        : [sdkPerm.pattern]
-      : undefined,
+    permission: sdkPerm.permission,
+    patterns: sdkPerm.patterns,
     sessionID: sdkPerm.sessionID,
-    metadata: sdkPerm.metadata,
-    tool: sdkPerm.messageID
-      ? { messageID: sdkPerm.messageID, callID: sdkPerm.callID ?? "" }
-      : undefined,
+    metadata: sdkPerm.metadata ?? {},
+    always: sdkPerm.always,
+    tool: sdkPerm.tool,
   };
 }
 
@@ -75,23 +70,11 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       const result = findById(messages, info.id, (m) => m.id);
       const prev = result.found ? messages[result.index] : undefined;
 
-      // The server may send parts with the message (not in SDK types but present at runtime)
-      const incomingParts = (info as unknown as { parts?: Part[] }).parts;
-      const incomingText = (info as unknown as { text?: string }).text;
-      
-      // If parts come with the message, store them in store.part (single source of truth)
-      if (incomingParts && incomingParts.length > 0) {
-        const sortedParts = incomingParts.map(toPart).sort((a, b) => a.id.localeCompare(b.id));
-        setStore("part", info.id, sortedParts);
-      }
-
-      // Compute text: prioritize incoming text, then derive from parts, then preserve previous
-      const partsForText = incomingParts?.map(toPart) ?? store.part[info.id] ?? [];
-      const nextText = incomingText !== undefined
-        ? incomingText
-        : (incomingParts !== undefined
-            ? extractTextFromParts(partsForText)
-            : (prev?.text ?? extractTextFromParts(partsForText)));
+      // Compute text from existing parts in the store
+      const partsForText = store.part[info.id] ?? [];
+      const nextText = partsForText.length > 0 
+        ? extractTextFromParts(partsForText)
+        : (prev?.text ?? "");
 
       const msg: Message = {
         id: info.id,
@@ -100,6 +83,25 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       };
 
       messageToSession.set(info.id, sessionId);
+
+      // Extract token info from assistant messages for real-time context updates
+      if (info.role === "assistant") {
+        const tokens = info.tokens;
+        const usedTokens =
+          tokens.input +
+          tokens.output +
+          tokens.reasoning +
+          tokens.cache.read +
+          tokens.cache.write;
+        if (usedTokens > 0) {
+          const limit = 200000; // Default context limit, could be fetched from config
+          setStore("contextInfo", {
+            usedTokens,
+            limitTokens: limit,
+            percentage: Math.min(100, (usedTokens / limit) * 100),
+          });
+        }
+      }
 
       if (!messages.length) {
         setStore("message", sessionId, [msg]);
@@ -265,11 +267,20 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
 
     case "session.idle": {
       const { sessionID } = event.properties;
+      console.log("[EventHandler] session.idle received:", { 
+        sessionID, 
+        currentThinking: store.thinking[sessionID],
+        callbackCount: sessionIdleCallbacks.size,
+      });
+      
       if (sessionID) {
-        setStore("thinking", sessionID, false);
+        // Fire callbacks first to clear inFlightMessage
+        console.log("[EventHandler] session.idle: firing", sessionIdleCallbacks.size, "callbacks");
         for (const callback of sessionIdleCallbacks) {
           callback(sessionID);
         }
+        console.log("[EventHandler] session.idle: setting thinking to false");
+        setStore("thinking", sessionID, false);
       }
       break;
     }
@@ -286,7 +297,20 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
         errorData: error?.data,
       });
       
+      console.log("[EventHandler] session.error received:", { 
+        sessionID, 
+        errorMessage,
+        currentThinking: store.thinking[sessionID],
+        callbackCount: sessionIdleCallbacks.size,
+      });
+      
       if (sessionID) {
+        // Fire callbacks to clear inFlightMessage so queue can drain after errors
+        console.log("[EventHandler] session.error: firing", sessionIdleCallbacks.size, "callbacks");
+        for (const callback of sessionIdleCallbacks) {
+          callback(sessionID);
+        }
+        console.log("[EventHandler] session.error: setting thinking to false and error state");
         batch(() => {
           setStore("thinking", sessionID, false);
           setStore("sessionError", produce((draft: Record<string, string>) => {
@@ -297,9 +321,32 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       break;
     }
 
-    case "permission.updated": {
+    case "session.diff": {
+      const { sessionID, diff } = event.properties as { sessionID?: string; diff?: Array<{ file: string; additions: number; deletions: number }> };
+      const sessionId = sessionID ?? currentSessionId();
+      if (!sessionId || !diff) break;
+
+      // Aggregate file changes from diff array
+      setStore("fileChanges", {
+        fileCount: diff.length,
+        additions: diff.reduce((sum, d) => sum + (d.additions || 0), 0),
+        deletions: diff.reduce((sum, d) => sum + (d.deletions || 0), 0),
+      });
+      break;
+    }
+
+    case "permission.asked": {
       const permission = toPermission(event.properties);
       const sessionId = permission.sessionID;
+      
+      logger.debug("Permission event received", {
+        permissionId: permission.id,
+        sessionId,
+        type: permission.permission,
+        patterns: permission.patterns,
+        tool: permission.tool,
+      });
+      
       if (!sessionId) break;
 
       const permissions = store.permission[sessionId];
@@ -320,14 +367,14 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
     }
 
     case "permission.replied": {
-      const { sessionID, permissionID } = event.properties;
+      const { sessionID, requestID } = event.properties;
       const sessionId = sessionID ?? currentSessionId();
       if (!sessionId) break;
 
       const permissions = store.permission[sessionId];
       if (!permissions) break;
 
-      const result = binarySearch(permissions, permissionID, (p) => p.id);
+      const result = binarySearch(permissions, requestID, (p) => p.id);
       if (result.found) {
         setStore("permission", sessionId, produce((draft) => {
           draft.splice(result.index, 1);

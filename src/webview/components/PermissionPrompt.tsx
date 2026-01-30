@@ -5,6 +5,43 @@ interface PermissionPromptProps {
   onResponse: (permissionId: string, response: "once" | "always" | "reject") => void;
 }
 
+function normalizePath(input?: string, workspaceRoot?: string): string {
+  if (!input) return "";
+  
+  // Basic path normalization for display
+  const isAbsolute = input.startsWith("/") || /^[a-zA-Z]:/.test(input);
+  
+  // If we have a workspace root and the path is within it, show relative
+  if (workspaceRoot && isAbsolute && input.startsWith(workspaceRoot)) {
+    const relative = input.slice(workspaceRoot.length);
+    return relative.startsWith("/") ? relative.slice(1) : relative;
+  }
+  
+  // Show home directory as ~
+  if (typeof window !== "undefined") {
+    const homeMatch = input.match(/^\/Users\/[^/]+|^\/home\/[^/]+|^C:\\Users\\[^\\]+/);
+    if (homeMatch) {
+      return input.replace(homeMatch[0], "~");
+    }
+  }
+  
+  return input;
+}
+
+function extractDirectory(pattern?: string): string | undefined {
+  if (!pattern) return undefined;
+  
+  // If pattern contains wildcards, extract the directory part
+  if (pattern.includes("*")) {
+    const lastSlash = Math.max(pattern.lastIndexOf("/"), pattern.lastIndexOf("\\"));
+    if (lastSlash > 0) {
+      return pattern.slice(0, lastSlash);
+    }
+  }
+  
+  return pattern;
+}
+
 export function PermissionPrompt(props: PermissionPromptProps) {
   const getPermissionMessage = () => {
     const type = props.permission.permission;
@@ -12,7 +49,15 @@ export function PermissionPrompt(props: PermissionPromptProps) {
     
     switch (type) {
       case "external_directory": {
-        const dir = (meta.parentDir as string) || (meta.filepath as string) || (props.permission.patterns?.[0]) || "unknown";
+        // Follow TUI's fallback chain: parentDir -> filepath -> dirname(patterns[0])
+        const parent = meta.parentDir as string | undefined;
+        const filepath = meta.filepath as string | undefined;
+        const pattern = props.permission.patterns?.[0];
+        const derived = extractDirectory(pattern);
+        
+        const rawDir = parent || filepath || derived || "unknown";
+        const dir = normalizePath(rawDir);
+        
         return `Allow access to ${dir}?`;
       }
       case "edit":

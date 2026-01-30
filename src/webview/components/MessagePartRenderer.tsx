@@ -17,9 +17,8 @@ interface MessagePartRendererProps {
 
 function isHiddenSystemTask(part: MessagePart): boolean {
   if (part.type !== "tool") return false;
-  const toolPart = part as MessagePart & { tool?: string; state?: { input?: Record<string, unknown> } };
-  if (toolPart.tool !== "task") return false;
-  const subagentType = toolPart.state?.input?.subagent_type as string | undefined;
+  if (part.tool !== "task") return false;
+  const subagentType = part.state?.input?.subagent_type as string | undefined;
   return !!subagentType && HIDDEN_SUBAGENT_TYPES.has(subagentType);
 }
 

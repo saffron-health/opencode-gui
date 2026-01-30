@@ -131,10 +131,15 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       const currentSessionId = this._openCodeService.getCurrentSessionId() ?? undefined;
       const currentSessionTitle = this._openCodeService.getCurrentSessionTitle();
       
-      let messages: unknown[] | undefined;
+      let messages: IncomingMessage[] | undefined;
       if (currentSessionId) {
         try {
-          messages = await this._openCodeService.getMessages(currentSessionId);
+          const sdkMessages = await this._openCodeService.getMessages(currentSessionId);
+          // Transform SDK Message[] to IncomingMessage[]
+          messages = sdkMessages.map(msg => ({
+            id: msg.id,
+            role: msg.role,
+          }));
         } catch (error) {
           console.error('Error loading session messages:', error);
           this._sendMessage({ type: 'error', message: `Failed to load session messages: ${(error as Error).message}` });
@@ -148,7 +153,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         serverUrl: this._openCodeService.getServerUrl(),
         currentSessionId,
         currentSessionTitle,
-        currentSessionMessages: messages as IncomingMessage[] | undefined,
+        currentSessionMessages: messages,
         defaultAgent: this._globalState.get<string>(LAST_AGENT_KEY),
       });
       this._webviewReady = true;

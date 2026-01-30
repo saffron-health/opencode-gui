@@ -34,3 +34,11 @@ Use the `pnpm run publish` script to publish the extension to the VSCode and OVS
 ## Logging into gcloud
 
 CRITICAL: If you try to run a command get an error related to the user not being logged into Gcloud e.g. `{"error":"invalid_grant","error_description":"reauth related error (invalid_rapt)","error_uri":"https://support.google.com/a/answer/9368756","error_subtype":"invalid_rapt"}`, then you MUST instruct the user to log into gcloud before you can continue.
+
+## Opencode SDK
+
+This extension uses the Opencode SDK. Opencode (https://opencode.ai, https://github.com/anomalyco/opencode) is a coding agent employing a client-server architecture. The frontend for this extension acts as a client. The extension backend spawns the Opencode server as a separate Bun process.
+
+You will frequently find issues where some functionality from the SDK is not wired up correctly. For example, maybe context usage is not showing up properly b/c we're not parsing the right information from the SDK messages.
+
+In these cases, use the Opencode TUI (https://github.com/anomalyco/opencode/tree/dev/packages/console) as the reference. This is a reference client implementation that understands and uses the SDK optimally. Use the librarian task to explore and research the TUI client implementation, getting back references to specific files you can use for your implementation.
