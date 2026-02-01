@@ -1,4 +1,4 @@
-import { createMemo } from "solid-js";
+import { createMemo, type Accessor } from "solid-js";
 import type { MessagePart, Permission } from "../../types";
 import { ToolCallTemplate } from "./ToolCallTemplate";
 import { FolderIcon } from "./ToolCallIcons";
@@ -7,7 +7,7 @@ import { getToolInputs, toRelativePath, usePermission, ErrorFooter, type ToolSta
 interface ListToolCallProps {
   part: MessagePart;
   workspaceRoot?: string;
-  pendingPermissions?: Map<string, Permission>;
+  pendingPermissions?: Accessor<Map<string, Permission>>;
   onPermissionResponse?: (
     permissionId: string,
     response: "once" | "always" | "reject",

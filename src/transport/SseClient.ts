@@ -27,6 +27,8 @@ export interface SseClientOptions {
   onError?: (error: Error) => void;
   /** Logger for debugging */
   logger?: SseLogger;
+  /** Additional headers to send with the request */
+  headers?: Record<string, string>;
 }
 
 export type SseConnectionState =
@@ -47,7 +49,7 @@ const DEFAULT_BACKOFF_MULTIPLIER = 2;
 
 export class SseClient {
   private readonly url: string;
-  private readonly options: Required<Omit<SseClientOptions, 'logger' | 'onStateChange' | 'onError'>> & Pick<SseClientOptions, 'logger' | 'onStateChange' | 'onError'>;
+  private readonly options: Required<Omit<SseClientOptions, 'logger' | 'onStateChange' | 'onError' | 'headers'>> & Pick<SseClientOptions, 'logger' | 'onStateChange' | 'onError' | 'headers'>;
   
   private abortController: AbortController | null = null;
   private lastEventId: string | undefined;
@@ -66,6 +68,7 @@ export class SseClient {
       onStateChange: options.onStateChange,
       onError: options.onError,
       logger: options.logger,
+      headers: options.headers,
     };
     this.retryMs = this.options.initialRetryMs;
   }
@@ -123,6 +126,7 @@ export class SseClient {
     const headers: Record<string, string> = {
       Accept: 'text/event-stream',
       'Cache-Control': 'no-cache',
+      ...this.options.headers,
     };
     if (this.lastEventId) {
       headers['Last-Event-ID'] = this.lastEventId;

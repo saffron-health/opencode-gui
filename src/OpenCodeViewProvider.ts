@@ -220,6 +220,14 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       error: (msg, ...args) => logger.error(msg, ...args),
     };
 
+    // Build headers including x-opencode-directory
+    const headers: Record<string, string> = {};
+    const workspaceRoot = this._openCodeService.getWorkspaceRoot();
+    if (workspaceRoot) {
+      // Encode directory as per SDK client (percent-encode non-ASCII)
+      headers['x-opencode-directory'] = encodeURIComponent(workspaceRoot);
+    }
+
     const client = new SseClient(url, {
       onEvent: (event: SseEvent) => {
         this._sendMessage({ type: 'sseEvent', id, data: event.data } as HostMessage);
@@ -257,6 +265,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         this._sseClients.delete(id);
       },
       logger: sseLogger,
+      headers,
     });
 
     this._sseClients.set(id, client);

@@ -69,7 +69,7 @@ test.describe("Permissions", () => {
     await expect(permissionGroup).not.toBeVisible({ timeout: 5000 });
   });
 
-  test("should show standalone permission for external directory", async ({ openWebview }) => {
+  test("should show inline permission for external directory", async ({ openWebview }) => {
     const page = await openWebview({ opencodeConfig: restrictiveConfig });
     
     // Send a prompt that will try to edit a file outside the workspace
@@ -79,16 +79,25 @@ test.describe("Permissions", () => {
     const submitButton = page.getByRole("button", { name: "Submit" });
     await submitButton.click();
     
-    // Wait for standalone permission prompt to appear
+    // Wait for permission prompt to appear (inline with tool or standalone)
     const permissionGroup = page.getByRole("group", { name: "Permission request" });
     await expect(permissionGroup).toBeVisible({ timeout: 30000 });
     
     // Should have the external directory message
-    await expect(page.locator(".permission-prompt__message")).toContainText(/external directory|tmp/i);
+    await expect(page.locator(".permission-prompt__message")).toContainText(/allow access|tmp/i);
     
     // Permission buttons should be visible
     await expect(page.getByRole("button", { name: "Allow once" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Reject" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Allow always" })).toBeVisible();
+    
+    // Approve the permission
+    await page.getByRole("button", { name: "Allow once" }).click();
+    
+    // Permission should disappear
+    await expect(permissionGroup).not.toBeVisible({ timeout: 5000 });
+    
+    // Tool should complete
+    await expect(page.locator(".tool-result")).toBeVisible({ timeout: 10000 });
   });
 });

@@ -1,5 +1,5 @@
 
-import { For, Show, createSignal, onMount, onCleanup, createEffect, on } from "solid-js";
+import { For, Show, createSignal, onMount, onCleanup, createEffect, on, type Accessor } from "solid-js";
 import type { Message, Permission } from "../types";
 import { MessageItem } from "./MessageItem";
 import { EditableUserMessage } from "./EditableUserMessage";
@@ -10,7 +10,7 @@ interface MessageListProps {
   messages: Message[];
   isThinking: boolean;
   workspaceRoot?: string;
-  pendingPermissions?: Map<string, Permission>;
+  pendingPermissions?: Accessor<Map<string, Permission>>;
   onPermissionResponse?: (permissionId: string, response: "once" | "always" | "reject") => void;
   editingMessageId?: string | null;
   editingText?: string;

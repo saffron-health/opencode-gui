@@ -6,7 +6,7 @@ import { usePermission, ErrorFooter, type ToolState } from "./ToolCallHelpers";
 interface TodoToolCallProps {
   part: MessagePart;
   workspaceRoot?: string;
-  pendingPermissions?: Map<string, Permission>;
+  pendingPermissions?: Accessor<Map<string, Permission>>;
   onPermissionResponse?: (
     permissionId: string,
     response: "once" | "always" | "reject",

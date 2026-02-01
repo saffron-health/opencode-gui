@@ -55,6 +55,7 @@ function createOpenCode() {
       const opencodeClient = createOpencodeClient({
         baseUrl: globalConfig.serverUrl,
         fetch: proxyFetch,
+        directory: globalConfig.workspaceRoot,
       });
       setClient(opencodeClient);
       setServerUrl(globalConfig.serverUrl);
@@ -79,18 +80,20 @@ function createOpenCode() {
         const url = data.serverUrl ?? data.url;
         if (!url) return;
 
+        // Store workspaceRoot for SSE subscriptions
+        const wsRoot = data.workspaceRoot;
+        if (wsRoot) {
+          setWorkspaceRoot(wsRoot);
+        }
+
         const opencodeClient = createOpencodeClient({
           baseUrl: url,
           fetch: proxyFetch,
+          directory: wsRoot,
         });
         setClient(opencodeClient);
         setServerUrl(url);
         setIsReady(true);
-
-        // Store workspaceRoot for SSE subscriptions
-        if (data.workspaceRoot) {
-          setWorkspaceRoot(data.workspaceRoot);
-        }
 
         // Store initial session data from 'init' message
         if (data.type === "init") {
@@ -180,9 +183,11 @@ function createOpenCode() {
     const c = client();
     if (!c) throw new Error("Not connected");
 
+    const dir = workspaceRoot();
     return c.permission.reply({
       reply: response,
       requestID: permissionId,
+      ...(dir ? { directory: dir } : {}),
     });
   }
 

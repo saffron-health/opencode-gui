@@ -1,4 +1,4 @@
-import { Show, createMemo } from "solid-js";
+import { Show, createMemo, type Accessor } from "solid-js";
 import type { MessagePart, Permission } from "../../types";
 import { ToolCallTemplate } from "./ToolCallTemplate";
 import { MagnifyingGlassIcon } from "./ToolCallIcons";
@@ -7,7 +7,7 @@ import { getToolInputs, usePermission, ErrorFooter, type ToolState } from "./Too
 interface GlobToolCallProps {
   part: MessagePart;
   workspaceRoot?: string;
-  pendingPermissions?: Map<string, Permission>;
+  pendingPermissions?: Accessor<Map<string, Permission>>;
   onPermissionResponse?: (
     permissionId: string,
     response: "once" | "always" | "reject",

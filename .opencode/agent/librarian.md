@@ -74,7 +74,20 @@ When given a research task:
 
 ## GitHub Research
 
-Use the gh CLI for GitHub operations:
+When researching a GitHub repository, clone it locally into tmp/repos/ (this directory is gitignored):
+
+```bash
+# Clone repository for thorough inspection
+git clone https://github.com/{owner}/{repo} tmp/repos/{repo}
+```
+
+After cloning:
+
+1. Inspect the directory structure thoroughly
+2. Read relevant files using the read tool
+3. Provide references to important files pointing to the local paths (tmp/repos/{repo}/path/to/file)
+
+For quick lookups without cloning, use the gh CLI:
 
 ```bash
 # View repository contents
@@ -88,12 +101,6 @@ gh search code "query" --repo owner/repo
 
 # View recent commits
 gh api repos/{owner}/{repo}/commits --jq '.[0:5]'
-
-# Get README
-gh api repos/{owner}/{repo}/readme --jq '.content' | base64 -d
-
-# List directory contents
-gh api repos/{owner}/{repo}/contents/{path} --jq '.[].name'
 ```
 
 For private repositories, you can access any repo the user has granted access to.
@@ -133,13 +140,14 @@ export function pgTable<...>(name: string, columns: ...) {
 
 <example>
 user: How does zod implement the .optional() method?
-assistant: Searching the zod repository for the optional implementation.
-[uses gh to find and read the relevant source file]
+assistant: Cloning the zod repository to inspect the implementation.
+[clones zod repo to tmp/repos/zod]
+[reads tmp/repos/zod/src/types.ts]
 
 The `.optional()` method in zod wraps the schema to accept undefined values. From zod's source:
 
 ```typescript
-// From: github.com/colinhacks/zod/src/types.ts
+// From: tmp/repos/zod/src/types.ts
 optional(): ZodOptional<this> {
   return ZodOptional.create(this, this._def);
 }
@@ -147,7 +155,9 @@ optional(): ZodOptional<this> {
 
 ZodOptional then modifies the parse behavior to allow undefined as a valid input, returning undefined without running the inner schema's validation.
 
-Source: https://github.com/colinhacks/zod/blob/main/src/types.ts
+Sources:
+- tmp/repos/zod/src/types.ts
+- https://github.com/colinhacks/zod/blob/main/src/types.ts
 </example>
 
 <example>
@@ -172,13 +182,14 @@ Source: https://stripe.com/docs/api/authentication
 
 <example>
 user: Find examples of how projects implement custom Playwright fixtures
-assistant: Searching GitHub for Playwright custom fixture implementations.
-[uses gh search and reads example files]
+assistant: Cloning the Playwright repository to examine fixture implementations.
+[clones playwright repo to tmp/repos/playwright]
+[reads tmp/repos/playwright/tests/library/fixtures.ts]
 
 Here's a pattern from the Playwright repository's own tests:
 
 ```typescript
-// From: github.com/microsoft/playwright/tests/library/fixtures.ts
+// From: tmp/repos/playwright/tests/library/fixtures.ts
 import { test as base } from "@playwright/test";
 
 export const test = base.extend({
@@ -199,7 +210,6 @@ The pattern involves:
 4. Cleanup runs after `use` completes
 
 Sources:
-
-- https://github.com/microsoft/playwright/blob/main/tests/library/fixtures.ts
+- tmp/repos/playwright/tests/library/fixtures.ts
 - https://playwright.dev/docs/test-fixtures
   </example>

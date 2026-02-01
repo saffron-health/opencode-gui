@@ -6,7 +6,7 @@ import { getToolInputs, usePermission, ErrorFooter, type ToolState } from "./Too
 interface WebfetchToolCallProps {
   part: MessagePart;
   workspaceRoot?: string;
-  pendingPermissions?: Map<string, Permission>;
+  pendingPermissions?: Accessor<Map<string, Permission>>;
   onPermissionResponse?: (
     permissionId: string,
     response: "once" | "always" | "reject",

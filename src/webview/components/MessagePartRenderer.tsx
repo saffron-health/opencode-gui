@@ -1,4 +1,5 @@
 
+import type { Accessor } from "solid-js";
 import type { MessagePart, Permission } from "../types";
 import { TextBlock } from "./parts/TextBlock";
 import { ReasoningBlock } from "./parts/ReasoningBlock";
@@ -10,7 +11,7 @@ const HIDDEN_SUBAGENT_TYPES = new Set(["compaction", "title", "summary"]);
 interface MessagePartRendererProps {
   part: MessagePart;
   workspaceRoot?: string;
-  pendingPermissions?: Map<string, Permission>;
+  pendingPermissions?: Accessor<Map<string, Permission>>;
   onPermissionResponse?: (permissionId: string, response: "once" | "always" | "reject") => void;
   isStreaming?: boolean;
 }

@@ -6,12 +6,14 @@ import type {
   Message as SDKMessage,
   Part as SDKPart,
   AssistantMessage,
+  PermissionRequest as SDKPermission,
 } from "@opencode-ai/sdk/v2/client";
 import type {
   Message,
   MessagePart,
   Session,
   Agent,
+  Permission,
   ContextInfo,
   FileChangesInfo,
 } from "../types";
@@ -32,6 +34,9 @@ export interface BootstrapContext {
       messages: (opts: { sessionID: string }) => Promise<{ data?: MessageWithParts[] }>;
       get: (opts: { sessionID: string }) => Promise<{ data?: SDKSession }>;
     };
+    permission: {
+      list: (opts?: { directory?: string }) => Promise<{ data?: any[] }>;
+    };
   };
   sessionId: string | null;
   workspaceRoot: string | undefined;
@@ -42,6 +47,7 @@ export interface BootstrapResult {
   sessions: Session[];
   messageList: Message[];
   partMap: { [messageID: string]: MessagePart[] };
+  permissionMap: { [sessionID: string]: Permission[] };
   contextInfo: ContextInfo | null;
   fileChanges: FileChangesInfo | null;
 }
@@ -77,6 +83,19 @@ function toPart(sdkPart: SDKPart): MessagePart {
   return sdkPart as MessagePart;
 }
 
+/** Convert SDK Permission to internal Permission type */
+function toPermission(sdkPerm: SDKPermission): Permission {
+  return {
+    id: sdkPerm.id,
+    permission: sdkPerm.permission,
+    patterns: sdkPerm.patterns,
+    sessionID: sdkPerm.sessionID,
+    metadata: sdkPerm.metadata ?? {},
+    always: sdkPerm.always,
+    tool: sdkPerm.tool,
+  };
+}
+
 // System agents that should be hidden from the UI
 const HIDDEN_AGENTS = new Set(["compaction", "title", "summary"]);
 
@@ -103,6 +122,26 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
   let contextInfo: ContextInfo | null = null;
   let fileChanges: FileChangesInfo | null = null;
   const partMap: { [messageID: string]: MessagePart[] } = {};
+  const permissionMap: { [sessionID: string]: Permission[] } = {};
+
+  // Fetch pending permissions
+  try {
+    const permissionsRes = await client.permission.list(
+      workspaceRoot ? { directory: workspaceRoot } : undefined
+    );
+    const permissions = permissionsRes?.data ?? [];
+    
+    // Group permissions by sessionID
+    for (const sdkPerm of permissions) {
+      const perm = toPermission(sdkPerm as SDKPermission);
+      if (!permissionMap[perm.sessionID]) {
+        permissionMap[perm.sessionID] = [];
+      }
+      permissionMap[perm.sessionID].push(perm);
+    }
+  } catch (err) {
+    console.error("[Sync] Failed to load permissions during bootstrap:", err);
+  }
 
   if (sessionId) {
     try {
@@ -184,7 +223,7 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
     }
   }
 
-  return { agents, sessions, messageList, partMap, contextInfo, fileChanges };
+  return { agents, sessions, messageList, partMap, permissionMap, contextInfo, fileChanges };
 }
 
 export function commitBootstrapData(
@@ -199,7 +238,7 @@ export function commitBootstrapData(
       setStore("message", sessionId, data.messageList);
     }
     setStore("part", reconcile(data.partMap));
-    setStore("permission", {});
+    setStore("permission", reconcile(data.permissionMap));
     setStore("contextInfo", data.contextInfo);
     setStore("fileChanges", data.fileChanges);
     setStore("status", { status: "connected" });

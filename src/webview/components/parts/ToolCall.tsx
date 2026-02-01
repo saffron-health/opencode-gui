@@ -1,4 +1,4 @@
-import { Match, Switch } from "solid-js";
+import { Match, Switch, type Accessor } from "solid-js";
 import type { MessagePart, Permission } from "../../types";
 import { ReadToolCall } from "./ReadToolCall";
 import { EditToolCall } from "./EditToolCall";
@@ -14,7 +14,7 @@ import { GenericToolCall } from "./GenericToolCall";
 interface ToolCallProps {
   part: MessagePart;
   workspaceRoot?: string;
-  pendingPermissions?: Map<string, Permission>;
+  pendingPermissions?: Accessor<Map<string, Permission>>;
   onPermissionResponse?: (
     permissionId: string,
     response: "once" | "always" | "reject",

@@ -110,6 +110,35 @@ function createSync() {
     return map;
   });
 
+  // Aggregate permissions across current session and its children
+  const aggregatedPermissions = createMemo(() => {
+    const sessionId = currentSessionId();
+    if (!sessionId) return new Map<string, Permission>();
+
+    const currentSession = store.sessions.find((s) => s.id === sessionId);
+    
+    // Find root session (current if no parent, otherwise its parent)
+    let rootId = sessionId;
+    if (currentSession?.parentID) {
+      rootId = currentSession.parentID;
+    }
+
+    // Collect all sessions where parentID === root (and optionally root itself)
+    const childSessions = store.sessions.filter((s) => s.parentID === rootId);
+    const relevantSessionIds = [rootId, ...childSessions.map((s) => s.id)];
+
+    // Flatten permissions from all relevant sessions
+    const map = new Map<string, Permission>();
+    for (const sid of relevantSessionIds) {
+      const perms = store.permission[sid] ?? [];
+      for (const p of perms) {
+        const key = p.tool?.callID || p.id;
+        map.set(key, p);
+      }
+    }
+    return map;
+  });
+
   const isThinking = createMemo(() => {
     const sessionId = currentSessionId();
     return sessionId ? store.thinking[sessionId] ?? false : false;
@@ -287,6 +316,7 @@ function createSync() {
     sessions,
     agents,
     permissions,
+    aggregatedPermissions,
     isThinking,
     sessionError,
     contextInfo,

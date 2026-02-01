@@ -111,7 +111,7 @@ function App() {
   const messages = () => sync.messages();
   const agents = () => sync.agents();
   const sessions = () => sync.sessions();
-  const pendingPermissions = () => sync.permissions();
+  const pendingPermissions = () => sync.aggregatedPermissions();
   const contextInfo = () => sync.contextInfo();
   const fileChanges = () => sync.fileChanges();
   const isThinking = () => sync.isThinking();
@@ -198,10 +198,9 @@ function App() {
     messages().some((m) => m.type === "user" || m.type === "assistant")
   );
 
-  // Find permissions that don't have matching tool calls (standalone permissions)
+  // Find permissions that should show as standalone modals (not inline with tools)
   const standalonePermissions = createMemo(() => {
     const perms = pendingPermissions();
-    const msgs = messages();
     const result: Permission[] = [];
     
     console.log("[App] standalonePermissions check:", {
@@ -210,35 +209,20 @@ function App() {
         key: k, 
         id: p.id, 
         permission: p.permission, 
-        toolCallID: p.tool?.callID 
+        sessionID: p.sessionID,
+        hasTool: !!p.tool,
       })),
     });
     
-    // Collect all callIDs from tool parts in messages
-    const toolCallIDs = new Set<string>();
-    for (const msg of msgs) {
-      const msgParts = sync.getParts(msg.id);
-      for (const part of msgParts) {
-        if (part.type === "tool" && part.callID) {
-          toolCallIDs.add(part.callID);
-        }
-      }
-    }
-    
-    console.log("[App] toolCallIDs found:", Array.from(toolCallIDs));
-    
-    // Find permissions that don't match any tool call
-    // Since we now tie permissions to tool calls via tool.callID,
-    // all permissions should show up in their respective tool calls
-    // So standalone permissions are now rare/unused
+    // Following TUI pattern: only show standalone modal for permissions WITHOUT tool field
+    // Permissions WITH tool will render inline once their tool part arrives
     for (const [key, perm] of perms.entries()) {
-      if (perm.tool?.callID && toolCallIDs.has(perm.tool.callID)) {
-        // This permission has a matching tool call, skip it
-        console.log("[App] Skipping permission with matching tool call:", perm.id, perm.tool.callID);
-        continue;
+      if (!perm.tool) {
+        console.log("[App] Found standalone permission (no tool):", perm.id, perm.permission);
+        result.push(perm);
+      } else {
+        console.log("[App] Permission has tool, will show inline when part arrives:", perm.id, perm.tool.callID);
       }
-      console.log("[App] Found standalone permission:", perm.id, perm.permission, perm.tool?.callID);
-      result.push(perm);
     }
     
     console.log("[App] Standalone permissions result:", result.length);
@@ -807,7 +791,7 @@ function App() {
         messages={messages()}
         isThinking={isThinking()}
         workspaceRoot={sync.workspaceRoot()}
-        pendingPermissions={pendingPermissions()}
+        pendingPermissions={pendingPermissions}
         onPermissionResponse={handlePermissionResponse}
         editingMessageId={editingMessageId()}
         editingText={editingText()}

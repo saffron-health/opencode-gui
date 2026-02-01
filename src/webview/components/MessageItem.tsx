@@ -1,5 +1,5 @@
 
-import { For, Show, createMemo } from "solid-js";
+import { For, Show, createMemo, type Accessor } from "solid-js";
 import type { Message, Permission, MessagePart } from "../types";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 import { Streamdown } from "../lib/streamdown";
@@ -9,7 +9,7 @@ import { useSync } from "../state/sync";
 interface MessageItemProps {
   message: Message;
   workspaceRoot?: string;
-  pendingPermissions?: Map<string, Permission>;
+  pendingPermissions?: Accessor<Map<string, Permission>>;
   onPermissionResponse?: (permissionId: string, response: "once" | "always" | "reject") => void;
   isStreaming?: boolean;
 }

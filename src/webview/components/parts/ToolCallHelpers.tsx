@@ -60,18 +60,43 @@ export function getToolInputs(
 // Shared permission lookup logic
 export function usePermission(
   part: MessagePart,
-  pendingPermissions?: Map<string, Permission>,
+  pendingPermissions: () => Map<string, Permission> | undefined,
 ) {
   return createMemo(() => {
-    const perms = pendingPermissions;
+    // Call the accessor inside memo to track it as a dependency
+    const perms = pendingPermissions();
     if (!perms) return undefined;
     const callID = part.callID;
+    
     if (callID && perms.has(callID)) {
-      return perms.get(callID);
+      const perm = perms.get(callID);
+      console.log("[usePermission] Found permission for tool call:", {
+        callID,
+        partID: part.id,
+        permissionID: perm?.id,
+        tool: part.tool,
+      });
+      return perm;
     }
     if (perms.has(part.id)) {
-      return perms.get(part.id);
+      const perm = perms.get(part.id);
+      console.log("[usePermission] Found permission by part ID:", {
+        partID: part.id,
+        permissionID: perm?.id,
+        tool: part.tool,
+      });
+      return perm;
     }
+    
+    if (callID || part.tool) {
+      console.log("[usePermission] No permission found for tool:", {
+        callID,
+        partID: part.id,
+        tool: part.tool,
+        availablePermissions: Array.from(perms.keys()),
+      });
+    }
+    
     return undefined;
   });
 }
