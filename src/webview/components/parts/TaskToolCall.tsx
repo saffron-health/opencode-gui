@@ -1,8 +1,8 @@
 import { Show, type Accessor } from "solid-js";
-import type { MessagePart, Permission } from "../../types";
+import type { MessagePart, Permission, ToolState } from "../../types";
 import { ToolCallTemplate } from "./ToolCallTemplate";
 import { GenericToolIcon } from "./ToolCallIcons";
-import { getToolInputs, usePermission, ErrorFooter, type ToolState } from "./ToolCallHelpers";
+import { getToolInputs, usePermission, ErrorFooter } from "./ToolCallHelpers";
 
 interface TaskToolCallProps {
   part: MessagePart;
@@ -18,7 +18,9 @@ export function TaskToolCall(props: TaskToolCallProps) {
   const state = () => props.part.state as ToolState;
   const inputs = () => getToolInputs(state(), props.part);
 
-  const permission = usePermission(props.part, props.pendingPermissions);
+  const permission = usePermission(props.part, () =>
+    props.pendingPermissions?.(),
+  );
 
   const isPending = () => props.part.state?.status === "pending";
 

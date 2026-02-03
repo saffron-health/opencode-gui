@@ -1,5 +1,5 @@
 import { Show, createMemo, type Accessor } from "solid-js";
-import type { MessagePart, Permission } from "../../types";
+import type { MessagePart, Permission, ToolState } from "../../types";
 import { ToolCallTemplate } from "./ToolCallTemplate";
 import { FileDiffIcon } from "./ToolCallIcons";
 import {
@@ -8,7 +8,6 @@ import {
   splitFilePath,
   usePermission,
   ErrorFooter,
-  type ToolState,
 } from "./ToolCallHelpers";
 import { DiffViewer, getDiffStats } from "./DiffViewer";
 
@@ -51,7 +50,9 @@ export function EditToolCall(props: EditToolCallProps) {
     return { errors: errorCount, warnings: warningCount };
   });
 
-  const permission = usePermission(props.part, props.pendingPermissions);
+  const permission = usePermission(props.part, () =>
+    props.pendingPermissions?.(),
+  );
 
   const Header = () => (
     <>

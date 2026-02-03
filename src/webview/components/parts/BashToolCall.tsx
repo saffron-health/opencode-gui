@@ -1,8 +1,8 @@
 import { Show, type Accessor } from "solid-js";
-import type { MessagePart, Permission } from "../../types";
+import type { MessagePart, Permission, ToolState } from "../../types";
 import { ToolCallTemplate } from "./ToolCallTemplate";
 import { TerminalIcon } from "./ToolCallIcons";
-import { getToolInputs, usePermission, ErrorFooter, type ToolState } from "./ToolCallHelpers";
+import { getToolInputs, usePermission, ErrorFooter } from "./ToolCallHelpers";
 
 interface BashToolCallProps {
   part: MessagePart;
@@ -21,7 +21,9 @@ export function BashToolCall(props: BashToolCallProps) {
   const state = () => props.part.state as ToolState;
   const inputs = () => getToolInputs(state(), props.part);
 
-  const permission = usePermission(props.part, props.pendingPermissions);
+  const permission = usePermission(props.part, () =>
+    props.pendingPermissions?.(),
+  );
 
   // Show the actual bash command (e.g., "ls -la"), not the AI-generated description
   const command = () => inputs().command as string | undefined;

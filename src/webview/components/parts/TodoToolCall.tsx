@@ -1,7 +1,8 @@
-import type { MessagePart, Permission } from "../../types";
+import type { Accessor } from "solid-js";
+import type { MessagePart, Permission, ToolState } from "../../types";
 import { ToolCallTemplate } from "./ToolCallTemplate";
 import { ChecklistIcon } from "./ToolCallIcons";
-import { usePermission, ErrorFooter, type ToolState } from "./ToolCallHelpers";
+import { usePermission, ErrorFooter } from "./ToolCallHelpers";
 
 interface TodoToolCallProps {
   part: MessagePart;
@@ -17,7 +18,9 @@ export function TodoToolCall(props: TodoToolCallProps) {
   const state = () => props.part.state as ToolState;
   const tool = () => props.part.tool as string;
 
-  const permission = usePermission(props.part, props.pendingPermissions);
+  const permission = usePermission(props.part, () =>
+    props.pendingPermissions?.(),
+  );
 
   const Header = () => (
     <span class="tool-header-text">
