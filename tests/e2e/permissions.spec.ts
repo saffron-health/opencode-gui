@@ -1,15 +1,29 @@
 import { test, expect } from "./fixtures";
 
-// Restrictive permission config for testing - ask for everything
+// Restrictive permission config for testing - ask for everything  
 const restrictiveConfig = {
   model: "anthropic/claude-sonnet-4-5-20250929",
-  permission: "ask"
+  permission: "ask",
+  agents: {
+    "*": {
+      permission: "ask"
+    }
+  }
 };
 
 // Permission tests are skipped by default because they depend on 
 // AI behavior (whether the model decides to use a tool that needs permission).
 // Enable these tests manually when testing permission flows.
-test.describe("Permissions", () => {
+test.describe.skip("Permissions", () => {
+  test.beforeEach(async () => {
+    // Clean up any test files from previous runs
+    const fs = await import("fs");
+    const path = await import("path");
+    const testFile = path.join(process.cwd(), "tests", "sandbox", "test-permission.txt");
+    if (fs.existsSync(testFile)) {
+      fs.unlinkSync(testFile);
+    }
+  });
   test("should show permission card when tool needs approval", async ({ openWebview }) => {
     const page = await openWebview({ opencodeConfig: restrictiveConfig });
     
