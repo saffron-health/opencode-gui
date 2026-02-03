@@ -480,7 +480,6 @@ function UIKit() {
     permissionId: string,
     response: "once" | "always" | "reject"
   ) => {
-    console.log(`[UIKit] Permission response: ${response} for ${permissionId}`);
     // Remove the permission from pending permissions
     setPendingPermissions((prev) => {
       const next = new Map(prev);
@@ -510,7 +509,6 @@ function UIKit() {
 
   const cycleContextPercentage = () => {
     const current = contextInfo().percentage;
-    console.log("[UIKit] Current context percentage:", current);
     if (current < 60) {
       // White -> Pale yellow
       setContextInfo({
@@ -533,7 +531,6 @@ function UIKit() {
         percentage: 25,
       });
     }
-    console.log("[UIKit] New context percentage:", contextInfo().percentage);
   };
 
   const toggleError = () => {

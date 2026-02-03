@@ -3,6 +3,7 @@ import type { Permission } from "../../shared/messages";
 interface PermissionPromptProps {
   permission: Permission;
   onResponse: (permissionId: string, response: "once" | "always" | "reject") => void;
+  workspaceRoot?: string;
 }
 
 function normalizePath(input?: string, workspaceRoot?: string): string {
@@ -56,7 +57,7 @@ export function PermissionPrompt(props: PermissionPromptProps) {
         const derived = extractDirectory(pattern);
         
         const rawDir = parent || filepath || derived || "unknown";
-        const dir = normalizePath(rawDir);
+        const dir = normalizePath(rawDir, props.workspaceRoot);
         
         return `Allow access to ${dir}?`;
       }
@@ -84,7 +85,6 @@ export function PermissionPrompt(props: PermissionPromptProps) {
   };
 
   const handleResponse = (response: "once" | "always" | "reject") => {
-    console.log(`[PermissionPrompt] User responded: ${response} for ${props.permission.id}`);
     props.onResponse(props.permission.id, response);
   };
 

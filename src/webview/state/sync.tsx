@@ -192,11 +192,9 @@ function createSync() {
         });
 
         if (thisToken !== bootstrapToken) {
-          console.log("[Sync] Bootstrap stale (token mismatch), discarding");
           return;
         }
         if (startedForSession && startedForSession !== currentSessionId()) {
-          console.log("[Sync] Bootstrap stale (session changed), discarding");
           return;
         }
 

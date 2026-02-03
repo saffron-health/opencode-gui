@@ -286,19 +286,12 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
 
     case "session.idle": {
       const { sessionID } = event.properties;
-      console.log("[EventHandler] session.idle received:", { 
-        sessionID, 
-        currentThinking: store.thinking[sessionID],
-        callbackCount: sessionIdleCallbacks.size,
-      });
       
       if (sessionID) {
         // Fire callbacks first to clear inFlightMessage
-        console.log("[EventHandler] session.idle: firing", sessionIdleCallbacks.size, "callbacks");
         for (const callback of sessionIdleCallbacks) {
           callback(sessionID);
         }
-        console.log("[EventHandler] session.idle: setting thinking to false");
         setStore("thinking", sessionID, false);
       }
       break;
@@ -316,20 +309,11 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
         errorData: error?.data,
       });
       
-      console.log("[EventHandler] session.error received:", { 
-        sessionID, 
-        errorMessage,
-        currentThinking: sessionID ? store.thinking[sessionID] : undefined,
-        callbackCount: sessionIdleCallbacks.size,
-      });
-      
       if (sessionID) {
         // Fire callbacks to clear inFlightMessage so queue can drain after errors
-        console.log("[EventHandler] session.error: firing", sessionIdleCallbacks.size, "callbacks");
         for (const callback of sessionIdleCallbacks) {
           callback(sessionID);
         }
-        console.log("[EventHandler] session.error: setting thinking to false and error state");
         batch(() => {
           setStore("thinking", sessionID, false);
           setStore("sessionError", produce((draft: Record<string, string>) => {

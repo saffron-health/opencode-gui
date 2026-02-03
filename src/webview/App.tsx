@@ -200,32 +200,12 @@ function App() {
 
   // Find permissions that should show as standalone modals (not inline with tools)
   const standalonePermissions = createMemo(() => {
-    const perms = pendingPermissions();
     const result: Permission[] = [];
-    
-    console.log("[App] standalonePermissions check:", {
-      pendingPermissionsCount: perms.size,
-      permissions: Array.from(perms.entries()).map(([k, p]) => ({ 
-        key: k, 
-        id: p.id, 
-        permission: p.permission, 
-        sessionID: p.sessionID,
-        hasTool: !!p.tool,
-      })),
-    });
-    
-    // Following TUI pattern: only show standalone modal for permissions WITHOUT tool field
-    // Permissions WITH tool will render inline once their tool part arrives
-    for (const [key, perm] of perms.entries()) {
+    for (const [, perm] of pendingPermissions().entries()) {
       if (!perm.tool) {
-        console.log("[App] Found standalone permission (no tool):", perm.id, perm.permission);
         result.push(perm);
-      } else {
-        console.log("[App] Permission has tool, will show inline when part arrives:", perm.id, perm.tool.callID);
       }
     }
-    
-    console.log("[App] Standalone permissions result:", result.length);
     return result;
   });
 
@@ -302,54 +282,19 @@ function App() {
     }
   });
   
-  // Process queued messages when thinking stops and queue is not empty
-  // This is a safety net; primary drain happens in onSessionIdle callback
-  createEffect(() => {
-    const thinking = isThinking();
-    const queueLength = messageQueue().length;
-    const inflight = inFlightMessage();
-    
-    console.log("[App] isThinking effect triggered:", { 
-      thinking, 
-      queueLength, 
-      hasInflight: !!inflight,
-      inFlightSessionId: inflight?.sessionId,
-      currentSessionId: sync.currentSessionId(),
-    });
-    
-    if (!thinking && queueLength > 0 && !inflight) {
-      console.log("[App] isThinking effect: calling processNextQueuedMessage");
-      void processNextQueuedMessage();
-    } else if (!thinking && queueLength > 0 && inflight) {
-      console.log("[App] isThinking effect: NOT processing - inFlightMessage still set!");
-    }
-  });
-  
   // Clear inFlightMessage when session becomes idle and trigger queue drain
   onMount(() => {
     const cleanup = sync.onSessionIdle((sessionId) => {
       const inflight = inFlightMessage();
-      const queueLength = messageQueue().length;
-      
-      console.log("[App] onSessionIdle callback triggered:", { 
-        sessionId, 
-        inFlightSessionId: inflight?.sessionId,
-        hasInflight: !!inflight,
-        queueLength,
-        matches: inflight?.sessionId === sessionId,
-      });
       
       if (inflight?.sessionId !== sessionId) {
-        console.log("[App] onSessionIdle: session ID mismatch, ignoring");
         return;
       }
       
-      console.log("[App] onSessionIdle: clearing inFlightMessage and scheduling queue drain");
       setInFlightMessage(null);
       
       // Schedule queue drain in a microtask to avoid interleaving with SSE batch
       queueMicrotask(() => {
-        console.log("[App] onSessionIdle microtask: calling processNextQueuedMessage, queue length:", messageQueue().length);
         void processNextQueuedMessage();
       });
     });
@@ -359,9 +304,7 @@ function App() {
   // Handlers
   const handleSubmit = async () => {
     const text = input().trim();
-    console.log("[App] handleSubmit called:", { text: text.slice(0, 50), isReady: sync.isReady() });
     if (!text || !sync.isReady()) {
-      console.log("[App] handleSubmit early return:", { hasText: !!text, isReady: sync.isReady() });
       return;
     }
 
@@ -451,27 +394,16 @@ function App() {
     const inflight = inFlightMessage();
     const sessionId = sync.currentSessionId();
     
-    console.log("[App] processNextQueuedMessage called:", {
-      queueLength: queue.length,
-      hasInflight: !!inflight,
-      inFlightSessionId: inflight?.sessionId,
-      currentSessionId: sessionId,
-      isReady: sync.isReady(),
-    });
-    
     if (queue.length === 0) {
-      console.log("[App] processNextQueuedMessage: queue is empty");
       return;
     }
     
     // Don't process if there's already an in-flight message
     if (inflight) {
-      console.log("[App] processNextQueuedMessage: SKIPPING - message already in-flight");
       return;
     }
     
     if (!sessionId || !sync.isReady()) {
-      console.log("[App] processNextQueuedMessage: SKIPPING - no session or not ready");
       return;
     }
     
@@ -481,12 +413,6 @@ function App() {
     // This is critical - IDs generated earlier (when queueing) will be older than assistant responses
     const messageID = Id.ascending("message");
     
-    console.log("[App] processNextQueuedMessage: processing queued message:", {
-      messageID,
-      text: next.text.slice(0, 50),
-      remainingInQueue: rest.length,
-    });
-    
     setMessageQueue(rest);
     sync.setThinking(sessionId, true);
     
@@ -495,22 +421,8 @@ function App() {
 
     try {
       const extraParts = buildSelectionParts(next.attachments);
-      console.log("[App] processNextQueuedMessage: calling sendPrompt with:", {
-        sessionId,
-        text: next.text.slice(0, 50),
-        agent: next.agent,
-        messageID,
-        extraPartsCount: extraParts.length,
-      });
       
       const result = await sendPrompt(sessionId, next.text, next.agent, extraParts, messageID);
-      
-      console.log("[App] processNextQueuedMessage: sendPrompt returned:", {
-        hasError: !!result?.error,
-        hasData: !!result?.data,
-        response: result?.response?.status,
-        result: result,
-      });
       
       // Check for SDK error in result (SDK doesn't throw by default)
       if (result?.error) {
@@ -555,13 +467,6 @@ function App() {
       agent,
       attachments,
     };
-    
-    console.log("[App] handleQueueMessage: adding message to queue:", {
-      text: text.slice(0, 50),
-      currentQueueLength: messageQueue().length,
-      isThinking: isThinking(),
-      hasInflight: !!inFlightMessage(),
-    });
     
     setMessageQueue((prev) => [...prev, queuedMessage]);
     setInput("");
@@ -710,8 +615,6 @@ function App() {
     permissionId: string,
     response: "once" | "always" | "reject"
   ) => {
-    console.log(`[App] Permission response: ${response} for ${permissionId}`);
-
     const perms = pendingPermissions();
     let permission: Permission | undefined;
     for (const [, perm] of perms.entries()) {
@@ -762,6 +665,7 @@ function App() {
                 <PermissionPrompt
                   permission={permission}
                   onResponse={handlePermissionResponse}
+                  workspaceRoot={sync.workspaceRoot()}
                 />
               )}
             </For>
@@ -816,6 +720,7 @@ function App() {
                 <PermissionPrompt
                   permission={permission}
                   onResponse={handlePermissionResponse}
+                  workspaceRoot={sync.workspaceRoot()}
                 />
               )}
             </For>
