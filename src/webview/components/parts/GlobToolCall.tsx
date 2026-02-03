@@ -1,8 +1,8 @@
 import { Show, createMemo, type Accessor } from "solid-js";
-import type { MessagePart, Permission } from "../../types";
+import type { MessagePart, Permission, ToolState } from "../../types";
 import { ToolCallTemplate } from "./ToolCallTemplate";
 import { MagnifyingGlassIcon } from "./ToolCallIcons";
-import { getToolInputs, usePermission, ErrorFooter, type ToolState } from "./ToolCallHelpers";
+import { getToolInputs, usePermission, ErrorFooter } from "./ToolCallHelpers";
 
 interface GlobToolCallProps {
   part: MessagePart;
@@ -23,11 +23,13 @@ export function GlobToolCall(props: GlobToolCallProps) {
     const lines = state()
       .output!.trim()
       .split("\n")
-      .filter((line) => line.trim().length > 0);
+      .filter((line: string) => line.trim().length > 0);
     return lines.length;
   });
 
-  const permission = usePermission(props.part, props.pendingPermissions);
+  const permission = usePermission(props.part, () =>
+    props.pendingPermissions?.(),
+  );
 
   const Header = () => (
     <>
@@ -49,7 +51,9 @@ export function GlobToolCall(props: GlobToolCallProps) {
       icon={MagnifyingGlassIcon}
       header={Header}
       output={state().output ? Output : undefined}
-      footer={state().error ? () => <ErrorFooter error={state().error} /> : undefined}
+      footer={
+        state().error ? () => <ErrorFooter error={state().error} /> : undefined
+      }
       isPending={props.part.state?.status === "pending"}
       needsPermission={!!permission()}
       permission={permission()}

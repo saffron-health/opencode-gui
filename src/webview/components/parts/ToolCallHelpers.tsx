@@ -67,7 +67,7 @@ export function usePermission(
     const perms = pendingPermissions();
     if (!perms) return undefined;
     const callID = part.callID;
-    
+
     if (callID && perms.has(callID)) {
       const perm = perms.get(callID);
       console.log("[usePermission] Found permission for tool call:", {
@@ -87,7 +87,7 @@ export function usePermission(
       });
       return perm;
     }
-    
+
     if (callID || part.tool) {
       console.log("[usePermission] No permission found for tool:", {
         callID,
@@ -96,7 +96,7 @@ export function usePermission(
         availablePermissions: Array.from(perms.keys()),
       });
     }
-    
+
     return undefined;
   });
 }
