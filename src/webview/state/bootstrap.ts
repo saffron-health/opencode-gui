@@ -73,7 +73,12 @@ function toSession(sdkSession: SDKSession): Session {
     parentID: sdkSession.parentID,
     time: sdkSession.time,
     summary: sdkSession.summary
-      ? { diffs: sdkSession.summary.diffs ?? [] }
+      ? { 
+          additions: sdkSession.summary.additions,
+          deletions: sdkSession.summary.deletions,
+          files: sdkSession.summary.files,
+          diffs: sdkSession.summary.diffs 
+        }
       : undefined,
   };
 }
@@ -186,13 +191,25 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
         .sort((a, b) => a.id.localeCompare(b.id));
 
       const session = sessionRes?.data;
-      if (session?.summary?.diffs) {
-        const diffs = session.summary.diffs;
-        fileChanges = {
-          fileCount: diffs.length,
-          additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
-          deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
-        };
+      
+      // Extract file changes from session summary
+      if (session?.summary) {
+        if (session.summary.diffs && session.summary.diffs.length > 0) {
+          // Use detailed diffs if available
+          const diffs = session.summary.diffs;
+          fileChanges = {
+            fileCount: diffs.length,
+            additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
+            deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
+          };
+        } else if (session.summary.files > 0) {
+          // Fallback to summary-level aggregates
+          fileChanges = {
+            fileCount: session.summary.files,
+            additions: session.summary.additions,
+            deletions: session.summary.deletions,
+          };
+        }
       }
 
       // Extract context info from the last assistant message

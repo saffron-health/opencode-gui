@@ -5,6 +5,7 @@ import type {
   Part,
   Session as SDKSession,
   PermissionRequest as SDKPermission,
+  AssistantMessage,
 } from "@opencode-ai/sdk/v2/client";
 import type { Message, MessagePart, Session, Permission } from "../types";
 import type { SyncState } from "./types";
@@ -34,7 +35,12 @@ function toSession(sdkSession: SDKSession): Session {
     parentID: sdkSession.parentID,
     time: sdkSession.time,
     summary: sdkSession.summary
-      ? { diffs: sdkSession.summary.diffs ?? [] }
+      ? { 
+          additions: sdkSession.summary.additions,
+          deletions: sdkSession.summary.deletions,
+          files: sdkSession.summary.files,
+          diffs: sdkSession.summary.diffs 
+        }
       : undefined,
   };
 }
@@ -84,25 +90,6 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
 
       messageToSession.set(info.id, sessionId);
 
-      // Extract token info from assistant messages for real-time context updates
-      if (info.role === "assistant") {
-        const tokens = info.tokens;
-        const usedTokens =
-          tokens.input +
-          tokens.output +
-          tokens.reasoning +
-          tokens.cache.read +
-          tokens.cache.write;
-        if (usedTokens > 0) {
-          const limit = 200000; // Default context limit, could be fetched from config
-          setStore("contextInfo", {
-            usedTokens,
-            limitTokens: limit,
-            percentage: Math.min(100, (usedTokens / limit) * 100),
-          });
-        }
-      }
-
       if (!messages.length) {
         setStore("message", sessionId, [msg]);
       } else if (result.found) {
@@ -123,6 +110,28 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
           setStore("part", produce((draft) => { delete draft[oldest.id]; }));
         });
         messageToSession.delete(oldest.id);
+      }
+
+      // Update context info from the last assistant message in the current session
+      // This ensures we show cumulative context for the session being viewed
+      const viewingSessionId = currentSessionId();
+      if (viewingSessionId && sessionId === viewingSessionId && info.role === "assistant") {
+        const assistantInfo = info as AssistantMessage;
+        const tokens = assistantInfo.tokens;
+        const usedTokens =
+          tokens.input +
+          tokens.output +
+          tokens.reasoning +
+          tokens.cache.read +
+          tokens.cache.write;
+        if (usedTokens > 0) {
+          const limit = 200000; // Default context limit, could be fetched from config
+          setStore("contextInfo", {
+            usedTokens,
+            limitTokens: limit,
+            percentage: Math.min(100, (usedTokens / limit) * 100),
+          });
+        }
       }
       break;
     }
@@ -240,13 +249,23 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
           }));
         }
 
-        if (session.summary?.diffs) {
-          const diffs = session.summary.diffs;
-          setStore("fileChanges", {
-            fileCount: diffs.length,
-            additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
-            deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
-          });
+        if (session.summary) {
+          if (session.summary.diffs && session.summary.diffs.length > 0) {
+            // Use detailed diffs if available
+            const diffs = session.summary.diffs;
+            setStore("fileChanges", {
+              fileCount: diffs.length,
+              additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
+              deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
+            });
+          } else if (session.summary.files > 0) {
+            // Fallback to summary-level aggregates
+            setStore("fileChanges", {
+              fileCount: session.summary.files,
+              additions: session.summary.additions,
+              deletions: session.summary.deletions,
+            });
+          }
         }
       });
       break;
@@ -300,7 +319,7 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       console.log("[EventHandler] session.error received:", { 
         sessionID, 
         errorMessage,
-        currentThinking: store.thinking[sessionID],
+        currentThinking: sessionID ? store.thinking[sessionID] : undefined,
         callbackCount: sessionIdleCallbacks.size,
       });
       

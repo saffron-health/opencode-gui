@@ -72,7 +72,10 @@ export const SessionSchema = z.object({
     updated: z.number(),
   }),
   summary: z.object({
-    diffs: z.array(FileDiffSchema),
+    additions: z.number(),
+    deletions: z.number(),
+    files: z.number(),
+    diffs: z.array(FileDiffSchema).optional(),
   }).optional(),
 });
 export type Session = z.infer<typeof SessionSchema>;
