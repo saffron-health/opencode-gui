@@ -4,11 +4,27 @@
 
 - **Build**: `pnpm build` (builds extension + webview)
 - **Watch**: `pnpm watch` (dev mode with hot reload)
+- **Debug with CDP**: `pnpm dev:debug` (launches VSCode with CDP on port 9222 for Playwright automation)
 - **Test**: `pnpm test` (runs vitest)
 - **Single test**: `pnpm test -- path/to/file.test.ts`
 - **E2E Tests**: `pnpm test:e2e` (runs playwright e2e tests with AI generation)
 - **Package**: `pnpm package` (creates .vsix)
 - **UI Kit**: `pnpm uikit` (opens component playground)
+
+## Webview Debugging with Playwright
+
+To automate and test the webview:
+
+1. `pnpm dev:debug` - Launches VSCode with CDP enabled on port 9222
+2. `pnpm exec tsx tools/vscode-interact.ts` - Connects via CDP, opens OpenCode panel, and interacts with webview
+
+The script can:
+- Automatically open the OpenCode sidebar panel
+- Access the webview content via nested iframe
+- Read text, click buttons, take screenshots
+- Run arbitrary Playwright commands against the webview
+
+See `tools/vscode-interact.ts` for examples.
 
 ## Architecture
 

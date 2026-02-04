@@ -6,7 +6,8 @@
       "type": "extensionHost",
       "request": "launch",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}"
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--inspect-extensions=9229"
       ],
       "outFiles": [
         "${workspaceFolder}/dist/**/*.js"
@@ -18,7 +19,8 @@
       "type": "extensionHost",
       "request": "launch",
       "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}"
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--inspect-extensions=9229"
       ],
       "outFiles": [
         "${workspaceFolder}/dist/**/*.js"

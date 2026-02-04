@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -e
+
+# Run Playwright from the project's node_modules
+pnpm exec playwright "$@"
