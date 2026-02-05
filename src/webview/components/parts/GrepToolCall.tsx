@@ -19,12 +19,8 @@ export function GrepToolCall(props: GrepToolCallProps) {
   const inputs = () => getToolInputs(state(), props.part);
 
   const resultsCount = createMemo(() => {
-    if (!state().output) return null;
-    const lines = state()
-      .output!.trim()
-      .split("\n")
-      .filter((line) => line.trim().length > 0);
-    return lines.length;
+    const matches = state().metadata?.matches as number | undefined;
+    return matches ?? null;
   });
 
   const permission = usePermission(props.part, () =>

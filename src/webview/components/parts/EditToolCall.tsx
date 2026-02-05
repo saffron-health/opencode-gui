@@ -43,9 +43,12 @@ export function EditToolCall(props: EditToolCallProps) {
       | undefined;
     if (!diagnosticsMap) return null;
 
-    const allDiagnostics = Object.values(diagnosticsMap).flat();
-    const errorCount = allDiagnostics.filter((d) => d.severity === 1).length;
-    const warningCount = allDiagnostics.filter((d) => d.severity === 2).length;
+    const filePath = (inputs().filePath as string) || (inputs().path as string);
+    if (!filePath) return null;
+
+    const fileDiagnostics = diagnosticsMap[filePath] || [];
+    const errorCount = fileDiagnostics.filter((d) => d.severity === 1).length;
+    const warningCount = fileDiagnostics.filter((d) => d.severity === 2).length;
 
     return { errors: errorCount, warnings: warningCount };
   });

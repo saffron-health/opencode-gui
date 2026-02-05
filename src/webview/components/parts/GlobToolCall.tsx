@@ -19,12 +19,8 @@ export function GlobToolCall(props: GlobToolCallProps) {
   const inputs = () => getToolInputs(state(), props.part);
 
   const resultsCount = createMemo(() => {
-    if (!state().output) return null;
-    const lines = state()
-      .output!.trim()
-      .split("\n")
-      .filter((line: string) => line.trim().length > 0);
-    return lines.length;
+    const count = state().metadata?.count as number | undefined;
+    return count ?? null;
   });
 
   const permission = usePermission(props.part, () =>

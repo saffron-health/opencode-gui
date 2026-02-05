@@ -19,7 +19,7 @@
     --vscode-descriptionForeground,
     light-dark(#3b3b3b, #9d9d9d)
   );
-  --error-foreground: var(--vscode-errorForeground, #f85149);
+  --error-foreground: var(--vscode-errorForeground, oklch(0.65 0.18 25));
   --focus-border: var(--vscode-focusBorder, light-dark(#005fb8, #0078d4));
 
   /* Sidebar */
@@ -819,6 +819,7 @@ body {
 
 .tool-diagnostics__errors {
   color: var(--error-foreground);
+  font-weight: 450;
 }
 
 .tool-diagnostics__warnings {
@@ -1293,6 +1294,8 @@ body.vscode-high-contrast {
   font-family: var(--font-family);
   font-size: var(--font-size-small);
   color: var(--description-foreground);
+  font-weight: 450;
+  opacity: 0.9;
   user-select: none;
   line-height: 12px;
 }
@@ -1333,7 +1336,8 @@ body.vscode-high-contrast {
   font-family: var(--font-family);
   font-size: var(--font-size-small);
   color: var(--description-foreground);
-  font-weight: 500;
+  font-weight: 450;
+  opacity: 0.9;
   user-select: none;
   line-height: 12px;
   font-variant-numeric: tabular-nums;
@@ -1531,7 +1535,8 @@ body.vscode-high-contrast {
 }
 
 .diff-line-range-num {
-  opacity: 0.7;
+  font-weight: 450;
+  opacity: 0.9;
 }
 
 .diff-line {
