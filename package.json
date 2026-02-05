@@ -66,7 +66,9 @@
     "dev": "vite",
     "dev:standalone": "vite --open /src/webview/standalone.html",
     "uikit": "vite --open /src/webview/uikit.html",
-    "dev:debug": "code-insiders --extensionDevelopmentPath=$(pwd) --remote-debugging-port=9222",
+    "dev:debug": "node ./tools/launch-vscode-debug.js",
+    "dev:debug:cdp": "pnpm exec tsx ./tools/vscode-interact.ts --mode=cdp",
+    "dev:debug:electron": "pnpm exec tsx ./tools/vscode-interact.ts --mode=electron",
     "test": "vitest run && playwright test",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
@@ -83,6 +85,7 @@
     "@vscode/vsce": "^3.x",
     "concurrently": "^8.x",
     "playwright": "^1.58.1",
+    "tsx": "^4.21.0",
     "typescript": "^5.x",
     "vite": "^5.x",
     "vitest": "^1.x"
