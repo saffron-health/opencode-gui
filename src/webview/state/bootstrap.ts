@@ -17,7 +17,7 @@ import type {
   ContextInfo,
   FileChangesInfo,
 } from "../types";
-import type { SyncState } from "./types";
+import type { SyncState, SessionStatus } from "./types";
 import { extractTextFromParts } from "./utils";
 
 /** API response for session.messages endpoint */
@@ -33,6 +33,7 @@ export interface BootstrapContext {
       list: (opts?: { directory?: string }) => Promise<{ data?: SDKSession[] }>;
       messages: (opts: { sessionID: string }) => Promise<{ data?: MessageWithParts[] }>;
       get: (opts: { sessionID: string }) => Promise<{ data?: SDKSession }>;
+      status: (opts?: { directory?: string }) => Promise<{ data?: { [key: string]: any } }>;
     };
     permission: {
       list: (opts?: { directory?: string }) => Promise<{ data?: any[] }>;
@@ -48,6 +49,7 @@ export interface BootstrapResult {
   messageList: Message[];
   partMap: { [messageID: string]: MessagePart[] };
   permissionMap: { [sessionID: string]: Permission[] };
+  sessionStatusMap: { [sessionID: string]: SessionStatus };
   contextInfo: ContextInfo | null;
   fileChanges: FileChangesInfo | null;
 }
@@ -58,7 +60,7 @@ function toAgent(sdkAgent: SDKAgent): Agent {
     name: sdkAgent.name,
     description: sdkAgent.description,
     mode: sdkAgent.mode,
-    builtIn: sdkAgent.builtIn,
+    builtIn: (sdkAgent as any).builtIn,
     options: sdkAgent.color ? { color: sdkAgent.color } : undefined,
   };
 }
@@ -107,9 +109,10 @@ const HIDDEN_AGENTS = new Set(["compaction", "title", "summary"]);
 export async function fetchBootstrapData(ctx: BootstrapContext): Promise<BootstrapResult> {
   const { client, sessionId, workspaceRoot } = ctx;
 
-  const [agentsRes, sessionsRes] = await Promise.all([
+  const [agentsRes, sessionsRes, sessionStatusRes] = await Promise.all([
     client.app.agents(),
     client.session.list(workspaceRoot ? { directory: workspaceRoot } : undefined),
+    client.session.status(workspaceRoot ? { directory: workspaceRoot } : undefined),
   ]);
 
   const agents = (agentsRes?.data ?? [])
@@ -128,6 +131,7 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
   let fileChanges: FileChangesInfo | null = null;
   const partMap: { [messageID: string]: MessagePart[] } = {};
   const permissionMap: { [sessionID: string]: Permission[] } = {};
+  const sessionStatusMap: { [sessionID: string]: SessionStatus } = sessionStatusRes?.data ?? {};
 
   // Fetch pending permissions
   try {
@@ -240,7 +244,7 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
     }
   }
 
-  return { agents, sessions, messageList, partMap, permissionMap, contextInfo, fileChanges };
+  return { agents, sessions, messageList, partMap, permissionMap, sessionStatusMap, contextInfo, fileChanges };
 }
 
 export function commitBootstrapData(
@@ -256,6 +260,7 @@ export function commitBootstrapData(
     }
     setStore("part", reconcile(data.partMap));
     setStore("permission", reconcile(data.permissionMap));
+    setStore("sessionStatus", reconcile(data.sessionStatusMap));
     setStore("contextInfo", data.contextInfo);
     setStore("fileChanges", data.fileChanges);
     setStore("status", { status: "connected" });

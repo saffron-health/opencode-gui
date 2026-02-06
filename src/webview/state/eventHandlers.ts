@@ -386,6 +386,14 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       break;
     }
 
+    case "session.status": {
+      const { sessionID, status } = event.properties;
+      if (sessionID) {
+        setStore("sessionStatus", sessionID, status);
+      }
+      break;
+    }
+
     case "server.instance.disposed":
       // Handled by sync.tsx separately
       break;

@@ -7,8 +7,13 @@ interface FileChangesSummaryProps {
 }
 
 export function FileChangesSummary(props: FileChangesSummaryProps) {
+  const hasChanges = () => {
+    const changes = props.fileChanges;
+    return changes && (changes.fileCount > 0 || changes.additions > 0 || changes.deletions > 0);
+  };
+
   return (
-    <Show when={props.fileChanges}>
+    <Show when={hasChanges()}>
       <span class="file-changes-summary">
         {props.fileChanges!.fileCount} file{props.fileChanges!.fileCount !== 1 ? 's' : ''} changed{' '}
         <Show when={props.fileChanges!.additions > 0}>

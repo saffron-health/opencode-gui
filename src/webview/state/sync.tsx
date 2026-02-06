@@ -308,6 +308,7 @@ function createSync() {
   });
 
   const getParts = (messageId: string) => store.part[messageId] ?? [];
+  const sessionStatus = (sessionId: string) => store.sessionStatus[sessionId] ?? null;
 
   return {
     messages,
@@ -317,6 +318,7 @@ function createSync() {
     aggregatedPermissions,
     isThinking,
     sessionError,
+    sessionStatus,
     contextInfo,
     fileChanges,
     status: () => store.status,

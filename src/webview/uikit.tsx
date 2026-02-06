@@ -626,8 +626,10 @@ function UIKit() {
             sessions={sessions()}
             currentSessionId={currentSessionId()}
             currentSessionTitle={currentSessionTitle()}
+            sessionStatus={() => null}
             onSessionSelect={handleSessionSelect}
             onNewSession={handleNewSession}
+            onRefreshSessions={async () => {}}
           />
 
           {!hasMessages() && (

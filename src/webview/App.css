@@ -1219,6 +1219,10 @@ body.vscode-high-contrast {
   color: var(--focus-border);
 }
 
+.session-item.current .session-status-indicator {
+  color: var(--focus-border);
+}
+
 .session-item-title {
   font-family: var(--font-family);
   font-size: var(--font-size-small);
@@ -1228,12 +1232,21 @@ body.vscode-high-contrast {
   text-overflow: ellipsis;
   white-space: nowrap;
   padding-bottom: 1px;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
 }
 
 .session-item-time {
   font-size: var(--font-size-small);
   opacity: 0.7;
   margin-left: var(--spacing-md);
+  flex-shrink: 0;
+}
+
+.session-status-indicator {
+  padding: 0;
+  font-size: var(--font-size-small);
   flex-shrink: 0;
 }
 
