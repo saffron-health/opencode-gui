@@ -80,8 +80,8 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
             >
               <For each={props.sessions}>
                 {(session) => {
-                  const status = props.sessionStatus(session.id);
-                  const isBusy = status?.type === "busy";
+                  const status = () => props.sessionStatus(session.id);
+                  const isBusy = () => status()?.type === "busy";
                   
                   return (
                     <div
@@ -91,7 +91,7 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
                       onClick={() => handleSessionClick(session.id)}
                     >
                       <div class="session-item-title">
-                        <Show when={isBusy}>
+                        <Show when={isBusy()}>
                           <span class="loading-indicator session-status-indicator">
                             {spinnerFrames[spinnerFrame()]}
                           </span>
