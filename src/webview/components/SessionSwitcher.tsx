@@ -1,10 +1,12 @@
-import { createSignal, Show, For } from "solid-js";
+import { createSignal, Show, For, onCleanup } from "solid-js";
 import type { Session } from "../types";
+import type { SessionStatus } from "../state/types";
 
 interface SessionSwitcherProps {
   sessions: Session[];
   currentSessionId: string | null;
   currentSessionTitle: string;
+  sessionStatus: (sessionId: string) => SessionStatus | null;
   onSessionSelect: (sessionId: string) => void;
   onRefreshSessions: () => Promise<void>;
 }
@@ -12,17 +14,26 @@ interface SessionSwitcherProps {
 export function SessionSwitcher(props: SessionSwitcherProps) {
   const [isOpen, setIsOpen] = createSignal(false);
   const [isLoading, setIsLoading] = createSignal(false);
+  const [spinnerFrame, setSpinnerFrame] = createSignal(0);
+  
+  const spinnerFrames = ['\\', '|', '/', '-'];
+  
+  const spinnerInterval = setInterval(() => {
+    setSpinnerFrame((prev) => (prev + 1) % spinnerFrames.length);
+  }, 150);
+  
+  onCleanup(() => clearInterval(spinnerInterval));
 
-  const toggleDropdown = async () => {
-    if (!isOpen()) {
+  const toggleDropdown = () => {
+    const shouldOpen = !isOpen();
+    setIsOpen(shouldOpen);
+    
+    if (shouldOpen) {
       setIsLoading(true);
-      try {
-        await props.onRefreshSessions();
-      } finally {
+      props.onRefreshSessions().finally(() => {
         setIsLoading(false);
-      }
+      });
     }
-    setIsOpen(!isOpen());
   };
 
   const handleSessionClick = (sessionId: string) => {
@@ -68,19 +79,31 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
               }
             >
               <For each={props.sessions}>
-                {(session) => (
-                  <div
-                    class={`session-item ${
-                      session.id === props.currentSessionId ? "current" : ""
-                    }`}
-                    onClick={() => handleSessionClick(session.id)}
-                  >
-                    <div class="session-item-title">{session.title}</div>
-                    <div class="session-item-time">
-                      {formatRelativeTime(session.time.updated)}
+                {(session) => {
+                  const status = () => props.sessionStatus(session.id);
+                  const isBusy = () => status()?.type === "busy";
+                  
+                  return (
+                    <div
+                      class={`session-item ${
+                        session.id === props.currentSessionId ? "current" : ""
+                      }`}
+                      onClick={() => handleSessionClick(session.id)}
+                    >
+                      <div class="session-item-title">
+                        <Show when={isBusy()}>
+                          <span class="loading-indicator session-status-indicator">
+                            {spinnerFrames[spinnerFrame()]}
+                          </span>
+                        </Show>
+                        {session.title}
+                      </div>
+                      <div class="session-item-time">
+                        {formatRelativeTime(session.time.updated)}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                }}
               </For>
             </Show>
           </Show>

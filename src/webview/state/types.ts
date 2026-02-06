@@ -8,6 +8,11 @@ import type {
   FileChangesInfo,
 } from "../types";
 
+export type SessionStatus = 
+  | { type: "idle" }
+  | { type: "busy" }
+  | { type: "retry"; attempt: number; message: string; next: number };
+
 export type SyncStatus =
   | { status: "disconnected" }
   | { status: "connecting" }
@@ -26,6 +31,8 @@ export interface SyncState {
   part: { [messageID: string]: MessagePart[] };
   /** Permissions keyed by sessionID */
   permission: { [sessionID: string]: Permission[] };
+  /** Session status keyed by sessionID */
+  sessionStatus: { [sessionID: string]: SessionStatus };
   /** UI state */
   contextInfo: ContextInfo | null;
   fileChanges: FileChangesInfo | null;
@@ -41,6 +48,7 @@ export function createEmptyState(): SyncState {
     message: {},
     part: {},
     permission: {},
+    sessionStatus: {},
     contextInfo: null,
     fileChanges: null,
     sessionError: {},

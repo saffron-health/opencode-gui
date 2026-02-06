@@ -652,6 +652,7 @@ function App() {
         sessions={sessionsToShow()}
         currentSessionId={sync.currentSessionId()}
         currentSessionTitle={currentSessionTitle()}
+        sessionStatus={sync.sessionStatus}
         onSessionSelect={handleSessionSelect}
         onNewSession={handleNewSession}
         onRefreshSessions={refreshSessions}
