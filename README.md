@@ -1,5 +1,7 @@
 # OpenCode VSCode Extension
 
+[Install for VSCode](https://marketplace.visualstudio.com/items?itemName=TanishqKancharla.opencode-vscode&ssr=false#review-details)
+
 A VSCode sidebar extension for OpenCode - the AI coding agent. Simple chat interface to interact with OpenCode directly from your sidebar.
 
 ![OpenCode VSCode Extension Preview](media/preview.png)
