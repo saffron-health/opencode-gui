@@ -7,19 +7,19 @@ import {
   type Session,
   type Message as SDKMessage,
   type Part,
-  type TextPartInput,
-  type FilePartInput,
-  type AgentPartInput,
-  type SubtaskPartInput,
 } from "@opencode-ai/sdk/v2/client";
 
 import { hasVscodeApi, vscode } from "../utils/vscode";
 import { proxyFetch } from "../utils/proxyFetch";
 import { proxyEventSource } from "../utils/proxyEventSource";
+import {
+  buildSessionPromptRequest,
+  type PromptPartInput,
+} from "./promptRequest";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
-export type PromptPartInput = TextPartInput | FilePartInput | AgentPartInput | SubtaskPartInput;
+export type { PromptPartInput } from "./promptRequest";
 
 export type SSEStatus = {
   status: "connecting" | "connected" | "reconnecting" | "closed";
@@ -129,17 +129,7 @@ function createOpenCode() {
     const c = client();
     if (!c) throw new Error("Not connected");
 
-    const configResult = await c.config.get();
-    const model = configResult.data?.model || "anthropic/claude-sonnet-4-5-20250929";
-    const [providerID, modelID] = model.split("/");
-
-    return c.session.prompt({
-      sessionID: sessionId,
-      model: { providerID, modelID },
-      parts: [{ type: "text", text }, ...extraParts],
-      ...(agent ? { agent } : {}),
-      ...(messageID ? { messageID } : {}),
-    });
+    return c.session.prompt(buildSessionPromptRequest(sessionId, text, extraParts, agent, messageID));
   }
 
   // Subscribe to events for the workspace through the extension proxy
