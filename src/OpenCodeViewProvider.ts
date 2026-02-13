@@ -3,6 +3,11 @@ import { OpenCodeService } from './OpenCodeService';
 import { getLogger } from './extension';
 import type { HostMessage, WebviewMessage, IncomingMessage } from './shared/messages';
 import { parseWebviewMessage } from './shared/messages';
+import {
+  filePathMatchesMentionQuery,
+  mentionMatchScore,
+  normalizeMentionQuery,
+} from './shared/mentionSearch';
 import { SseClient, SseConnectionState, SseEvent, SseLogger } from './transport/SseClient';
 
 const LAST_AGENT_KEY = 'opencode.lastUsedAgent';
@@ -102,6 +107,9 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       case 'open-file':
         await this._handleOpenFile(message.url, message.startLine, message.endLine);
         break;
+      case 'mention-search':
+        await this._handleMentionSearch(message.requestId, message.query, message.limit);
+        break;
     }
   }
 
@@ -177,6 +185,64 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     await this._globalState.update(LAST_AGENT_KEY, agent);
     const logger = getLogger();
     logger.info('[ViewProvider] Agent selection persisted:', agent);
+  }
+
+  private async _handleMentionSearch(requestId: string, query: string, limit = 20) {
+    const logger = getLogger();
+    const safeLimit = Math.max(1, Math.min(limit, 50));
+    const normalizedQuery = normalizeMentionQuery(query);
+
+    if (!normalizedQuery) {
+      this._sendMessage({
+        type: 'mention-results',
+        requestId,
+        items: [],
+      });
+      return;
+    }
+
+    try {
+      const workspaceRoot = this._openCodeService.getWorkspaceRoot();
+      const include = workspaceRoot
+        ? new vscode.RelativePattern(workspaceRoot, '**/*')
+        : '**/*';
+      const exclude = '**/{node_modules,.git,.svn,.hg,dist,out,coverage,.next,.turbo,.worktrees}/**';
+      const scanLimit = Math.min(safeLimit * 12, 500);
+      const uris = await vscode.workspace.findFiles(include, exclude, scanLimit);
+
+      const ranked = uris
+        .map((uri) => {
+          const filePath = vscode.workspace.asRelativePath(uri, false).replace(/\\/g, '/');
+          const fileUrl = uri.toString();
+          return {
+            id: fileUrl,
+            filePath,
+            fileUrl,
+            score: mentionMatchScore(filePath, normalizedQuery),
+          };
+        })
+        .filter((item) => filePathMatchesMentionQuery(item.filePath, normalizedQuery))
+        .sort((a, b) => {
+          if (a.score !== b.score) return a.score - b.score;
+          if (a.filePath.length !== b.filePath.length) return a.filePath.length - b.filePath.length;
+          return a.filePath.localeCompare(b.filePath);
+        })
+        .slice(0, safeLimit)
+        .map(({ id, filePath, fileUrl }) => ({ id, filePath, fileUrl }));
+
+      this._sendMessage({
+        type: 'mention-results',
+        requestId,
+        items: ranked,
+      });
+    } catch (error) {
+      logger.error('[ViewProvider] mention-search failed', { requestId, query, error });
+      this._sendMessage({
+        type: 'mention-results',
+        requestId,
+        items: [],
+      });
+    }
   }
 
   // SSE Proxy handlers using resilient SseClient

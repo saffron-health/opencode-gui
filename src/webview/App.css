@@ -358,6 +358,48 @@ body {
   color: var(--input-placeholder-foreground);
 }
 
+.mention-dropdown {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color-muted);
+  border-radius: 4px;
+  background-color: var(--input-background);
+}
+
+.mention-option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  border: none;
+  padding: 5px var(--spacing-sm);
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--font-size-base);
+}
+
+.mention-option:hover,
+.mention-option--active {
+  background-color: var(--hover-background-muted);
+}
+
+.mention-option__prefix {
+  opacity: 0.7;
+}
+
+.mention-option__path {
+  font-family: var(--editor-font-family);
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Button row below input */
 .input-buttons {
   display: flex;

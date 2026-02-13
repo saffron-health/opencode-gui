@@ -649,6 +649,9 @@ function UIKit() {
               onEditQueuedMessage={() => {}}
               attachments={[]}
               onRemoveAttachment={() => {}}
+              mentionSearchResult={null}
+              onMentionSearch={() => {}}
+              onMentionSelect={() => {}}
             />
           )}
 
@@ -683,6 +686,9 @@ function UIKit() {
                 onEditQueuedMessage={() => {}}
                 attachments={[]}
                 onRemoveAttachment={() => {}}
+                mentionSearchResult={null}
+                onMentionSearch={() => {}}
+                onMentionSelect={() => {}}
               />
             </>
           )}

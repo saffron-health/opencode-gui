@@ -8,7 +8,7 @@ import { PermissionPrompt } from "./components/PermissionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
 import { useSync } from "./state/sync";
 import type { FilePartInput } from "@opencode-ai/sdk/v2/client";
-import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart } from "./types";
+import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart, MentionItem } from "./types";
 import { parseHostMessage } from "./types";
 
 export interface QueuedMessage {
@@ -30,6 +30,11 @@ interface SelectionAttachment {
   startLine?: number;
   endLine?: number;
 }
+
+interface MentionSearchResult {
+  requestId: string;
+  items: MentionItem[];
+}
 import { vscode } from "./utils/vscode";
 import { Id } from "./utils/id";
 import { logger } from "./utils/logger";
@@ -47,6 +52,7 @@ function App() {
   const [selectionAttachmentsBySession, setSelectionAttachmentsBySession] = createSignal<
     Map<string, SelectionAttachment[]>
   >(new Map());
+  const [mentionSearchResult, setMentionSearchResult] = createSignal<MentionSearchResult | null>(null);
   
   // Editing state for previous messages
   const [editingMessageId, setEditingMessageId] = createSignal<string | null>(null);
@@ -231,37 +237,46 @@ function App() {
     const handleHostMessage = (event: MessageEvent) => {
       const parsed = parseHostMessage(event.data);
       if (!parsed) return;
-      if (parsed.type !== "editor-selection") return;
 
-      const startLine = parsed.selection?.startLine;
-      const endLine = parsed.selection?.endLine ?? startLine;
-      const normalizedStart =
-        startLine !== undefined && endLine !== undefined ? Math.min(startLine, endLine) : startLine;
-      const normalizedEnd =
-        startLine !== undefined && endLine !== undefined ? Math.max(startLine, endLine) : endLine;
+      if (parsed.type === "mention-results") {
+        setMentionSearchResult({
+          requestId: parsed.requestId,
+          items: parsed.items,
+        });
+        return;
+      }
 
-      setSelectionAttachments((prev) => {
-        if (
-          prev.some(
-            (item) =>
-              item.fileUrl === parsed.fileUrl &&
-              item.startLine === normalizedStart &&
-              item.endLine === normalizedEnd
-          )
-        ) {
-          return prev;
-        }
-        return [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            filePath: parsed.filePath,
-            fileUrl: parsed.fileUrl,
-            startLine: normalizedStart,
-            endLine: normalizedEnd,
-          },
-        ];
-      });
+      if (parsed.type === "editor-selection") {
+        const startLine = parsed.selection?.startLine;
+        const endLine = parsed.selection?.endLine ?? startLine;
+        const normalizedStart =
+          startLine !== undefined && endLine !== undefined ? Math.min(startLine, endLine) : startLine;
+        const normalizedEnd =
+          startLine !== undefined && endLine !== undefined ? Math.max(startLine, endLine) : endLine;
+
+        setSelectionAttachments((prev) => {
+          if (
+            prev.some(
+              (item) =>
+                item.fileUrl === parsed.fileUrl &&
+                item.startLine === normalizedStart &&
+                item.endLine === normalizedEnd
+            )
+          ) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              filePath: parsed.filePath,
+              fileUrl: parsed.fileUrl,
+              startLine: normalizedStart,
+              endLine: normalizedEnd,
+            },
+          ];
+        });
+      }
     };
 
     window.addEventListener("message", handleHostMessage);
@@ -500,6 +515,32 @@ function App() {
     setSelectionAttachments((prev) => prev.filter((item) => item.id !== id));
   };
 
+  const handleMentionSearch = (query: string, requestId: string, limit = 20) => {
+    vscode.postMessage({
+      type: "mention-search",
+      requestId,
+      query,
+      limit,
+    });
+  };
+
+  const handleMentionSelect = (item: MentionItem) => {
+    setSelectionAttachments((prev) => {
+      if (prev.some((entry) => entry.fileUrl === item.fileUrl)) {
+        return prev;
+      }
+
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          filePath: item.filePath,
+          fileUrl: item.fileUrl,
+        },
+      ];
+    });
+  };
+
   const handleSessionSelect = async (sessionId: string) => {
     if (!sync.isReady()) return;
     
@@ -689,6 +730,9 @@ function App() {
           onEditQueuedMessage={handleEditQueuedMessage}
           attachments={attachmentChips()}
           onRemoveAttachment={handleRemoveAttachment}
+          mentionSearchResult={mentionSearchResult()}
+          onMentionSearch={handleMentionSearch}
+          onMentionSelect={handleMentionSelect}
         />
       </Show>
 
@@ -744,6 +788,9 @@ function App() {
           onEditQueuedMessage={handleEditQueuedMessage}
           attachments={attachmentChips()}
           onRemoveAttachment={handleRemoveAttachment}
+          mentionSearchResult={mentionSearchResult()}
+          onMentionSearch={handleMentionSearch}
+          onMentionSelect={handleMentionSelect}
         />
       </Show>
     </div>
