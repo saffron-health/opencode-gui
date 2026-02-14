@@ -8,6 +8,7 @@ export type {
   Permission,
   ContextInfo,
   FileChangesInfo,
+  MentionItem,
   HostMessage,
   WebviewMessage,
 } from "../shared/messages";
@@ -22,6 +23,7 @@ export {
   PermissionSchema,
   ContextInfoSchema,
   FileChangesInfoSchema,
+  MentionItemSchema,
   HostMessageSchema,
   WebviewMessageSchema,
   parseHostMessage,

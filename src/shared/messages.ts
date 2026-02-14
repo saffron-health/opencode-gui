@@ -122,6 +122,13 @@ export const FileChangesInfoSchema = z.object({
 });
 export type FileChangesInfo = z.infer<typeof FileChangesInfoSchema>;
 
+export const MentionItemSchema = z.object({
+  id: z.string(),
+  filePath: z.string(),
+  fileUrl: z.string(),
+});
+export type MentionItem = z.infer<typeof MentionItemSchema>;
+
 // Host -> Webview messages
 export const HostMessageSchema = z.discriminatedUnion("type", [
   z
@@ -142,6 +149,11 @@ export const HostMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("error"),
     message: z.string(),
+  }),
+  z.object({
+    type: z.literal("mention-results"),
+    requestId: z.string(),
+    items: z.array(MentionItemSchema),
   }),
   // Proxy fetch/SSE messages for CORS bypass
   z.object({
@@ -211,6 +223,12 @@ export const WebviewMessageSchema = z.discriminatedUnion("type", [
     url: z.string(),
     startLine: z.number().optional(),
     endLine: z.number().optional(),
+  }),
+  z.object({
+    type: z.literal("mention-search"),
+    requestId: z.string(),
+    query: z.string(),
+    limit: z.number().int().positive().max(100).optional(),
   }),
 ]);
 export type WebviewMessage = z.infer<typeof WebviewMessageSchema>;

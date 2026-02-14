@@ -3,9 +3,24 @@ import { OpenCodeService } from './OpenCodeService';
 import { getLogger } from './extension';
 import type { HostMessage, WebviewMessage, IncomingMessage } from './shared/messages';
 import { parseWebviewMessage } from './shared/messages';
+import {
+  filePathMatchesMentionQuery,
+  mentionMatchScore,
+  normalizeMentionQuery,
+} from './shared/mentionSearch';
 import { SseClient, SseConnectionState, SseEvent, SseLogger } from './transport/SseClient';
 
 const LAST_AGENT_KEY = 'opencode.lastUsedAgent';
+const MENTION_EXCLUDE_GLOB = '**/{node_modules,.git,.svn,.hg,dist,out,coverage,.next,.turbo,.worktrees}/**';
+
+function extractMentionQuerySegment(normalizedQuery: string): string {
+  const segments = normalizedQuery.split('/').filter(Boolean);
+  return segments[segments.length - 1] ?? normalizedQuery;
+}
+
+function escapeGlobSpecialCharacters(value: string): string {
+  return value.replace(/[\\*?[\]{}()!]/g, '\\$&');
+}
 
 export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'opencode.chatView';
@@ -102,6 +117,9 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       case 'open-file':
         await this._handleOpenFile(message.url, message.startLine, message.endLine);
         break;
+      case 'mention-search':
+        await this._handleMentionSearch(message.requestId, message.query, message.limit);
+        break;
     }
   }
 
@@ -177,6 +195,65 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     await this._globalState.update(LAST_AGENT_KEY, agent);
     const logger = getLogger();
     logger.info('[ViewProvider] Agent selection persisted:', agent);
+  }
+
+  private async _handleMentionSearch(requestId: string, query: string, limit = 20) {
+    const logger = getLogger();
+    const safeLimit = Math.max(1, Math.min(limit, 50));
+    const normalizedQuery = normalizeMentionQuery(query);
+
+    if (!normalizedQuery) {
+      this._sendMessage({
+        type: 'mention-results',
+        requestId,
+        items: [],
+      });
+      return;
+    }
+
+    try {
+      const workspaceRoot = this._openCodeService.getWorkspaceRoot();
+      const querySegment = extractMentionQuerySegment(normalizedQuery);
+      const escapedQuerySegment = escapeGlobSpecialCharacters(querySegment);
+      const includePattern = escapedQuerySegment ? `**/*${escapedQuerySegment}*` : '**/*';
+      const include = workspaceRoot
+        ? new vscode.RelativePattern(workspaceRoot, includePattern)
+        : includePattern;
+      const uris = await vscode.workspace.findFiles(include, MENTION_EXCLUDE_GLOB);
+
+      const ranked = uris
+        .map((uri) => {
+          const filePath = vscode.workspace.asRelativePath(uri, false).replace(/\\/g, '/');
+          const fileUrl = uri.toString();
+          return {
+            id: fileUrl,
+            filePath,
+            fileUrl,
+            score: mentionMatchScore(filePath, normalizedQuery),
+          };
+        })
+        .filter((item) => filePathMatchesMentionQuery(item.filePath, normalizedQuery))
+        .sort((a, b) => {
+          if (a.score !== b.score) return a.score - b.score;
+          if (a.filePath.length !== b.filePath.length) return a.filePath.length - b.filePath.length;
+          return a.filePath.localeCompare(b.filePath);
+        })
+        .slice(0, safeLimit)
+        .map(({ id, filePath, fileUrl }) => ({ id, filePath, fileUrl }));
+
+      this._sendMessage({
+        type: 'mention-results',
+        requestId,
+        items: ranked,
+      });
+    } catch (error) {
+      logger.error('[ViewProvider] mention-search failed', { requestId, query, error });
+      this._sendMessage({
+        type: 'mention-results',
+        requestId,
+        items: [],
+      });
+    }
   }
 
   // SSE Proxy handlers using resilient SseClient

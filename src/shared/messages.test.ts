@@ -144,6 +144,21 @@ describe("HostMessageSchema", () => {
     expect(HostMessageSchema.parse(msg)).toEqual(msg);
   });
 
+  it("parses mention-results message", () => {
+    const msg = {
+      type: "mention-results",
+      requestId: "req-1",
+      items: [
+        {
+          id: "file:///workspace/src/App.tsx",
+          filePath: "src/App.tsx",
+          fileUrl: "file:///workspace/src/App.tsx",
+        },
+      ],
+    };
+    expect(HostMessageSchema.parse(msg)).toEqual(msg);
+  });
+
   it("rejects unknown message type", () => {
     expect(() => HostMessageSchema.parse({ type: "unknown" })).toThrow();
   });
@@ -161,6 +176,11 @@ describe("WebviewMessageSchema", () => {
 
   it("rejects unknown message type", () => {
     expect(() => WebviewMessageSchema.parse({ type: "unknown" })).toThrow();
+  });
+
+  it("parses mention-search message", () => {
+    const msg = { type: "mention-search", requestId: "req-1", query: "app", limit: 20 };
+    expect(WebviewMessageSchema.parse(msg)).toEqual(msg);
   });
 });
 

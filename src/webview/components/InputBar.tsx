@@ -1,7 +1,11 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import type { Agent } from "../types";
+import type { MentionItem, Agent } from "../types";
 import type { QueuedMessage } from "../App";
 import { AgentSwitcher } from "./AgentSwitcher";
+import { applyMentionToken, findMentionTokenAtCursor, type MentionTokenMatch } from "../utils/mention";
+
+const MENTION_SEARCH_DEBOUNCE_MS = 120;
+const MENTION_SEARCH_LIMIT = 20;
 
 interface InputBarProps {
   value: string;
@@ -19,6 +23,9 @@ interface InputBarProps {
   onEditQueuedMessage: (id: string) => void;
   attachments: InputAttachment[];
   onRemoveAttachment: (id: string) => void;
+  mentionSearchResult: MentionSearchResult | null;
+  onMentionSearch: (query: string, requestId: string, limit?: number) => void;
+  onMentionSelect: (item: MentionItem) => void;
 }
 
 interface InputAttachment {
@@ -27,9 +34,21 @@ interface InputAttachment {
   title?: string;
 }
 
+interface MentionSearchResult {
+  requestId: string;
+  items: MentionItem[];
+}
+
 export function InputBar(props: InputBarProps) {
   let inputRef!: HTMLTextAreaElement;
   const [isShiftHeld, setIsShiftHeld] = createSignal(false);
+  const [activeMention, setActiveMention] = createSignal<MentionTokenMatch | null>(null);
+  const [activeMentionRequestId, setActiveMentionRequestId] = createSignal<string | null>(null);
+  const [mentionItems, setMentionItems] = createSignal<MentionItem[]>([]);
+  const [highlightedMentionIndex, setHighlightedMentionIndex] = createSignal(0);
+  const [mentionOpen, setMentionOpen] = createSignal(false);
+
+  let mentionSearchTimer: ReturnType<typeof setTimeout> | null = null;
 
   const adjustTextareaHeight = () => {
     if (inputRef) {
@@ -38,9 +57,68 @@ export function InputBar(props: InputBarProps) {
     }
   };
 
+  const closeMentionDropdown = () => {
+    setMentionOpen(false);
+    setMentionItems([]);
+    setHighlightedMentionIndex(0);
+    setActiveMentionRequestId(null);
+  };
+
+  const refreshMentionState = (value: string, cursor: number | null) => {
+    const safeCursor = cursor ?? value.length;
+    const token = findMentionTokenAtCursor(value, safeCursor);
+    setActiveMention(token);
+
+    if (mentionSearchTimer) {
+      clearTimeout(mentionSearchTimer);
+      mentionSearchTimer = null;
+    }
+
+    if (!token || token.query.length === 0) {
+      closeMentionDropdown();
+      return;
+    }
+
+    mentionSearchTimer = setTimeout(() => {
+      const requestId = crypto.randomUUID();
+      setActiveMentionRequestId(requestId);
+      props.onMentionSearch(token.query, requestId, MENTION_SEARCH_LIMIT);
+    }, MENTION_SEARCH_DEBOUNCE_MS);
+  };
+
+  const applyMentionSelection = (item: MentionItem) => {
+    const currentValue = props.value;
+    const cursor = inputRef?.selectionStart ?? currentValue.length;
+    const token = findMentionTokenAtCursor(currentValue, cursor) ?? activeMention();
+    if (!token) return;
+
+    const result = applyMentionToken(currentValue, token, item.filePath);
+    props.onInput(result.text);
+    props.onMentionSelect(item);
+    closeMentionDropdown();
+
+    queueMicrotask(() => {
+      inputRef?.focus();
+      inputRef?.setSelectionRange(result.cursor, result.cursor);
+    });
+  };
+
   createEffect(() => {
     props.value;
     adjustTextareaHeight();
+  });
+
+  createEffect(() => {
+    const result = props.mentionSearchResult;
+    const requestId = activeMentionRequestId();
+    if (!result || !requestId || result.requestId !== requestId) {
+      return;
+    }
+
+    const items = result.items;
+    setMentionItems(items);
+    setMentionOpen(items.length > 0);
+    setHighlightedMentionIndex(0);
   });
 
   onMount(() => {
@@ -67,6 +145,13 @@ export function InputBar(props: InputBarProps) {
     });
   });
 
+  onCleanup(() => {
+    if (mentionSearchTimer) {
+      clearTimeout(mentionSearchTimer);
+      mentionSearchTimer = null;
+    }
+  });
+
   const handleSubmit = (e: Event) => {
     e.preventDefault();
     if (props.isThinking && !props.value.trim()) {
@@ -80,11 +165,45 @@ export function InputBar(props: InputBarProps) {
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
+    if (mentionOpen()) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightedMentionIndex((prev) =>
+          mentionItems().length === 0 ? 0 : (prev + 1) % mentionItems().length
+        );
+        return;
+      }
+
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightedMentionIndex((prev) =>
+          mentionItems().length === 0 ? 0 : (prev - 1 + mentionItems().length) % mentionItems().length
+        );
+        return;
+      }
+
+      if ((e.key === "Enter" || e.key === "Tab") && !e.metaKey && !e.ctrlKey) {
+        const current = mentionItems()[highlightedMentionIndex()];
+        if (current) {
+          e.preventDefault();
+          applyMentionSelection(current);
+          return;
+        }
+      }
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeMentionDropdown();
+        return;
+      }
+    }
+
     if (e.key === "Escape" && props.isThinking) {
       e.preventDefault();
       props.onCancel();
       return;
     }
+
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       if (props.isThinking && e.shiftKey && props.value.trim()) {
@@ -101,10 +220,21 @@ export function InputBar(props: InputBarProps) {
       !target.closest("button") &&
       !target.closest(".agent-switcher-button") &&
       !target.closest(".queued-message") &&
+      !target.closest(".mention-dropdown") &&
       inputRef
     ) {
       inputRef.focus();
     }
+  };
+
+  const handleInput = (e: InputEvent & { currentTarget: HTMLTextAreaElement }) => {
+    const value = e.currentTarget.value;
+    props.onInput(value);
+    refreshMentionState(value, e.currentTarget.selectionStart);
+  };
+
+  const handleTextAreaClick = () => {
+    refreshMentionState(props.value, inputRef.selectionStart);
   };
 
   const hasText = () => props.value.trim().length > 0;
@@ -161,12 +291,33 @@ export function InputBar(props: InputBarProps) {
             </For>
           </div>
         </Show>
+        <Show when={mentionOpen()}>
+          <div class="mention-dropdown" role="listbox" aria-label="Mention files">
+            <For each={mentionItems()}>
+              {(item, index) => (
+                <button
+                  type="button"
+                  class={`mention-option ${index() === highlightedMentionIndex() ? "mention-option--active" : ""}`}
+                  role="option"
+                  aria-selected={index() === highlightedMentionIndex()}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setHighlightedMentionIndex(index())}
+                  onClick={() => applyMentionSelection(item)}
+                >
+                  <span class="mention-option__prefix">@</span>
+                  <span class="mention-option__path">{item.filePath}</span>
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
         <textarea
           ref={inputRef!}
           class="prompt-input"
           placeholder=""
           value={props.value}
-          onInput={(e) => props.onInput(e.currentTarget.value)}
+          onInput={handleInput}
+          onClick={handleTextAreaClick}
           onKeyDown={handleKeyDown}
           aria-label="Message input"
         />
