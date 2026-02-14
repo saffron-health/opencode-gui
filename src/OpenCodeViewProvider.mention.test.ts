@@ -121,10 +121,11 @@ describe("OpenCodeViewProvider mention-search", () => {
           limit?: number
         ) => Promise<void>;
       }
-    )._handleMentionSearch("req-ranked", "app", 1);
+    )._handleMentionSearch("req-ranked", "src/app", 1);
 
     expect(mocks.findFiles).toHaveBeenCalledTimes(1);
-    expect(mocks.findFiles.mock.calls[0][2]).toBe(12);
+    expect(mocks.findFiles.mock.calls[0][0].pattern).toBe("**/*app*");
+    expect(mocks.findFiles.mock.calls[0][2]).toBeUndefined();
     expect(messages).toEqual([
       {
         type: "mention-results",
@@ -138,6 +139,26 @@ describe("OpenCodeViewProvider mention-search", () => {
         ],
       },
     ]);
+  });
+
+  it("Given query has glob special chars, When building search include, Then special chars are escaped", async () => {
+    const { provider } = createProvider();
+    mocks.findFiles.mockResolvedValue([]);
+    mocks.asRelativePath.mockImplementation((uri: UriLike) => uri.relativePath);
+
+    await (
+      provider as unknown as {
+        _handleMentionSearch: (
+          requestId: string,
+          query: string,
+          limit?: number
+        ) => Promise<void>;
+      }
+    )._handleMentionSearch("req-glob", "src/[App]{1}", 20);
+
+    expect(mocks.findFiles).toHaveBeenCalledTimes(1);
+    expect(mocks.findFiles.mock.calls[0][0].pattern).toBe("**/*\\[app\\]\\{1\\}*");
+    expect(mocks.findFiles.mock.calls[0][2]).toBeUndefined();
   });
 
   it("Given workspace search throws, When searching mentions, Then returns empty results and logs error", async () => {

@@ -11,6 +11,16 @@ import {
 import { SseClient, SseConnectionState, SseEvent, SseLogger } from './transport/SseClient';
 
 const LAST_AGENT_KEY = 'opencode.lastUsedAgent';
+const MENTION_EXCLUDE_GLOB = '**/{node_modules,.git,.svn,.hg,dist,out,coverage,.next,.turbo,.worktrees}/**';
+
+function extractMentionQuerySegment(normalizedQuery: string): string {
+  const segments = normalizedQuery.split('/').filter(Boolean);
+  return segments[segments.length - 1] ?? normalizedQuery;
+}
+
+function escapeGlobSpecialCharacters(value: string): string {
+  return value.replace(/[\\*?[\]{}()!]/g, '\\$&');
+}
 
 export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'opencode.chatView';
@@ -203,12 +213,13 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
     try {
       const workspaceRoot = this._openCodeService.getWorkspaceRoot();
+      const querySegment = extractMentionQuerySegment(normalizedQuery);
+      const escapedQuerySegment = escapeGlobSpecialCharacters(querySegment);
+      const includePattern = escapedQuerySegment ? `**/*${escapedQuerySegment}*` : '**/*';
       const include = workspaceRoot
-        ? new vscode.RelativePattern(workspaceRoot, '**/*')
-        : '**/*';
-      const exclude = '**/{node_modules,.git,.svn,.hg,dist,out,coverage,.next,.turbo,.worktrees}/**';
-      const scanLimit = Math.min(safeLimit * 12, 500);
-      const uris = await vscode.workspace.findFiles(include, exclude, scanLimit);
+        ? new vscode.RelativePattern(workspaceRoot, includePattern)
+        : includePattern;
+      const uris = await vscode.workspace.findFiles(include, MENTION_EXCLUDE_GLOB);
 
       const ranked = uris
         .map((uri) => {
