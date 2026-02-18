@@ -131,17 +131,17 @@ The implementation will use:
 
 ### Phase 8: Extract mentions on message submit
 
-- [ ] Create `src/webview/utils/editorContent.ts` with mention extraction utilities
-- [ ] Implement `extractMentions(json: JSONContent): string[]` function
-- [ ] Walk editor's JSON content tree to find all `mention` nodes
-- [ ] Extract `id` attribute (file path) from each mention node
+- [x] Create `src/webview/utils/editorContent.ts` with mention extraction utilities
+- [x] Implement `extractMentions(json: JSONContent): string[]` function
+- [x] Walk editor's JSON content tree to find all `mention` nodes
+- [x] Extract `id` attribute (file path) from each mention node
 - [ ] In [App.tsx](file:///Users/tanishqkancharla/Documents/Projects/saffron-health/opencode-gui/src/webview/App.tsx), modify `handleSubmit` to extract mentions
 - [ ] Get editor JSON using `editor.getJSON()` before submit
 - [ ] Call `extractMentions(json)` to get list of mentioned file paths
 - [ ] Convert file paths to `SelectionAttachment` objects with full file URLs
 - [ ] Merge mentioned files with existing `selectionAttachments` 
 - [ ] Build `FilePartInput` array from merged attachments
-- [ ] Add integration test verifying mentions are converted to attachments
+- [x] Add integration test verifying mentions are converted to attachments
 - [ ] Manually verify mentioned files are sent with the message
 
 ### Phase 9: Handle editor content persistence
