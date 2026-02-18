@@ -187,6 +187,10 @@ export const HostMessageSchema = z.discriminatedUnion("type", [
       })
       .optional(),
   }),
+  z.object({
+    type: z.literal("search-files-result"),
+    files: z.array(z.string()),
+  }),
 ]);
 export type HostMessage = z.infer<typeof HostMessageSchema>;
 
@@ -211,6 +215,10 @@ export const WebviewMessageSchema = z.discriminatedUnion("type", [
     url: z.string(),
     startLine: z.number().optional(),
     endLine: z.number().optional(),
+  }),
+  z.object({
+    type: z.literal("search-files"),
+    query: z.string(),
   }),
 ]);
 export type WebviewMessage = z.infer<typeof WebviewMessageSchema>;

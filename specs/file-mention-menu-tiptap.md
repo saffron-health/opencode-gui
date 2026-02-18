@@ -52,13 +52,13 @@ The implementation will use:
 
 ### Phase 2: Add file search handler in extension
 
-- [ ] Add `searchFiles` message handler in [OpenCodeViewProvider.ts](file:///Users/tanishqkancharla/Documents/Projects/saffron-health/opencode-gui/src/OpenCodeViewProvider.ts)
-- [ ] Accept `{ type: 'searchFiles', query: string }` message from webview
-- [ ] Implement search using `vscode.workspace.findFiles(\`**/*\${query}*\`, excludePattern, 50)`
-- [ ] Exclude patterns: `**/node_modules/**`, `**/.git/**`, `**/dist/**`, `**/out/**`, `**/.vscode/**`
-- [ ] Return `{ type: 'searchFilesResult', files: string[] }` with relative paths
-- [ ] Use `workspace.asRelativePath(uri)` to convert URIs to relative paths
-- [ ] Add unit test verifying the handler responds to `searchFiles` messages
+- [x] Add `searchFiles` message handler in [OpenCodeViewProvider.ts](file:///Users/tanishqkancharla/Documents/Projects/saffron-health/opencode-gui/src/OpenCodeViewProvider.ts)
+- [x] Accept `{ type: 'searchFiles', query: string }` message from webview
+- [x] Implement search using `vscode.workspace.findFiles(\`**/*\${query}*\`, excludePattern, 50)`
+- [x] Exclude patterns: `**/node_modules/**`, `**/.git/**`, `**/dist/**`, `**/out/**`, `**/.vscode/**`
+- [x] Return `{ type: 'searchFilesResult', files: string[] }` with relative paths
+- [x] Use `workspace.asRelativePath(uri)` to convert URIs to relative paths
+- [x] Add unit test verifying the handler responds to `searchFiles` messages
 - [ ] Manually verify sending `searchFiles` message returns expected file list
 
 ### Phase 3: Create FileMention Tiptap extension
