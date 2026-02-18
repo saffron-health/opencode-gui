@@ -2,6 +2,8 @@ import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid
 import type { Agent } from "../types";
 import type { QueuedMessage } from "../App";
 import { AgentSwitcher } from "./AgentSwitcher";
+import { TiptapEditor } from "./TiptapEditor";
+import { vscode } from "../utils/vscode";
 
 interface InputBarProps {
   value: string;
@@ -28,24 +30,40 @@ interface InputAttachment {
 }
 
 export function InputBar(props: InputBarProps) {
-  let inputRef!: HTMLTextAreaElement;
   const [isShiftHeld, setIsShiftHeld] = createSignal(false);
+  const [fileSearchResults, setFileSearchResults] = createSignal<Map<string, string[]>>(new Map());
 
-  const adjustTextareaHeight = () => {
-    if (inputRef) {
-      inputRef.style.height = "auto";
-      inputRef.style.height = `${Math.min(inputRef.scrollHeight, 120)}px`;
-    }
+  const searchFiles = async (query: string): Promise<string[]> => {
+    // Create a promise that will be resolved when we receive the response
+    return new Promise((resolve) => {
+      const requestId = `search-${Date.now()}`;
+      
+      // Store the resolver
+      const handleMessage = (event: MessageEvent) => {
+        const message = event.data;
+        if (message.type === "search-files-result") {
+          window.removeEventListener("message", handleMessage);
+          resolve(message.files);
+        }
+      };
+      
+      window.addEventListener("message", handleMessage);
+      
+      // Send the search request
+      vscode.postMessage({
+        type: "search-files",
+        query,
+      });
+      
+      // Timeout after 5 seconds
+      setTimeout(() => {
+        window.removeEventListener("message", handleMessage);
+        resolve([]);
+      }, 5000);
+    });
   };
 
-  createEffect(() => {
-    props.value;
-    adjustTextareaHeight();
-  });
-
   onMount(() => {
-    inputRef?.focus();
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Shift") {
         setIsShiftHeld(true);
@@ -100,10 +118,9 @@ export function InputBar(props: InputBarProps) {
     if (
       !target.closest("button") &&
       !target.closest(".agent-switcher-button") &&
-      !target.closest(".queued-message") &&
-      inputRef
+      !target.closest(".queued-message")
     ) {
-      inputRef.focus();
+      // Focus is handled by TiptapEditor
     }
   };
 
@@ -161,14 +178,12 @@ export function InputBar(props: InputBarProps) {
             </For>
           </div>
         </Show>
-        <textarea
-          ref={inputRef!}
-          class="prompt-input"
-          placeholder=""
+        <TiptapEditor
           value={props.value}
-          onInput={(e) => props.onInput(e.currentTarget.value)}
-          onKeyDown={handleKeyDown}
-          aria-label="Message input"
+          onInput={props.onInput}
+          onSubmit={() => handleSubmit(new Event("submit"))}
+          disabled={props.disabled}
+          searchFiles={searchFiles}
         />
         <div class="input-buttons">
           <Show when={props.agents.length > 0 && !props.isThinking}>

@@ -120,13 +120,13 @@ The implementation will use:
 
 ### Phase 7: Replace textarea in InputBar with TiptapEditor
 
-- [ ] Replace textarea in [InputBar.tsx](file:///Users/tanishqkancharla/Documents/Projects/saffron-health/opencode-gui/src/webview/components/InputBar.tsx) with `TiptapEditor`
-- [ ] Pass `value`, `onInput`, `disabled` props to TiptapEditor
-- [ ] Remove textarea-specific height adjustment logic (Tiptap handles this)
-- [ ] Keep existing keyboard shortcut handlers for non-editor keys (Escape, etc.)
-- [ ] Ensure focus management still works (clicking container focuses editor)
-- [ ] Run `pnpm type-check` to verify no TypeScript errors
-- [ ] Run `pnpm build` to ensure builds successfully
+- [x] Replace textarea in [InputBar.tsx](file:///Users/tanishqkancharla/Documents/Projects/saffron-health/opencode-gui/src/webview/components/InputBar.tsx) with `TiptapEditor`
+- [x] Pass `value`, `onInput`, `disabled` props to TiptapEditor
+- [x] Remove textarea-specific height adjustment logic (Tiptap handles this)
+- [x] Keep existing keyboard shortcut handlers for non-editor keys (Escape, etc.)
+- [x] Ensure focus management still works (clicking container focuses editor)
+- [x] Run `pnpm type-check` to verify no TypeScript errors
+- [x] Run `pnpm build` to ensure builds successfully
 - [ ] Manually verify the editor appears in the chat UI and accepts input
 
 ### Phase 8: Extract mentions on message submit
