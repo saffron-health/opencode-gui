@@ -33,6 +33,7 @@ interface SelectionAttachment {
 import { vscode } from "./utils/vscode";
 import { Id } from "./utils/id";
 import { logger } from "./utils/logger";
+import { extractMentions } from "./utils/editorContent";
 
 const NEW_SESSION_KEY = "__new__";
 
@@ -57,6 +58,9 @@ function App() {
   
   // In-flight message tracking for outbox pattern
   const [inFlightMessage, setInFlightMessage] = createSignal<InFlightMessage | null>(null);
+  
+  // Editor JSON getter for extracting mentions
+  let getEditorJSON: (() => any) | null = null;
 
   // Get SDK hook for actions only
   const {
@@ -312,7 +316,31 @@ function App() {
       ? selectedAgent()
       : null;
     const attachmentsKey = sessionKey();
-    const attachments = selectionAttachments();
+    let attachments = selectionAttachments();
+    
+    // Extract mentions from editor and add to attachments
+    if (getEditorJSON) {
+      try {
+        const editorJSON = getEditorJSON();
+        const mentionedFiles = extractMentions(editorJSON);
+        const workspaceRoot = sync.workspaceRoot() || "";
+        
+        // Convert file paths to SelectionAttachment objects
+        const mentionAttachments: SelectionAttachment[] = mentionedFiles.map((path) => ({
+          id: `mention-${path}`,
+          filePath: path,
+          fileUrl: `file://${workspaceRoot}/${path}`,
+        }));
+        
+        // Merge with existing attachments (avoid duplicates)
+        const existingPaths = new Set(attachments.map(a => a.filePath));
+        const newAttachments = mentionAttachments.filter(a => !existingPaths.has(a.filePath));
+        attachments = [...attachments, ...newAttachments];
+      } catch (err) {
+        logger.error("Failed to extract mentions", { error: err });
+      }
+    }
+    
     const extraParts = buildSelectionParts(attachments);
 
     // Generate sortable client-side messageID for idempotent sends
@@ -689,6 +717,7 @@ function App() {
           onEditQueuedMessage={handleEditQueuedMessage}
           attachments={attachmentChips()}
           onRemoveAttachment={handleRemoveAttachment}
+          editorRef={(getJSON) => { getEditorJSON = getJSON; }}
         />
       </Show>
 
@@ -744,6 +773,7 @@ function App() {
           onEditQueuedMessage={handleEditQueuedMessage}
           attachments={attachmentChips()}
           onRemoveAttachment={handleRemoveAttachment}
+          editorRef={(getJSON) => { getEditorJSON = getJSON; }}
         />
       </Show>
     </div>

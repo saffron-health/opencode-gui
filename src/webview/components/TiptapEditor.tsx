@@ -12,6 +12,7 @@ export interface TiptapEditorProps {
   placeholder?: string;
   disabled?: boolean;
   searchFiles: (query: string) => Promise<string[]>;
+  ref?: (getJSON: () => any) => void;
 }
 
 export function TiptapEditor(props: TiptapEditorProps) {
@@ -66,6 +67,14 @@ export function TiptapEditor(props: TiptapEditorProps) {
     const currentEditor = editor();
     if (currentEditor) {
       currentEditor.setEditable(!props.disabled);
+    }
+  });
+
+  // Expose getJSON method via ref
+  createEffect(() => {
+    const currentEditor = editor();
+    if (currentEditor && props.ref) {
+      props.ref(() => currentEditor.getJSON());
     }
   });
 

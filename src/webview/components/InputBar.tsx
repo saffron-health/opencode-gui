@@ -21,6 +21,7 @@ interface InputBarProps {
   onEditQueuedMessage: (id: string) => void;
   attachments: InputAttachment[];
   onRemoveAttachment: (id: string) => void;
+  editorRef?: (getJSON: () => any) => void;
 }
 
 interface InputAttachment {
@@ -184,6 +185,7 @@ export function InputBar(props: InputBarProps) {
           onSubmit={() => handleSubmit(new Event("submit"))}
           disabled={props.disabled}
           searchFiles={searchFiles}
+          ref={props.editorRef}
         />
         <div class="input-buttons">
           <Show when={props.agents.length > 0 && !props.isThinking}>

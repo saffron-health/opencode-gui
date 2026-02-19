@@ -135,12 +135,12 @@ The implementation will use:
 - [x] Implement `extractMentions(json: JSONContent): string[]` function
 - [x] Walk editor's JSON content tree to find all `mention` nodes
 - [x] Extract `id` attribute (file path) from each mention node
-- [ ] In [App.tsx](file:///Users/tanishqkancharla/Documents/Projects/saffron-health/opencode-gui/src/webview/App.tsx), modify `handleSubmit` to extract mentions
-- [ ] Get editor JSON using `editor.getJSON()` before submit
-- [ ] Call `extractMentions(json)` to get list of mentioned file paths
-- [ ] Convert file paths to `SelectionAttachment` objects with full file URLs
-- [ ] Merge mentioned files with existing `selectionAttachments` 
-- [ ] Build `FilePartInput` array from merged attachments
+- [x] In [App.tsx](file:///Users/tanishqkancharla/Documents/Projects/saffron-health/opencode-gui/src/webview/App.tsx), modify `handleSubmit` to extract mentions
+- [x] Get editor JSON using `editor.getJSON()` before submit
+- [x] Call `extractMentions(json)` to get list of mentioned file paths
+- [x] Convert file paths to `SelectionAttachment` objects with full file URLs
+- [x] Merge mentioned files with existing `selectionAttachments` 
+- [x] Build `FilePartInput` array from merged attachments
 - [x] Add integration test verifying mentions are converted to attachments
 - [ ] Manually verify mentioned files are sent with the message
 
