@@ -26,18 +26,34 @@ export function TiptapEditor(props: TiptapEditorProps) {
         },
       }),
       FileMention.configure({
-        suggestion: {
-          ...createFileMentionSuggestion({
+        suggestion: (() => {
+          const baseSuggestion = createFileMentionSuggestion({
             searchFiles: props.searchFiles,
-          }),
-          // Track suggestion state
-          onStart: () => {
-            setIsSuggestionActive(true);
-          },
-          onExit: () => {
-            setIsSuggestionActive(false);
-          },
-        } as any,
+          });
+          
+          const baseRender = baseSuggestion.render;
+          
+          return {
+            ...baseSuggestion,
+            render: () => {
+              const renderer = baseRender!();
+              const originalOnStart = renderer.onStart;
+              const originalOnExit = renderer.onExit;
+              
+              return {
+                ...renderer,
+                onStart: (suggestionProps: any) => {
+                  setIsSuggestionActive(true);
+                  originalOnStart?.(suggestionProps);
+                },
+                onExit: (suggestionProps: any) => {
+                  setIsSuggestionActive(false);
+                  originalOnExit?.(suggestionProps);
+                },
+              };
+            },
+          } as any;
+        })(),
       }),
     ],
     content: props.value,

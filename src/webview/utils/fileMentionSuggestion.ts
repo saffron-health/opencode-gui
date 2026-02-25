@@ -47,6 +47,7 @@ export function createFileMentionSuggestion(
 
       return {
         onStart: (props) => {
+          console.log("[FileMention] onStart called", { itemCount: props.items.length });
           container = document.createElement("div");
           container.style.position = "absolute";
           container.style.zIndex = "1000";
@@ -54,6 +55,7 @@ export function createFileMentionSuggestion(
 
           selectedIndex = 0;
           items = props.items as FileItem[];
+          console.log("[FileMention] Items:", items);
 
           // Get cursor position from ProseMirror
           const { view } = props.editor;
@@ -83,6 +85,7 @@ export function createFileMentionSuggestion(
               shift({ padding: 8 }),
             ],
           }).then(({ x, y }) => {
+            console.log("[FileMention] Rendering dropdown at", { x, y });
             dispose = render(
               () => FileMentionDropdown({
                 items,
