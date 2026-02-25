@@ -29,6 +29,7 @@ export function createFileMentionSuggestion(
               path,
               name: path.split("/").pop() || path,
             }));
+            console.log("[FileMention] items() resolved with", items.length, "items");
             resolve(items);
           } catch (error) {
             console.error("Failed to search files:", error);
@@ -47,22 +48,43 @@ export function createFileMentionSuggestion(
 
       return {
         onStart: (props) => {
-          console.log("[FileMention] onStart called", { itemCount: props.items.length });
-          container = document.createElement("div");
-          container.style.position = "absolute";
-          container.style.zIndex = "1000";
-          document.body.appendChild(container);
-
-          selectedIndex = 0;
+          console.log("[FileMention] onStart called", { 
+            itemCount: props.items.length,
+            items: props.items,
+            query: props.query,
+            text: props.text,
+          });
+          
           items = props.items as FileItem[];
-          console.log("[FileMention] Items:", items);
+          selectedIndex = 0;
+
+          // Create a simple test div first
+          container = document.createElement("div");
+          container.id = "file-mention-dropdown-container";
+          container.style.position = "fixed";
+          container.style.zIndex = "10000";
+          container.style.background = "red";
+          container.style.border = "2px solid yellow";
+          container.style.padding = "20px";
+          container.style.top = "100px";
+          container.style.left = "100px";
+          container.innerHTML = `<div style="color: white;">TEST DROPDOWN - Items: ${items.length}</div>`;
+          document.body.appendChild(container);
+          
+          console.log("[FileMention] Container created and appended to body", {
+            container,
+            parentNode: container.parentNode,
+            itemsToRender: items,
+          });
 
           // Get cursor position from ProseMirror
           const { view } = props.editor;
           const { from } = props.range;
           const coords = view.coordsAtPos(from);
+          
+          console.log("[FileMention] Cursor coords", coords);
 
-          // Create a virtual element for positioning
+          // Create virtual element for floating-ui
           const virtualElement = {
             getBoundingClientRect: () => ({
               width: 0,
@@ -77,36 +99,56 @@ export function createFileMentionSuggestion(
           };
 
           // Calculate position with floating-ui
-          const containerElement = container;
-          computePosition(virtualElement as Element, containerElement, {
+          computePosition(virtualElement as Element, container, {
             placement: "bottom-start",
             middleware: [
               flip(),
               shift({ padding: 8 }),
             ],
           }).then(({ x, y }) => {
-            console.log("[FileMention] Rendering dropdown at", { x, y, items });
+            console.log("[FileMention] Computed position", { x, y });
             
-            // Create a wrapper function for Solid render
-            const DropdownComponent = () => {
-              return FileMentionDropdown({
-                items,
-                selectedIndex,
-                onSelect: (item) => {
-                  props.command({ id: item.path, label: item.name });
-                },
-                position: { top: y, left: x },
-                ref: (ref) => {
-                  dropdownRef = ref;
-                },
-              });
-            };
-            
-            dispose = render(DropdownComponent, containerElement);
+            // Try rendering the actual dropdown
+            setTimeout(() => {
+              console.log("[FileMention] Attempting to render SolidJS component");
+              try {
+                const DropdownComponent = () => {
+                  console.log("[FileMention] DropdownComponent rendering with items:", items);
+                  return FileMentionDropdown({
+                    items,
+                    selectedIndex,
+                    onSelect: (item) => {
+                      console.log("[FileMention] Item selected:", item);
+                      props.command({ id: item.path, label: item.name });
+                    },
+                    position: { top: y, left: x },
+                    ref: (ref) => {
+                      console.log("[FileMention] Dropdown ref received:", ref);
+                      dropdownRef = ref;
+                    },
+                  });
+                };
+                
+                // Clear the test content
+                container!.innerHTML = "";
+                container!.style.background = "transparent";
+                container!.style.border = "none";
+                container!.style.padding = "0";
+                container!.style.position = "absolute";
+                
+                dispose = render(DropdownComponent, container!);
+                console.log("[FileMention] Render complete, dispose function:", dispose);
+                console.log("[FileMention] Container HTML:", container!.innerHTML);
+                console.log("[FileMention] Container children:", container!.children);
+              } catch (err) {
+                console.error("[FileMention] Error rendering dropdown:", err);
+              }
+            }, 100);
           });
         },
 
         onUpdate: (props) => {
+          console.log("[FileMention] onUpdate called", { itemCount: props.items.length });
           selectedIndex = 0;
           items = props.items as FileItem[];
 
@@ -162,6 +204,7 @@ export function createFileMentionSuggestion(
         },
 
         onKeyDown: (props) => {
+          console.log("[FileMention] onKeyDown", props.event.key);
           if (dropdownRef && dropdownRef.onKeyDown(props.event)) {
             return true;
           }
@@ -169,6 +212,7 @@ export function createFileMentionSuggestion(
         },
 
         onExit: () => {
+          console.log("[FileMention] onExit called");
           if (dispose) {
             dispose();
             dispose = null;
