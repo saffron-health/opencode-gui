@@ -85,9 +85,11 @@ export function createFileMentionSuggestion(
               shift({ padding: 8 }),
             ],
           }).then(({ x, y }) => {
-            console.log("[FileMention] Rendering dropdown at", { x, y });
-            dispose = render(
-              () => FileMentionDropdown({
+            console.log("[FileMention] Rendering dropdown at", { x, y, items });
+            
+            // Create a wrapper function for Solid render
+            const DropdownComponent = () => {
+              return FileMentionDropdown({
                 items,
                 selectedIndex,
                 onSelect: (item) => {
@@ -97,9 +99,10 @@ export function createFileMentionSuggestion(
                 ref: (ref) => {
                   dropdownRef = ref;
                 },
-              }),
-              containerElement
-            );
+              });
+            };
+            
+            dispose = render(DropdownComponent, containerElement);
           });
         },
 
@@ -138,8 +141,8 @@ export function createFileMentionSuggestion(
                 dispose();
               }
               if (container) {
-                dispose = render(
-                  () => FileMentionDropdown({
+                const DropdownComponent = () => {
+                  return FileMentionDropdown({
                     items,
                     selectedIndex,
                     onSelect: (item) => {
@@ -149,9 +152,10 @@ export function createFileMentionSuggestion(
                     ref: (ref) => {
                       dropdownRef = ref;
                     },
-                  }),
-                  container
-                );
+                  });
+                };
+                
+                dispose = render(DropdownComponent, container);
               }
             });
           }
