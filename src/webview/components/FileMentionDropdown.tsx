@@ -113,20 +113,26 @@ export function FileMentionDropdown(props: FileMentionDropdownProps & { ref?: (r
         fallback={<div class="file-mention-dropdown__empty">No files found</div>}
       >
         <For each={props.items}>
-          {(item, index) => (
-            <div
-              class={`file-mention-dropdown__item ${
-                index() === localSelectedIndex() ? "file-mention-dropdown__item--selected" : ""
-              }`}
-              data-index={index()}
-              onClick={() => props.onSelect(item)}
-              onMouseEnter={() => setLocalSelectedIndex(index())}
-            >
-              <span class={`file-mention-dropdown__icon ${getFileIcon(item.name)}`} />
-              <span class="file-mention-dropdown__name">{item.name}</span>
-              <span class="file-mention-dropdown__path">{item.path}</span>
-            </div>
-          )}
+          {(item, index) => {
+            // Extract directory from path
+            const pathParts = item.path.split("/");
+            const directory = pathParts.slice(0, -1).join("/");
+            
+            return (
+              <div
+                class={`file-mention-dropdown__item ${
+                  index() === localSelectedIndex() ? "file-mention-dropdown__item--selected" : ""
+                }`}
+                data-index={index()}
+                onClick={() => props.onSelect(item)}
+                onMouseEnter={() => setLocalSelectedIndex(index())}
+              >
+                <span class={`file-mention-dropdown__icon ${getFileIcon(item.name)}`} />
+                <span class="file-mention-dropdown__name">{item.name}</span>
+                {directory && <span class="file-mention-dropdown__path">{directory}</span>}
+              </div>
+            );
+          }}
         </For>
       </Show>
     </div>

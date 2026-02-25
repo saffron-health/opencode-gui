@@ -1,84 +1,89 @@
 .file-mention-dropdown {
   /* Position is set inline via style prop */
   min-width: 300px;
-  max-width: 500px;
-  max-height: 300px;
+  max-width: 425px;
+  max-height: 194px;
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--vscode-quickInput-background, #252526);
-  border: 1px solid var(--vscode-quickInput-border, #454545);
-  border-radius: 4px;
+  border: 1px solid var(--vscode-input-border, #3c3c3c);
+  border-radius: 3px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  padding: 4px 0;
+  padding: 0;
 }
 
 .file-mention-dropdown__empty {
-  padding: 8px 12px;
+  padding: 4px 8px;
   color: var(--vscode-disabledForeground, #6c6c6c);
-  font-size: 13px;
+  font-size: 12px;
+  height: 24px;
+  display: flex;
+  align-items: center;
 }
 
 .file-mention-dropdown__item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  gap: 4px;
+  padding: 4px 8px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
+  height: 24px;
   color: var(--vscode-quickInput-foreground, #cccccc);
-  transition: background-color 0.1s ease;
+  transition: background-color 0.05s ease;
 }
 
 .file-mention-dropdown__item:hover,
 .file-mention-dropdown__item--selected {
-  background: var(--vscode-quickInputList-focusBackground, #094771);
-  color: var(--vscode-quickInputList-focusForeground, #ffffff);
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+  color: var(--vscode-list-hoverForeground, #ffffff);
 }
 
 .file-mention-dropdown__icon {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  display: inline-block;
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground, #999999);
 }
 
-.file-mention-dropdown__icon.file-ts::before,
-.file-mention-dropdown__icon.file-js::before,
-.file-mention-dropdown__icon.file-json::before,
-.file-mention-dropdown__icon.file-md::before,
-.file-mention-dropdown__icon.file-css::before,
-.file-mention-dropdown__icon.file-html::before,
-.file-mention-dropdown__icon.file::before {
-  content: "📄";
-  font-size: 14px;
+.file-mention-dropdown__item:hover .file-mention-dropdown__icon,
+.file-mention-dropdown__item--selected .file-mention-dropdown__icon {
+  color: var(--vscode-list-hoverForeground, #ffffff);
 }
 
-.file-mention-dropdown__icon.file-ts::before {
-  content: "TS";
-  font-size: 10px;
-  font-weight: bold;
-  color: #3178c6;
+/* Simple file icon using SVG-like approach with text */
+.file-mention-dropdown__icon::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  display: block;
+  /* File icon via CSS border trick */
+  border: 1px solid currentColor;
+  border-top-left-radius: 1px;
+  border-bottom-left-radius: 1px;
+  border-bottom-right-radius: 1px;
+  position: relative;
 }
 
-.file-mention-dropdown__icon.file-js::before {
-  content: "JS";
-  font-size: 10px;
-  font-weight: bold;
-  color: #f7df1e;
-}
-
-.file-mention-dropdown__icon.file-json::before {
-  content: "{}";
-  font-size: 10px;
-  font-weight: bold;
-  color: #89b761;
+.file-mention-dropdown__icon::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 4px;
+  height: 4px;
+  border-right: 1px solid currentColor;
+  border-top: 1px solid currentColor;
+  border-top-right-radius: 1px;
 }
 
 .file-mention-dropdown__name {
   flex-shrink: 0;
-  font-weight: 500;
+  font-weight: 400;
+  font-size: 12px;
 }
 
 .file-mention-dropdown__path {
@@ -86,9 +91,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--vscode-descriptionForeground, #999999);
-  font-size: 12px;
-  margin-left: auto;
-  padding-left: 12px;
-  text-align: right;
+  color: var(--vscode-descriptionForeground, #888888);
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.file-mention-dropdown__item:hover .file-mention-dropdown__path,
+.file-mention-dropdown__item--selected .file-mention-dropdown__path {
+  color: var(--vscode-list-hoverForeground, #cccccc);
 }
