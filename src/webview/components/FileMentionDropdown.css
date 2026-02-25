@@ -36,49 +36,9 @@
 .file-mention-dropdown__item:hover,
 .file-mention-dropdown__item--selected {
   background: var(--vscode-list-hoverBackground, #2a2d2e);
-  color: var(--vscode-list-hoverForeground, #ffffff);
 }
 
-.file-mention-dropdown__icon {
-  flex-shrink: 0;
-  width: 12px;
-  height: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--vscode-descriptionForeground, #999999);
-}
-
-.file-mention-dropdown__item:hover .file-mention-dropdown__icon,
-.file-mention-dropdown__item--selected .file-mention-dropdown__icon {
-  color: var(--vscode-list-hoverForeground, #ffffff);
-}
-
-/* Simple file icon using SVG-like approach with text */
-.file-mention-dropdown__icon::before {
-  content: "";
-  width: 12px;
-  height: 12px;
-  display: block;
-  /* File icon via CSS border trick */
-  border: 1px solid currentColor;
-  border-top-left-radius: 1px;
-  border-bottom-left-radius: 1px;
-  border-bottom-right-radius: 1px;
-  position: relative;
-}
-
-.file-mention-dropdown__icon::after {
-  content: "";
-  position: absolute;
-  top: -1px;
-  right: -1px;
-  width: 4px;
-  height: 4px;
-  border-right: 1px solid currentColor;
-  border-top: 1px solid currentColor;
-  border-top-right-radius: 1px;
-}
+/* Icons removed */
 
 .file-mention-dropdown__name {
   flex-shrink: 0;
@@ -96,7 +56,4 @@
   margin-left: 4px;
 }
 
-.file-mention-dropdown__item:hover .file-mention-dropdown__path,
-.file-mention-dropdown__item--selected .file-mention-dropdown__path {
-  color: var(--vscode-list-hoverForeground, #cccccc);
-}
+/* Path color stays subdued on hover */

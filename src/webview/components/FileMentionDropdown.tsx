@@ -74,28 +74,7 @@ export function FileMentionDropdown(props: FileMentionDropdownProps & { ref?: (r
     }
   };
 
-  const getFileIcon = (fileName: string): string => {
-    const ext = fileName.split(".").pop()?.toLowerCase();
-    switch (ext) {
-      case "ts":
-      case "tsx":
-        return "file-ts";
-      case "js":
-      case "jsx":
-        return "file-js";
-      case "json":
-        return "file-json";
-      case "md":
-        return "file-md";
-      case "css":
-      case "scss":
-        return "file-css";
-      case "html":
-        return "file-html";
-      default:
-        return "file";
-    }
-  };
+
 
   return (
     <div
@@ -127,7 +106,6 @@ export function FileMentionDropdown(props: FileMentionDropdownProps & { ref?: (r
                 onClick={() => props.onSelect(item)}
                 onMouseEnter={() => setLocalSelectedIndex(index())}
               >
-                <span class={`file-mention-dropdown__icon ${getFileIcon(item.name)}`} />
                 <span class="file-mention-dropdown__name">{item.name}</span>
                 {directory && <span class="file-mention-dropdown__path">{directory}</span>}
               </div>
