@@ -27,6 +27,22 @@ VSCode extension with SolidJS webview. Two build targets:
 - Prefer explicit imports, avoid barrel files
 - Error handling: use VSCode's `window.showErrorMessage` and `LogOutputChannel`
 
+## SolidJS Store Pitfall: createMemo + store proxy
+
+**NEVER wrap a store property lookup in `createMemo` if downstream consumers need to react to in-place mutations (e.g. `produce`, `push`, `splice`).**
+
+`createMemo` compares values with `===`. A store proxy reference stays the same after in-place mutations, so the memo silently swallows the update. Use a plain function instead:
+
+```ts
+// ❌ BAD — createMemo returns same proxy ref, suppresses downstream updates
+const messages = createMemo(() => store.message[sessionId()] ?? []);
+
+// ✅ GOOD — plain function, consumers track the store proxy directly
+const messages = () => store.message[sessionId()] ?? [];
+```
+
+`createMemo` is fine for derived computations that produce new values (e.g. `.map()`, `new Map(...)`, arithmetic).
+
 ## Publishing
 
 Use the `pnpm run publish` script to publish the extension to the VSCode and OVSX marketplaces.

@@ -77,7 +77,7 @@ export function createFileMentionSuggestion(
                   items,
                   selectedIndex,
                   onSelect: (item) => {
-                    props.command({ id: item.path, label: item.name });
+                    props.command({ id: item.path, label: item.path });
                   },
                   position: { top: dropdownTop, left: dropdownLeft },
                   ref: (ref) => {
@@ -140,7 +140,7 @@ export function createFileMentionSuggestion(
                     items,
                     selectedIndex,
                     onSelect: (item) => {
-                      props.command({ id: item.path, label: item.name });
+                      props.command({ id: item.path, label: item.path });
                     },
                     position: { top: y, left: x },
                     ref: (ref) => {

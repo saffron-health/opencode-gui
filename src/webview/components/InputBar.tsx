@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Agent } from "../types";
 import type { QueuedMessage } from "../App";
 import { AgentSwitcher } from "./AgentSwitcher";
@@ -21,7 +21,7 @@ interface InputBarProps {
   onEditQueuedMessage: (id: string) => void;
   attachments: InputAttachment[];
   onRemoveAttachment: (id: string) => void;
-  editorRef?: (methods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void }) => void;
+  editorRef?: (methods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void; focus: () => void }) => void;
 }
 
 interface InputAttachment {
@@ -32,14 +32,10 @@ interface InputAttachment {
 
 export function InputBar(props: InputBarProps) {
   const [isShiftHeld, setIsShiftHeld] = createSignal(false);
-  const [fileSearchResults, setFileSearchResults] = createSignal<Map<string, string[]>>(new Map());
+  let editorMethods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void; focus: () => void } | null = null;
 
   const searchFiles = async (query: string): Promise<string[]> => {
-    // Create a promise that will be resolved when we receive the response
     return new Promise((resolve) => {
-      const requestId = `search-${Date.now()}`;
-      
-      // Store the resolver
       const handleMessage = (event: MessageEvent) => {
         const message = event.data;
         if (message.type === "search-files-result") {
@@ -50,13 +46,11 @@ export function InputBar(props: InputBarProps) {
       
       window.addEventListener("message", handleMessage);
       
-      // Send the search request
       vscode.postMessage({
         type: "search-files",
         query,
       });
       
-      // Timeout after 5 seconds
       setTimeout(() => {
         window.removeEventListener("message", handleMessage);
         resolve([]);
@@ -98,22 +92,6 @@ export function InputBar(props: InputBarProps) {
     props.onSubmit();
   };
 
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape" && props.isThinking) {
-      e.preventDefault();
-      props.onCancel();
-      return;
-    }
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      if (props.isThinking && e.shiftKey && props.value.trim()) {
-        props.onQueue();
-      } else if (!props.isThinking || props.value.trim()) {
-        handleSubmit(e);
-      }
-    }
-  };
-
   const handleContainerClick = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     if (
@@ -121,7 +99,7 @@ export function InputBar(props: InputBarProps) {
       !target.closest(".agent-switcher-button") &&
       !target.closest(".queued-message")
     ) {
-      // Focus is handled by TiptapEditor
+      editorMethods?.focus();
     }
   };
 
@@ -185,7 +163,10 @@ export function InputBar(props: InputBarProps) {
           onSubmit={() => handleSubmit(new Event("submit"))}
           disabled={props.disabled}
           searchFiles={searchFiles}
-          ref={props.editorRef}
+          ref={(methods) => {
+            editorMethods = methods;
+            props.editorRef?.(methods);
+          }}
         />
         <div class="input-buttons">
           <Show when={props.agents.length > 0 && !props.isThinking}>

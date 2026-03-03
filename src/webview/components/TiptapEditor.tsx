@@ -12,7 +12,7 @@ export interface TiptapEditorProps {
   placeholder?: string;
   disabled?: boolean;
   searchFiles: (query: string) => Promise<string[]>;
-  ref?: (methods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void }) => void;
+  ref?: (methods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void; focus: () => void }) => void;
 }
 
 export function TiptapEditor(props: TiptapEditorProps) {
@@ -56,6 +56,7 @@ export function TiptapEditor(props: TiptapEditorProps) {
         })(),
       }),
     ],
+    autofocus: true,
     content: props.value,
     editorProps: {
       attributes: {
@@ -120,6 +121,7 @@ export function TiptapEditor(props: TiptapEditorProps) {
         getJSON: () => currentEditor.getJSON(),
         setContent: (content: any) => currentEditor.commands.setContent(content),
         clear: () => currentEditor.commands.clearContent(),
+        focus: () => currentEditor.commands.focus(),
       });
     }
   });

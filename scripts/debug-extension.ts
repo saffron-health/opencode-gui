@@ -1,32 +1,38 @@
 #!/usr/bin/env tsx
 
 import { Command } from 'commander';
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, execSync, type ChildProcess } from 'child_process';
 import { chromium } from '@playwright/test';
-import { downloadAndUnzipVSCode, resolveCliArgsFromVSCodeExecutablePath } from '@vscode/test-electron';
+import { downloadAndUnzipVSCode, resolveCliPathFromVSCodeExecutablePath } from '@vscode/test-electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import readline from 'readline';
 
-interface DebugSession {
-  vscodeProcess: ChildProcess;
-  cdpUrl: string;
-  userDataDir: string;
-}
+const TMUX_SESSION = 'opencode-debug';
 
 const program = new Command();
 
 program
   .name('debug-extension')
-  .description('Launch VSCode with OpenCode extension for debugging')
-  .option('-w, --workspace <path>', 'Workspace directory to open', process.cwd())
-  .option('-p, --port <number>', 'CDP debugging port', '9222')
-  .option('--clean', 'Clean user data directory before launch', false)
-  .option('--attach', 'Attach to webview with Playwright inspector', false)
-  .option('--logs', 'Stream extension logs to console', false)
+  .description('Launch VSCode with the OpenCode extension in a background tmux session')
+  .option('-w, --workspace <path>', 'Workspace to open', process.cwd())
+  .option('-p, --port <number>', 'CDP port', '9222')
+  .option('--clean', 'Clean user data before launch')
+  .option('--attach', 'Attach Playwright to the webview')
+  .option('--logs', 'Stream extension logs')
+  .option('--stop', 'Stop the running debug session')
+  .option('--foreground', 'Run in foreground (used internally by tmux)')
   .parse();
 
 const options = program.opts();
+
+function tmuxSessionExists(): boolean {
+  try {
+    execSync(`tmux has-session -t ${TMUX_SESSION} 2>/dev/null`);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function waitForPort(port: number, timeout: number): Promise<void> {
   const start = Date.now();
@@ -34,164 +40,120 @@ async function waitForPort(port: number, timeout: number): Promise<void> {
     try {
       const response = await fetch(`http://localhost:${port}/json/version`);
       if (response.ok) return;
-    } catch (e) {
-      // Not ready
+    } catch {
+      // Not ready yet
     }
     await new Promise(resolve => setTimeout(resolve, 500));
   }
-  throw new Error(`Port ${port} not ready within ${timeout}ms`);
+  throw new Error(`CDP port ${port} not ready within ${timeout}ms`);
 }
 
-async function launchVSCode(): Promise<DebugSession> {
+async function launchVSCode() {
   const extensionPath = path.resolve(process.cwd());
   const workspaceRoot = path.resolve(options.workspace);
   const debugPort = parseInt(options.port);
   const userDataDir = path.join(process.cwd(), '.vscode-test-debug');
 
-  console.log('🚀 Launching VSCode with OpenCode extension...\n');
-  console.log(`   Extension path: ${extensionPath}`);
-  console.log(`   Workspace: ${workspaceRoot}`);
-  console.log(`   CDP port: ${debugPort}`);
-  console.log(`   User data: ${userDataDir}\n`);
-
-  // Clean user data if requested
   if (options.clean) {
-    console.log('🧹 Cleaning user data directory...');
-    try {
-      await fs.rm(userDataDir, { recursive: true, force: true });
-    } catch (e) {
-      // Ignore
-    }
+    await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {});
   }
 
-  // Download VSCode
-  console.log('⬇️  Downloading VSCode...');
+  console.log('Downloading VSCode...');
   const vscodeExecutablePath = await downloadAndUnzipVSCode();
-  const [cli, ...args] = resolveCliArgsFromVSCodeExecutablePath(vscodeExecutablePath);
+  const cliPath = resolveCliPathFromVSCodeExecutablePath(vscodeExecutablePath);
 
   const launchArgs = [
-    ...args,
+    '--no-sandbox',
+    '--disable-gpu-sandbox',
+    '--disable-web-security',
+    '--disable-site-isolation-trials',
+    '--disable-features=IsolateOrigins,site-per-process',
+    '--disable-updates',
+    '--disable-workspace-trust',
+    '--skip-welcome',
+    '--skip-release-notes',
+    '--disable-extensions',
     `--extensionDevelopmentPath=${extensionPath}`,
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${userDataDir}`,
-    '--disable-extensions',
-    '--disable-workspace-trust',
-    '--no-sandbox',
-    '--skip-welcome',
-    '--skip-release-notes',
+    '--wait',
     workspaceRoot,
   ];
 
-  console.log('🎬 Starting VSCode...\n');
-
-  const vscodeProcess = spawn(cli, launchArgs, {
+  console.log('Starting VSCode...');
+  const vscodeProcess = spawn(cliPath, launchArgs, {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
-      VSCODE_LOG_LEVEL: 'info',
-    },
-  });
-
-  vscodeProcess.stdout?.on('data', (data) => {
-    const text = data.toString().trim();
-    if (text) console.log(`[VSCode] ${text}`);
+    env: { ...process.env, VSCODE_LOG_LEVEL: 'info' },
   });
 
   vscodeProcess.stderr?.on('data', (data) => {
     const text = data.toString().trim();
-    if (text) console.error(`[VSCode Error] ${text}`);
+    if (text && !text.includes('remote-debugging-port')) {
+      console.error(`[vscode] ${text}`);
+    }
   });
 
   vscodeProcess.on('exit', (code) => {
-    console.log(`\n❌ VSCode exited with code ${code}`);
+    console.log(`VSCode exited (code ${code})`);
     process.exit(code || 0);
   });
 
-  // Wait for CDP
-  console.log('⏳ Waiting for CDP to be ready...');
+  console.log('Waiting for CDP...');
   await waitForPort(debugPort, 60000);
+  console.log(`Ready — CDP at http://localhost:${debugPort}`);
 
-  const cdpUrl = `http://localhost:${debugPort}`;
-  console.log(`✅ VSCode launched successfully!\n`);
-
-  return {
-    vscodeProcess,
-    cdpUrl,
-    userDataDir,
-  };
+  return { vscodeProcess, cdpUrl: `http://localhost:${debugPort}`, userDataDir };
 }
 
 async function streamExtensionLogs(userDataDir: string) {
   const logPath = path.join(userDataDir, 'logs', 'window1', 'exthost', 'output_logging_opencode');
-  
-  console.log('📋 Streaming extension logs...\n');
-  console.log('─'.repeat(80));
-
   let lastSize = 0;
 
-  const checkLogs = async () => {
+  const interval = setInterval(async () => {
     try {
       const stats = await fs.stat(logPath);
       if (stats.size > lastSize) {
         const content = await fs.readFile(logPath, 'utf-8');
-        const newContent = content.slice(lastSize);
-        process.stdout.write(newContent);
+        process.stdout.write(content.slice(lastSize));
         lastSize = stats.size;
       }
-    } catch (e) {
+    } catch {
       // Log file doesn't exist yet
     }
-  };
+  }, 500);
 
-  // Check every 500ms
-  const interval = setInterval(checkLogs, 500);
-  
   return () => clearInterval(interval);
 }
 
 async function attachToWebview(cdpUrl: string) {
-  console.log('🔌 Attaching to webview with Playwright...\n');
-
   const browser = await chromium.connectOverCDP(cdpUrl);
-  
-  // Find webview
   let webviewPage = null;
-  let attempts = 0;
 
-  while (!webviewPage && attempts < 20) {
-    const contexts = browser.contexts();
-    for (const context of contexts) {
-      const pages = context.pages();
-      for (const page of pages) {
-        const url = page.url();
-        if (url.includes('vscode-webview') && url.includes('opencode')) {
+  for (let i = 0; i < 20 && !webviewPage; i++) {
+    for (const ctx of browser.contexts()) {
+      for (const page of ctx.pages()) {
+        if (page.url().includes('vscode-webview') && page.url().includes('opencode')) {
           webviewPage = page;
-          console.log(`✅ Found webview: ${url}\n`);
           break;
         }
       }
       if (webviewPage) break;
     }
-
     if (!webviewPage) {
-      attempts++;
-      console.log(`⏳ Waiting for webview (${attempts}/20)...`);
+      console.log(`Waiting for webview (${i + 1}/20)...`);
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
 
   if (!webviewPage) {
-    console.error('❌ Could not find OpenCode webview');
+    console.error('Could not find OpenCode webview');
     return null;
   }
 
-  // Enable console logging
+  console.log(`Found webview: ${webviewPage.url()}`);
   const cdpSession = await webviewPage.context().newCDPSession(webviewPage);
   await cdpSession.send('Runtime.enable');
   await cdpSession.send('Log.enable');
-  
-  console.log('📱 Webview console logs:\n');
-  console.log('─'.repeat(80));
 
   cdpSession.on('Runtime.consoleAPICalled', (event) => {
     const args = event.args.map(arg => arg.value ?? arg.description).join(' ');
@@ -202,80 +164,93 @@ async function attachToWebview(cdpUrl: string) {
     console.log(`[${event.entry.level}] ${event.entry.text}`);
   });
 
-  // Open Playwright inspector
-  console.log('\n🎭 Opening Playwright inspector...');
-  console.log('   Use the inspector to interact with the webview\n');
-  
   await webviewPage.pause();
-
   return browser;
 }
 
-async function printInstructions(cdpUrl: string) {
-  console.log('╔═══════════════════════════════════════════════════════════════════════╗');
-  console.log('║                   OpenCode Extension Debug Session                    ║');
-  console.log('╚═══════════════════════════════════════════════════════════════════════╝\n');
-  
-  console.log('📡 Chrome DevTools Protocol:');
-  console.log(`   URL: ${cdpUrl}`);
-  console.log(`   Open chrome://inspect in Chrome and click "inspect"\n`);
-  
-  console.log('🔍 Debugging Tips:');
-  console.log('   - Extension logs are in VSCode Output panel (OpenCode)');
-  console.log('   - Use chrome://inspect to debug the webview');
-  console.log('   - Press Ctrl+C to stop the debug session\n');
-  
-  console.log('💡 Useful Commands:');
-  console.log('   - Open Command Palette: Cmd+Shift+P (Mac) / Ctrl+Shift+P (Windows)');
-  console.log('   - Open OpenCode: Search "OpenCode" in Command Palette');
-  console.log('   - Reload Window: Search "Developer: Reload Window"\n');
-  
-  console.log('─'.repeat(80));
-  console.log('');
-}
-
-async function main() {
+async function runForeground() {
   const session = await launchVSCode();
 
-  // Stream logs if requested
   let stopLogs: (() => void) | null = null;
   if (options.logs) {
     stopLogs = await streamExtensionLogs(session.userDataDir);
   }
 
-  // Attach to webview if requested
   let browser = null;
   if (options.attach) {
     browser = await attachToWebview(session.cdpUrl);
-  } else {
-    await printInstructions(session.cdpUrl);
   }
 
-  // Setup graceful shutdown
   const cleanup = async () => {
-    console.log('\n\n🛑 Shutting down...');
-    
+    console.log('Shutting down...');
     if (stopLogs) stopLogs();
     if (browser) await browser.close().catch(() => {});
-    
     session.vscodeProcess.kill('SIGTERM');
+    // Also kill the Electron process (the CLI spawns it as a separate process)
+    try {
+      execSync(`pkill -f "extensionDevelopmentPath=${path.resolve(process.cwd())}"`, { stdio: 'ignore' });
+    } catch { /* already dead */ }
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    if (!session.vscodeProcess.killed) {
-      session.vscodeProcess.kill('SIGKILL');
-    }
-    
     process.exit(0);
   };
 
   process.on('SIGINT', cleanup);
   process.on('SIGTERM', cleanup);
-
-  // Keep process alive
+  process.on('SIGHUP', cleanup);
   await new Promise(() => {});
 }
 
+async function main() {
+  // --stop: kill the background session
+  if (options.stop) {
+    if (!tmuxSessionExists()) {
+      console.log('No debug session running.');
+      return;
+    }
+    // Send Ctrl+C so the foreground process runs cleanup (kills VS Code)
+    execSync(`tmux send-keys -t ${TMUX_SESSION} C-c`, { stdio: 'inherit' });
+    // Wait for cleanup to finish, then kill the tmux session
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    if (tmuxSessionExists()) {
+      execSync(`tmux kill-session -t ${TMUX_SESSION} 2>/dev/null`, { stdio: 'inherit' });
+    }
+    console.log('Session stopped.');
+    return;
+  }
+
+  // --foreground: run directly (used by tmux)
+  if (options.foreground) {
+    await runForeground();
+    return;
+  }
+
+  // Default: launch in tmux background
+  if (tmuxSessionExists()) {
+    console.log(`Session "${TMUX_SESSION}" already running.`);
+    console.log(`  Attach: tmux attach -t ${TMUX_SESSION}`);
+    console.log(`  Stop:   pnpm debug:extension --stop`);
+    process.exit(1);
+  }
+
+  const args = process.argv.slice(2).concat('--foreground');
+  const cmd = `cd '${process.cwd()}' && npx tsx scripts/debug-extension.ts ${args.join(' ')}`;
+  execSync(`tmux new-session -d -s ${TMUX_SESSION} '${cmd}'`);
+
+  // Wait for it to be ready
+  const port = parseInt(options.port);
+  try {
+    await waitForPort(port, 60000);
+    console.log(`Debug session running in tmux "${TMUX_SESSION}"`);
+    console.log(`  CDP:    http://localhost:${port}`);
+    console.log(`  Attach: tmux attach -t ${TMUX_SESSION}`);
+    console.log(`  Stop:   pnpm debug:extension --stop`);
+  } catch {
+    console.error('Timed out waiting for VSCode to start. Check: tmux attach -t ' + TMUX_SESSION);
+    process.exit(1);
+  }
+}
+
 main().catch((error) => {
-  console.error('❌ Error:', error);
+  console.error('Error:', error.message);
   process.exit(1);
 });

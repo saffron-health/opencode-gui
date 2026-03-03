@@ -9,43 +9,103 @@ Ultrathink. Follow the following steps:
 
 ## Understand existing code
 
-Use `finder` and `Grep` as much as possible to deeply understand all of the relevant code. Be smart about your code search: start with where you think it might be, and if that inspires different places to read, follow up with sub-agents to do so. Each sub-agent should give you back information, and potentially other files to read or searches that might be relevant.
+Use code search sub-agents and `grep` as much as possible to deeply understand all of the relevant code. Be smart about your code search: start with where you think it might be, and if that inspires different places to read, follow up with sub-agents to do so. Each sub-agent should give you back information, and potentially other files to read or searches that might be relevant.
 
 ## Understand external documentation/libraries
 
 If external libraries are involved, always look up and research their relevant documentation as well. Tend to adhere strictly to the examples and best practices provided by the external libraries.
 
-## Ask good questions
+## Ask critical guiding questions
 
-The feature/fix request from the user will not always be completely defined. There may be logical errors embedded or important clairfications required before the spec can continue. Examples of these may be of the form "How can I retrieve that data over here?" or "This seems like it will require a major rewrite" or "This feels like it will require lots of duplication". You are a talented software engineer who prioritizes clean, simple, readable code -- if something seems like it's going to spiral into complexity, bring up the concern to the user. That being said, don't feel like you _have_ to ask questions. If the feature request is defined and straightforward, go ahead and just write the spec -- only involve the user if it seems like something is egregiously wrong. Practice good judgement.
+After completing the research steps above, pause and ask the user any critical guiding questions before writing the spec. The feature/fix request will not always be completely defined. There may be logical errors, ambiguous requirements, or important clarifications required. Examples:
+
+- "To store this data, we could either add a new table or extend the existing X table. The new table keeps concerns separate but adds a join; extending X is simpler but couples the concepts. Which do you prefer?"
+- "There are two ways to surface this to the user: a modal dialog or an inline panel. The modal is more disruptive but harder to miss; the inline panel is less intrusive but easier to overlook. Which feels right?"
+- "We need to sync this state. We could poll on an interval or use a WebSocket. Polling is simpler to implement but adds latency; WebSocket is real-time but more complex. Which trade-off do you want?"
+
+Present the options you see, explain the trade-offs briefly, and let the user decide. If the feature request is fully defined and the path forward is obvious, skip the questions and write the spec directly. Practice good judgement.
+
+## Establish goals and non-goals
+
+After research and any clarifying questions, establish explicit goals and non-goals for the spec. These come directly from the user. If the user did not provide them in the initial prompt, suggest a set of goals and non-goals and ask for confirmation before proceeding.
+
+Goals are high-level end-user stories that describe what should be true when the spec is complete. Example: "user sets up a Gmail trigger and it works as expected."
+
+Non-goals clarify what is deliberately out of scope. Example: "don't worry about migration or backfills."
+
+By default, always include "no migrations or backfills" as a non-goal unless the user explicitly requests them.
+
+The spec must include these sections near the top, before the implementation plan.
+
+## Reason critically about the spec
+
+Before writing the spec, think through the implementation with a "bicycle before car" mindset. Spec the simplest version that works end-to-end and delivers real value. Do not spec the scalable, polished, extensible version.
+
+### Scope
+
+Cut any phase that is not required for the core functionality to work. If you can remove a phase and a real user can still use the feature, it does not belong in v1. Infrastructure, abstraction layers, configuration systems, and polish are almost never v1 work.
+
+### Testing
+
+Each phase's success criteria should verify the thing most likely to go wrong, not the thing most likely to go right. A test that a Zod schema parses valid input is low-value. A test that filtering logic excludes wrong results is high-value. Ask: "What would make me revert this phase?" Test that.
+
+If a phase does not have a clear way to verify it works, the phase is poorly scoped. Restructure it so it produces something testable: extract a pure function, expose an interface, write to an observable output. Design for testability in the spec, not after implementation.
+
+### End-to-end verification
+
+Agents have access to CLI tools that enable full end-to-end testing of the platform. Specs should leverage these where appropriate:
+
+- `.bin/dev start` / `.bin/dev stop` — start and stop the dev server + Electron app together in tmux.
+- `.bin/server` — make authenticated requests against the running dev server (e.g. `.bin/server sessions list`, `.bin/server request GET /sessions`).
+- `.bin/server inspector` — inspect Rivet actor state (e.g. `.bin/server inspector <actorId> summary`).
+- `.bin/playwright` — automate the Electron UI (connect, exec, screenshot) against the running dev session.
+
+When a phase involves server-side or UI behavior, prefer success criteria that use these tools to verify the feature works end-to-end rather than only relying on unit tests.
+
+### Common failure modes
+
+- Adding extensibility or configurability nobody asked for
+- Creating abstractions before there are two concrete cases
+- Testing that code exists rather than testing that it behaves correctly
+- Phases that are pure refactoring or setup with no user-facing progress
 
 ## Write an effective spec
 
-Follow the guidelines specified below:
-
-### Spec Structure
-
 Specs should always have the following form:
 
-#### Problem overview
+```markdown
+## Problem overview
 
 A couple plain English sentences describing the problem: either a bug, or a feature request, or a refactor to be done with motivation
 
-#### Solution overview
+## Solution overview
 
 A couple plain English sentences describing the proposed solution.
 
-#### Important files/docs for implementation
+## Goals
 
-A list of all the files that are involved in the implementation. Also included should be any docs files or external links to documentation.
+High-level end-user stories that must be true when the spec is complete.
 
-#### Implementation
+## Non-goals
+
+What is deliberately out of scope. Always includes "no migrations or backfills" unless the user requested them.
+
+## Future work
+
+Items identified during implementation that are valuable but non-blocking. Big features, refactors, or cleanup that can be done after the spec is complete. Only added during implementation, not during initial spec creation.
+
+## Important files/docs/websites for implementation
+
+A list of all the files that are involved in the implementation. Also included should be any docs files or external links to documentation. Each doc should be annotated with a brief sentence about what it is (and if its not obvious, why it's relevant).
+
+## Implementation
 
 A phased plan where each phase represents a single commit-sized change (<100 lines). Each phase should be independently committable and leave the codebase in a working state.
-
-Each phase must include success criteria as task items alongside the implementation tasks. Success criteria are verifiable assertions: quick checks ("ensure X is in package.json"), unit tests to write and run, or manual user stories. They should be the minimum set needed to confirm the phase is correctly done.
-
 ```
+
+Each implementation phase must include success criteria as task items alongside the implementation tasks. Success criteria are verifiable assertions: quick checks ("ensure X is in package.json"), unit tests to write and run, or manual user stories. They should be the minimum set needed to confirm the phase is correctly done.
+
+```markdown
 ### Phase 1: Add gender and age fields to the provider search input schema
 
 - [ ] Add `gender` parameter to `searchProvidersInput` schema in `apps/api/src/tools/searchProviders.ts` as optional `z.enum(["M", "F"])`
@@ -59,48 +119,6 @@ Each phase must include success criteria as task items alongside the implementat
 - [ ] Add age range filtering logic using `gte(providers.age, min_age)` and `lte(providers.age, max_age)` when age filters are provided
 - [ ] Add a unit test querying with `gender: "F"` and assert only female providers are returned
 - [ ] Add a unit test querying with `ageFilter: { min_age: 30, max_age: 50 }` and assert results are within range
-```
-
-```
-### Phase 1: Create Assistant Pane component
-
-- [ ] Create `apps/web/src/components/AssistantPane.tsx` with basic UI structure
-- [ ] Add state management for messages and loading status
-- [ ] Wire up backend calls using useApiClient
-- [ ] Verify the component renders without errors in isolation
-
-### Phase 2: Integrate Assistant Pane into application layout
-
-- [ ] Add the AssistantPane component to the right sidebar in `apps/web/src/App.tsx`
-- [ ] Manually verify the pane appears in the sidebar and does not break existing layout
-
-### Phase 3: Implement context gathering
-
-- [ ] Fetch the current taskId from the URL using the useRoute("/task/:taskId") hook
-- [ ] Query local database for task, patient, and document context
-- [ ] Prepend context to the chat history
-- [ ] Add a unit test that given a taskId, the correct context is prepended to chat history
-
-### Phase 4: Remove AIContext abstraction
-
-- [ ] Delete `apps/web/src/contexts/AIContext.tsx`
-- [ ] Remove the AIProvider from the provider tree in `apps/web/src/components/Providers.tsx`
-- [ ] Consolidate state management logic directly within AssistantPane
-- [ ] Verify `pnpm run typecheck` passes with no references to the deleted AIContext
-- [ ] Manually verify the assistant pane still functions end-to-end after the removal
-```
-
-#### Sanity checklist
-
-These should always be the following task items, to be done after a spec is implemented
-
-```
-- [ ] Run `pnpm type-check` to ensure all TypeScript types are correct
-- [ ] Run `pnpm build` to ensure all packages compile successfully
-- [ ] Run `pnpm lint` to verify no linting errors
-- [ ] Ensure all written code adheres to the quality documentation in AGENT.md
-- [ ] If this spec involves frontend changes, test the web app with Playwright using the instructions in AGENT.md
-- [ ] Update this spec to mark all tasks as completed
 ```
 
 ### What to avoid in the spec

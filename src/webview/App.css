@@ -286,15 +286,17 @@ body {
 .message-attachment {
   display: inline-flex;
   align-items: center;
-  padding: 2px 4px;
-  border: none;
-  border-radius: 4px;
-  background-color: var(--input-background-muted);
-  color: var(--foreground);
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 50%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 30%, transparent);
+  color: color-mix(in srgb, var(--vscode-badge-foreground, #ffffff) 70%, transparent);
   font-family: var(--font-family);
-  font-size: var(--font-size-small);
+  font-size: 12px;
+  font-weight: 500;
   max-width: 100%;
   cursor: pointer;
+  transition: background-color 0.1s ease;
 }
 
 .message-attachment__text {
@@ -305,7 +307,7 @@ body {
 }
 
 .message-attachment:hover {
-  background-color: var(--hover-background-muted);
+  background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 50%, transparent);
 }
 
 /* Input Container */
