@@ -90,24 +90,15 @@ function createSync() {
     setCurrentSessionIdInternal(id);
   }
 
-  // Derived state
-  // Important: this memo must invalidate dependents when the underlying
-  // array mutates in place (push/splice via setStore). Solid's createMemo
-  // only notifies dependents when its returned value changes by equality.
-  // Since we often mutate the existing array, we either need to always
-  // notify (equals: false) or return a new array identity. We do both for
-  // robustness and minimal surprises.
-  const messages = createMemo(() => {
+  // Plain function (NOT createMemo) so that every reactive consumer directly
+  // tracks the store proxy. A createMemo here would return the same proxy
+  // reference after in-place mutations, suppressing downstream updates.
+  const EMPTY_MESSAGES: Message[] = [];
+  const messages = () => {
     const sessionId = currentSessionId();
-    if (!sessionId) {
-      console.log("[Sync] messages() - no sessionId");
-      return [] as typeof store.message[string] | [];
-    }
-    const msgs = store.message[sessionId] ?? [];
-    console.log("[Sync] messages() memo recomputed", { sessionId, count: msgs.length, firstId: msgs[0]?.id });
-    // Return a shallow copy so identity changes when content changes
-    return msgs.slice();
-  }, undefined, { equals: false });
+    if (!sessionId) return EMPTY_MESSAGES;
+    return store.message[sessionId] ?? EMPTY_MESSAGES;
+  };
 
   // Use equals: false for arrays that may be mutated in place by SSE handlers
   const sessions = createMemo(() => store.sessions.slice(), undefined, { equals: false });
@@ -245,6 +236,9 @@ function createSync() {
       setBootstrapCount((c) => c + 1);
       return;
     }
+
+    // Skip heartbeats - they carry no state and cause unnecessary batching
+    if ((event.type as string) === "server.heartbeat") return;
 
     // Buffer events during bootstrap, queue for batched processing
     eventQueue.push(event);

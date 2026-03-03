@@ -6,7 +6,9 @@ description: |
 
 # Browser Automation with Playwright
 
-Use the `.bin/playwright` CLI to automate web interactions, debug browser agent jobs, and prototype fixes interactively.
+Use the `playwright-cli.ts` script bundled with this skill to automate web interactions and debug browser issues.
+
+Run it with: `tsx .agents/skills/playwright/cli.ts`
 
 ## When to Use
 
@@ -17,47 +19,59 @@ Use the `.bin/playwright` CLI to automate web interactions, debug browser agent 
 ## Commands
 
 ```bash
-.bin/playwright open <url>          # Launch browser and navigate to URL
-.bin/playwright exec <code>         # Execute Playwright TypeScript code
-.bin/playwright screenshot          # Save full-page PNG screenshot and HTML to tmp/playwright-screenshots/
-.bin/playwright close               # Close the browser
+tsx .agents/skills/playwright/cli.ts open <url>          # Launch browser and navigate to URL
+tsx .agents/skills/playwright/cli.ts exec <code>         # Execute Playwright TypeScript code
+tsx .agents/skills/playwright/cli.ts snapshot            # Save full-page PNG + HTML to tmp/playwright-screenshots/
+tsx .agents/skills/playwright/cli.ts list                # List open tabs
+tsx .agents/skills/playwright/cli.ts close               # Close the browser
 ```
 
-The exec command provides access to: `page`, `context`, `state`, `browser`
+The exec command provides access to: `page`, `context`, `state`, `browser`, `snapshot`
 
-Example:
+## Example
 
 ```bash
-.bin/playwright open https://example.com
-.bin/playwright exec "await page.locator('button:has-text(\"Sign in\")').click()"
-.bin/playwright exec "await page.fill('input[name=\"email\"]', 'user@example.com')"
-.bin/playwright screenshot
-.bin/playwright close
+tsx .agents/skills/playwright/cli.ts open https://example.com
+tsx .agents/skills/playwright/cli.ts exec "await page.locator('button:has-text(\"Sign in\")').click()"
+tsx .agents/skills/playwright/cli.ts exec "await page.fill('input[name=\"email\"]', 'user@example.com')"
+tsx .agents/skills/playwright/cli.ts snapshot
+tsx .agents/skills/playwright/cli.ts close
 ```
 
-## Interactive Debugging Workflow
+## Sessions & Profiles
 
-When browser automation errors occur (selectors timing out, clicks not working, elements not found), use the interactive debugging workflow instead of the edit-restart cycle. This reduces iteration time from 5-10 minutes to 30 seconds.
+Use `--session <name>` to run multiple isolated browser instances simultaneously.
 
-Workflow:
-
-1. Add `page.pause()` to the script before the problematic section
-2. Run the job in debug mode in a tmux session
-3. Wait for the job to reach the `page.pause()` breakpoint
-4. Use `.bin/playwright exec` to explore and prototype fixes interactively
-5. Once the fix works, codify it in the source files
-6. Restart to verify the fix works end-to-end
-
-Example:
+Use `save <domain>` after logging in to persist cookies/localStorage for automatic reuse:
 
 ```bash
-# Terminal 1: Run job in debug mode
-tmux new-session -d -s debug-job 'BROWSER_AGENT_TENANT_SLUG="hhb" BROWSER_AGENT_DEBUG_MODE=true npx tsx apps/browser-agent/scripts/pullOpenReferrals.ts Azalea'
-
-# Terminal 2: Prototype fixes interactively
-.bin/playwright exec "await page.screenshot({ path: '/tmp/debug.png' }); return 'saved';"
-.bin/playwright exec "const count = await page.locator('.dropdown').count(); return count;"
-.bin/playwright exec "await page.locator('.dropdown-trigger').click(); return 'clicked';"
+tsx .agents/skills/playwright/cli.ts open https://linkedin.com
+# ... manually log in ...
+tsx .agents/skills/playwright/cli.ts save linkedin.com
+# Next time, profile is loaded automatically
 ```
 
-See `apps/browser-agent/docs/interactive-debugging-workflow.md` for complete instructions and patient safety warnings.
+## Connecting to the Extension Debug Session
+
+Launch the extension in a background tmux session with CDP enabled:
+
+```bash
+pnpm debug:extension              # starts in tmux "opencode-debug", CDP on :9222
+pnpm debug:extension --stop       # stops the session
+```
+
+Then connect Playwright to it:
+
+```bash
+tsx .agents/skills/playwright/cli.ts connect http://127.0.0.1:9222 --session extension
+tsx .agents/skills/playwright/cli.ts exec "return await page.title()" --session extension
+```
+
+## Connecting to Other Browsers
+
+Connect to any browser exposing a CDP endpoint:
+
+```bash
+tsx .agents/skills/playwright/cli.ts connect http://127.0.0.1:9222 --session my-session
+tsx .agents/skills/playwright/cli.ts exec "return await page.title()" --session my-session
+```

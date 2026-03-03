@@ -248,12 +248,8 @@ export function MessageList(props: MessageListProps) {
   return (
     <div class="messages-container" ref={containerRef!} role="log" aria-label="Messages">
       <div class="messages-content" ref={contentRef!}>
-        <For each={nonQueuedMessages()} fallback={<div>No messages</div>}>
-          {(message, index) => {
-            // Log every time For creates/updates a message row
-            console.log("[MessageList] For rendering message", { id: message.id, textLen: message.text?.length });
-            return renderMessage(message, index);
-          }}
+        <For each={nonQueuedMessages()} fallback={null}>
+          {(message, index) => renderMessage(message, index)}
         </For>
 
         <ThinkingIndicator when={props.isThinking} />
