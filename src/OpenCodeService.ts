@@ -1,9 +1,12 @@
 import { createOpencode, type OpencodeClient } from "@opencode-ai/sdk/v2";
 import type { Message } from "@opencode-ai/sdk/v2/client";
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { getLogger } from "./extension";
+
+const OPENCODE_INSTALL_URL = "https://opencode.ai/install";
 
 interface OpencodeInstance {
   client: OpencodeClient;
@@ -36,24 +39,27 @@ export class OpenCodeService {
     }
 
     try {
+      const logger = getLogger();
       const configPath = workspaceRoot
         ? path.join(workspaceRoot, "opencode.json")
         : null;
       const hasWorkspaceConfig = configPath && fs.existsSync(configPath);
 
       if (hasWorkspaceConfig) {
-        console.log(`✓ Found workspace config at: ${configPath}`);
+        logger.info(`Found workspace config at: ${configPath}`);
       } else {
-        console.log(
+        logger.info(
           "No workspace config found, OpenCode will use default/global config",
         );
       }
+
+      this.ensureOpencodeCliAvailable();
 
       if (shouldChdir) {
         process.chdir(workspaceRoot as string);
       }
 
-      console.log("Starting OpenCode server...");
+      logger.info("Starting OpenCode server...");
 
       this.opencode = await createOpencode({
         hostname: "127.0.0.1",
@@ -61,23 +67,77 @@ export class OpenCodeService {
         timeout: 15000,
       });
 
-      console.log(`OpenCode server started at ${this.opencode.server.url}`);
+      logger.info(`OpenCode server started at ${this.opencode.server.url}`);
     } catch (error) {
-      console.error("Failed to initialize OpenCode:", error);
-      vscode.window.showErrorMessage(
-        `Failed to start OpenCode: ${(error as Error).message}`,
-      );
+      getLogger().error("Failed to initialize OpenCode", error);
+      await this.showStartupError(error);
       throw error;
     } finally {
       if (shouldChdir) {
         try {
           process.chdir(prevCwd);
         } catch (e) {
-          console.warn("Failed to restore working directory:", e);
+          getLogger().warn("Failed to restore working directory", e);
         }
       }
       this.isInitializing = false;
     }
+  }
+
+  private ensureOpencodeCliAvailable(): void {
+    const lookupCommand = process.platform === "win32" ? "where" : "which";
+    const lookupResult = spawnSync(lookupCommand, ["opencode"], {
+      encoding: "utf8",
+    });
+
+    if (lookupResult.status === 0 && lookupResult.stdout.trim().length > 0) {
+      const binaryPath = lookupResult.stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line.length > 0);
+
+      getLogger().info("OpenCode CLI found on PATH", {
+        command: `${lookupCommand} opencode`,
+        binaryPath,
+      });
+      return;
+    }
+
+    getLogger().error("OpenCode CLI preflight check failed", {
+      command: `${lookupCommand} opencode`,
+      status: lookupResult.status,
+      error: lookupResult.error?.message,
+      stderr: lookupResult.stderr?.trim(),
+    });
+
+    const verifyCommand =
+      process.platform === "win32" ? "where opencode" : "which opencode";
+
+    throw new Error(
+      `OpenCode CLI was not found on PATH. Verify with "${verifyCommand}", then restart VS Code.`,
+    );
+  }
+
+  private async showStartupError(error: unknown): Promise<void> {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown startup error";
+    const isMissingCli = errorMessage.includes(
+      "OpenCode CLI was not found on PATH",
+    );
+
+    if (isMissingCli) {
+      const selection = await vscode.window.showErrorMessage(
+        "OpenCode CLI was not found in the VS Code environment. Install it from opencode.ai/install, verify it works in your terminal, then fully restart VS Code.",
+        "Install OpenCode",
+      );
+
+      if (selection === "Install OpenCode") {
+        await vscode.env.openExternal(vscode.Uri.parse(OPENCODE_INSTALL_URL));
+      }
+      return;
+    }
+
+    await vscode.window.showErrorMessage(`Failed to start OpenCode: ${errorMessage}`);
   }
 
   getCurrentSessionId(): string | null {

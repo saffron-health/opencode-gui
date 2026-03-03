@@ -58,11 +58,24 @@ function toPermission(sdkPerm: SDKPermission): Permission {
   };
 }
 
+/** Apply a delta (append) to a possibly nested field path (e.g. "text" or "state.output") */
+function applyFieldDelta(obj: Record<string, unknown>, field: string, delta: string): void {
+  const segments = field.split(".");
+  let target: Record<string, unknown> = obj;
+  for (let i = 0; i < segments.length - 1; i++) {
+    if (target[segments[i]] == null || typeof target[segments[i]] !== "object") {
+      target[segments[i]] = {};
+    }
+    target = target[segments[i]] as Record<string, unknown>;
+  }
+  const lastKey = segments[segments.length - 1];
+  target[lastKey] = ((target[lastKey] as string) ?? "") + delta;
+}
+
 export function applyEvent(event: Event, ctx: EventHandlerContext): void {
   const { store, setStore, currentSessionId, messageToSession, sessionIdleCallbacks } = ctx;
   
-  // Log every event being applied
-  console.log("[EventHandler] Applying event", { type: event.type, currentSessionId: currentSessionId() });
+  logger.debug("Applying event", { type: event.type });
 
   switch (event.type) {
     case "message.updated": {
@@ -95,18 +108,13 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       messageToSession.set(info.id, sessionId);
 
       if (!messages.length) {
-        console.log("[EventHandler] Creating message array for session", { sessionId, msgId: msg.id });
         setStore("message", sessionId, [msg]);
       } else if (result.found) {
-        console.log("[EventHandler] Updating existing message", { sessionId, msgId: msg.id, index: result.index });
-        // Don't use reconcile - create new object so For component detects change
         setStore("message", sessionId, result.index, msg);
       } else {
-        console.log("[EventHandler] Appending new message", { sessionId, msgId: msg.id, currentLength: messages.length });
-        setStore("message", sessionId, produce((draft) => {
-          draft.push(msg);
-        }));
-        console.log("[EventHandler] After append, length:", store.message[sessionId]?.length);
+        // Replace the array (not in-place mutate) so downstream subscribers
+        // see a new reference and propagate updates.
+        setStore("message", sessionId, [...messages, msg]);
       }
 
       // Cap messages at 100 per session (matching TUI)
@@ -114,7 +122,7 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       if (updatedMessages && updatedMessages.length > 100) {
         const oldest = updatedMessages[0];
         batch(() => {
-          setStore("message", sessionId, produce((draft) => { draft.shift(); }));
+          setStore("message", sessionId, updatedMessages.slice(1));
           setStore("part", produce((draft) => { delete draft[oldest.id]; }));
         });
         messageToSession.delete(oldest.id);
@@ -153,9 +161,11 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       if (messages) {
         const result = findById(messages, messageID, (m) => m.id);
         if (result.found) {
-          setStore("message", sessionId, produce((draft) => {
-            draft.splice(result.index, 1);
-          }));
+          // Replace array to ensure messages memo propagates
+          setStore("message", sessionId, [
+            ...messages.slice(0, result.index),
+            ...messages.slice(result.index + 1),
+          ]);
         }
       }
       setStore("part", produce((draft) => {
@@ -166,8 +176,94 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
     }
 
     case "message.part.delta": {
-      // Delta events have different structure - just log and skip for now
-      console.log("[EventHandler] message.part.delta event (ignoring)", { properties: event.properties });
+      const delta = event.properties as {
+        sessionID?: string;
+        messageID?: string;
+        partID?: string;
+        field?: string;
+        delta?: string;
+      };
+      const dMessageID = delta.messageID;
+      const dPartID = delta.partID;
+      const dField = delta.field;
+      const dDelta = delta.delta;
+      if (!dMessageID || !dPartID || !dField || dDelta === undefined) break;
+
+      const dSessionId = delta.sessionID
+        ?? messageToSession.get(dMessageID)
+        ?? currentSessionId();
+
+      batch(() => {
+        if (dSessionId) {
+          setStore("sessionError", produce((draft) => { delete draft[dSessionId]; }));
+        }
+
+        // Update or create the part
+        const parts = store.part[dMessageID];
+        if (!parts) {
+          const newPart: Record<string, unknown> = {
+            id: dPartID,
+            sessionID: delta.sessionID,
+            messageID: dMessageID,
+            type: "text",
+          };
+          applyFieldDelta(newPart, dField, dDelta);
+          setStore("part", dMessageID, [newPart as MessagePart]);
+        } else {
+          const result = findById(parts, dPartID, (p) => p.id);
+          if (result.found) {
+            // Append delta to existing part's field using produce
+            setStore("part", dMessageID, result.index, produce((draft: Record<string, unknown>) => {
+              applyFieldDelta(draft, dField, dDelta);
+            }));
+          } else {
+            // Create new part and append (use array replacement, not produce+push)
+            const newPart: Record<string, unknown> = {
+              id: dPartID,
+              sessionID: delta.sessionID,
+              messageID: dMessageID,
+              type: "text",
+            };
+            applyFieldDelta(newPart, dField, dDelta);
+            setStore("part", dMessageID, [...parts, newPart as MessagePart]);
+          }
+        }
+
+        // Ensure message exists
+        if (dSessionId) {
+          messageToSession.set(dMessageID, dSessionId);
+          const messages = store.message[dSessionId];
+          if (!messages) {
+            setStore("message", dSessionId, [{
+              id: dMessageID,
+              type: "assistant" as const,
+              text: "",
+            } as Message]);
+          } else {
+            const msgResult = findById(messages, dMessageID, (m) => m.id);
+            if (!msgResult.found) {
+              setStore("message", dSessionId, [...messages, {
+                id: dMessageID,
+                type: "assistant" as const,
+                text: "",
+              } as Message]);
+            }
+          }
+
+          // Update message text from parts when text field changes
+          if (dField === "text") {
+            const updatedParts = store.part[dMessageID] ?? [];
+            const newText = extractTextFromParts(updatedParts);
+            const msgs = store.message[dSessionId];
+            if (msgs) {
+              const msgResult = findById(msgs, dMessageID, (m) => m.id);
+              if (msgResult.found) {
+                setStore("message", dSessionId, msgResult.index, "text", newText);
+              }
+            }
+          }
+        }
+      });
       break;
     }
     
@@ -182,13 +278,6 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
         ?? messageToSession.get(sdkPart.messageID)
         ?? currentSessionId();
       
-      console.log("[EventHandler] Processing part event", { 
-        type: event.type, 
-        partId: part.id, 
-        messageId: sdkPart.messageID, 
-        sessionId 
-      });
-
       batch(() => {
         if (sessionId) {
           setStore("sessionError", produce((draft) => {
@@ -205,10 +294,8 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
           if (result.found) {
             setStore("part", sdkPart.messageID, result.index, reconcile(part));
           } else {
-            // Append new parts (SSE events arrive in order)
-            setStore("part", sdkPart.messageID, produce((draft) => {
-              draft.push(part);
-            }));
+            // Append new parts using array replacement (not produce+push)
+            setStore("part", sdkPart.messageID, [...parts, part]);
           }
         }
 
@@ -232,10 +319,8 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
                 type: "assistant",
                 text: "",
               };
-              // Append new messages
-              setStore("message", sessionId, produce((draft) => {
-                draft.push(newMsg);
-              }));
+              // Replace array (not in-place mutate) so messages memo propagates
+              setStore("message", sessionId, [...messages, newMsg]);
             } else {
               // Update the message's text from the updated parts
               // This triggers reactivity so UI re-renders when parts stream in

@@ -129,13 +129,8 @@ function createOpenCode() {
     const c = client();
     if (!c) throw new Error("Not connected");
 
-    const configResult = await c.config.get();
-    const model = configResult.data?.model || "anthropic/claude-sonnet-4-5-20250929";
-    const [providerID, modelID] = model.split("/");
-
     return c.session.prompt({
       sessionID: sessionId,
-      model: { providerID, modelID },
       parts: [{ type: "text", text }, ...extraParts],
       ...(agent ? { agent } : {}),
       ...(messageID ? { messageID } : {}),

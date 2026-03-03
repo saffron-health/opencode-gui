@@ -25,12 +25,12 @@ A VSCode sidebar extension for OpenCode - the AI coding agent. Simple chat inter
 
 ### Install Dependencies
 ```bash
-npm install
+pnpm install
 ```
 
 ### Build the Extension
 ```bash
-npm run build
+pnpm build
 ```
 
 This builds both:
@@ -41,7 +41,7 @@ This builds both:
 
 1. **Start watch mode** (in a terminal):
    ```bash
-   npm run watch
+   pnpm watch
    ```
 
 2. **Launch Extension Development Host**:
@@ -59,7 +59,7 @@ This builds both:
   - Save your changes
   - Reload the Extension Development Host window: `Cmd+R` (Mac) or `Ctrl+R` (Windows/Linux)
 
-- **Webview UI** (src/webview/App.tsx, src/webview/App.css):
+- **Webview UI** (src/webview/App.tsx, src/webview/App.css, src/webview/hooks/):
   - Changes hot-reload automatically
   - Just save and see updates instantly
 
@@ -69,7 +69,7 @@ This builds both:
 
 ```
 ┌─────────────────────────────────────┐
-│  React Webview (Chat UI)           │
+│  SolidJS Webview (Chat UI)         │
 │  - Input box                        │
 │  - Message history                  │
 │  - Thinking indicator               │
@@ -86,8 +86,8 @@ This builds both:
            │ @opencode-ai/sdk
            ▼
 ┌─────────────────────────────────────┐
-│  OpenCode Server (embedded)         │
-│  - Runs on localhost                │
+│  OpenCode Server (Bun process)      │
+│  - Spawned by extension backend     │
 │  - Uses workspace opencode.json     │
 │  - Handles AI interactions          │
 └─────────────────────────────────────┘
@@ -100,13 +100,13 @@ This builds both:
 - `src/OpenCodeService.ts`: Manages OpenCode client/server, sessions, and prompts
 - `src/OpenCodeViewProvider.ts`: Webview provider, handles message passing
 
-**Webview Side (React):**
+**Webview Side (SolidJS):**
 - `src/webview/App.tsx`: Chat UI with input, message history, thinking indicator
 - `src/webview/App.css`: Styles using VSCode theme variables
 
 **Build System:**
 - `vite.config.extension.ts`: Bundles extension (ESM → CJS for VSCode)
-- `vite.config.ts`: Bundles webview (React)
+- `vite.config.ts`: Bundles webview (SolidJS)
 
 ## Configuration
 
@@ -127,15 +127,16 @@ Example workspace config:
 ## Project Structure
 
 ```
-opencode-vscode-2/
+opencode-gui/
 ├── src/
 │   ├── extension.ts              # Extension entry point
 │   ├── OpenCodeService.ts        # OpenCode client/server manager
 │   ├── OpenCodeViewProvider.ts   # Webview provider
-│   └── webview/                  # React UI
+│   └── webview/                  # SolidJS UI
 │       ├── App.tsx               # Chat component
 │       ├── App.css               # Styles
-│       ├── main.tsx              # React entry point
+│       ├── hooks/                # SolidJS hooks
+│       ├── main.tsx              # SolidJS entry point
 │       └── vscode.d.ts           # VSCode API types
 ├── media/
 │   └── icon.svg                  # Activity bar icon
@@ -150,9 +151,10 @@ opencode-vscode-2/
 ## Tech Stack
 
 - **Extension**: TypeScript (ESM), VSCode Extension API, OpenCode SDK
-- **Webview**: React, TypeScript
+- **Webview**: SolidJS, TypeScript
 - **Build**: Vite for both extension and webview
 - **Styling**: CSS with VSCode theme variables
+- **Server**: Bun (spawned process running OpenCode server)
 
 ## Features
 
@@ -181,7 +183,7 @@ To publish a new version:
 1. Bump the version in `package.json`
 2. Set environment variable: `export OVSX_PAT=your_open_vsx_token`
 3. Login to VS Code Marketplace: `npx vsce login <publisher>`
-4. Run: `npm run publish`
+4. Run: `pnpm publish`
 
 This publishes to both VS Code Marketplace and Open VSX Registry.
 
@@ -192,8 +194,12 @@ This publishes to both VS Code Marketplace and Open VSX Registry.
 ## Troubleshooting
 
 **"Failed to start OpenCode"**
-- Make sure OpenCode CLI is installed: `which opencode`
+- Install OpenCode CLI: https://opencode.ai/install
+- Make sure OpenCode CLI is installed and on PATH:
+  - macOS/Linux: `which opencode`
+  - Windows: `where opencode`
 - Configure authentication: `opencode auth login`
+- If you installed OpenCode recently, fully restart VS Code so the extension host gets the updated PATH
 
 **"No response received"**
 - Check API credentials are valid

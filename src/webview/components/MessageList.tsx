@@ -26,8 +26,6 @@ export function MessageList(props: MessageListProps) {
   let containerRef!: HTMLDivElement;
   let contentRef!: HTMLDivElement;
   
-  console.log("[MessageList] Rendering with messages count:", props.messages.length);
-  
   const [pinned, setPinned] = createSignal(true);
   let userInteracting = false;
   let pendingRAF = false;
@@ -175,15 +173,11 @@ export function MessageList(props: MessageListProps) {
 
   // Split messages into non-queued and queued
   const nonQueuedMessages = createMemo(() => {
-    const result = props.messages.filter(msg => !isMessageQueued(msg.id, msg));
-    console.log("[MessageList] nonQueuedMessages memo recomputed", { total: props.messages.length, nonQueued: result.length });
-    return result;
+    return props.messages.filter(msg => !isMessageQueued(msg.id, msg));
   });
 
   const queuedMessages = createMemo(() => {
-    const result = props.messages.filter(msg => isMessageQueued(msg.id, msg));
-    console.log("[MessageList] queuedMessages memo recomputed", { total: props.messages.length, queued: result.length });
-    return result;
+    return props.messages.filter(msg => isMessageQueued(msg.id, msg));
   });
 
   const renderMessage = (message: Message, index: () => number) => {
@@ -248,12 +242,8 @@ export function MessageList(props: MessageListProps) {
   return (
     <div class="messages-container" ref={containerRef!} role="log" aria-label="Messages">
       <div class="messages-content" ref={contentRef!}>
-        <For each={nonQueuedMessages()} fallback={<div>No messages</div>}>
-          {(message, index) => {
-            // Log every time For creates/updates a message row
-            console.log("[MessageList] For rendering message", { id: message.id, textLen: message.text?.length });
-            return renderMessage(message, index);
-          }}
+        <For each={nonQueuedMessages()} fallback={null}>
+          {(message, index) => renderMessage(message, index)}
         </For>
 
         <ThinkingIndicator when={props.isThinking} />
