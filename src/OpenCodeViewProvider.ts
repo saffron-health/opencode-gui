@@ -133,9 +133,6 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       case "search-files":
         await this._handleSearchFiles(message.query);
         break;
-      case 'search-files':
-        await this._handleSearchFiles(message.query);
-        break;
     }
   }
 
@@ -215,34 +212,6 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       logger.error("[ViewProvider] Failed to search files", { query, error });
       this._sendMessage({
         type: "search-files-result",
-        files: [],
-      });
-    }
-  }
-
-  private async _handleSearchFiles(query: string) {
-    try {
-      const logger = getLogger();
-      logger.info('[ViewProvider] Searching files', { query });
-
-      const excludePattern = '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.vscode/**}';
-      const includePattern = `**/*${query}*`;
-      
-      const uris = await vscode.workspace.findFiles(includePattern, excludePattern, 50);
-      
-      const files = uris.map(uri => vscode.workspace.asRelativePath(uri));
-      
-      logger.info('[ViewProvider] File search complete', { query, count: files.length });
-      
-      this._sendMessage({
-        type: 'search-files-result',
-        files,
-      });
-    } catch (error) {
-      const logger = getLogger();
-      logger.error('[ViewProvider] Failed to search files', { query, error });
-      this._sendMessage({
-        type: 'search-files-result',
         files: [],
       });
     }
