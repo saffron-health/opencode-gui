@@ -72,6 +72,13 @@ function applyFieldDelta(obj: Record<string, unknown>, field: string, delta: str
   target[lastKey] = ((target[lastKey] as string) ?? "") + delta;
 }
 
+/** Prefer extracted text, but keep prior text when parts exist with no extractable text. */
+function resolveMessageText(parts: MessagePart[] | undefined, fallbackText: string | undefined): string {
+  if (!parts || parts.length === 0) return fallbackText ?? "";
+  const extracted = extractTextFromParts(parts);
+  return extracted.length > 0 ? extracted : (fallbackText ?? "");
+}
+
 export function applyEvent(event: Event, ctx: EventHandlerContext): void {
   const { store, setStore, currentSessionId, messageToSession, sessionIdleCallbacks } = ctx;
   
@@ -92,11 +99,10 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       const result = findById(messages, info.id, (m) => m.id);
       const prev = result.found ? messages[result.index] : undefined;
 
-      // Compute text from existing parts in the store
-      const partsForText = store.part[info.id] ?? [];
-      const nextText = partsForText.length > 0 
-        ? extractTextFromParts(partsForText)
-        : (prev?.text ?? "");
+      // Compute text from existing parts in the store.
+      // Keep previous text if current part snapshot has no extractable text yet.
+      const partsForText = store.part[info.id];
+      const nextText = resolveMessageText(partsForText, prev?.text);
 
       const msg: Message = {
         id: info.id,
@@ -254,11 +260,12 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
           // Update message text from parts when text field changes
           if (dField === "text") {
             const updatedParts = store.part[dMessageID] ?? [];
-            const newText = extractTextFromParts(updatedParts);
             const msgs = store.message[dSessionId];
             if (msgs) {
               const msgResult = findById(msgs, dMessageID, (m) => m.id);
               if (msgResult.found) {
+                const prevText = msgs[msgResult.index]?.text;
+                const newText = resolveMessageText(updatedParts, prevText);
                 setStore("message", dSessionId, msgResult.index, "text", newText);
               }
             }
@@ -293,7 +300,22 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
         } else {
           const result = findById(parts, part.id, (p) => p.id);
           if (result.found) {
-            setStore("part", sdkPart.messageID, result.index, reconcile(part));
+            // Merge partial updates into the existing part so we don't drop
+            // streamed fields (for example text accumulated via delta events).
+            setStore("part", sdkPart.messageID, result.index, produce((draft: MessagePart) => {
+              const incoming = part as Record<string, unknown>;
+              const draftRecord = draft as Record<string, unknown>;
+              for (const [key, value] of Object.entries(incoming)) {
+                if (key === "state" || value === undefined) continue;
+                draftRecord[key] = value;
+              }
+              if (part.state !== undefined) {
+                draft.state = {
+                  ...(draft.state ?? {}),
+                  ...part.state,
+                };
+              }
+            }));
           } else {
             // Append new parts using array replacement (not produce+push)
             setStore("part", sdkPart.messageID, [...parts, part]);
@@ -309,7 +331,7 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
             const newMsg: Message = {
               id: sdkPart.messageID,
               type: "assistant",
-              text: "",
+              text: resolveMessageText(store.part[sdkPart.messageID], ""),
             };
             setStore("message", sessionId, [newMsg]);
           } else {
@@ -318,7 +340,7 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
               const newMsg: Message = {
                 id: sdkPart.messageID,
                 type: "assistant",
-                text: "",
+                text: resolveMessageText(store.part[sdkPart.messageID], ""),
               };
               // Replace array (not in-place mutate) so messages memo propagates
               setStore("message", sessionId, [...messages, newMsg]);
@@ -326,7 +348,8 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
               // Update the message's text from the updated parts
               // This triggers reactivity so UI re-renders when parts stream in
               const updatedParts = store.part[sdkPart.messageID] ?? [];
-              const newText = extractTextFromParts(updatedParts);
+              const prevText = messages[msgResult.index]?.text;
+              const newText = resolveMessageText(updatedParts, prevText);
               setStore("message", sessionId, msgResult.index, "text", newText);
             }
           }

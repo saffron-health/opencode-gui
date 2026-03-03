@@ -31,7 +31,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm dev --port 5199 --strictPort",
+    command: "pnpm dev:webview --port 5199 --strictPort",
     url: "http://localhost:5199/src/webview/index.html",
     reuseExistingServer: !process.env.CI,
     timeout: 120000,

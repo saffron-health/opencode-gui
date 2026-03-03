@@ -2,6 +2,7 @@
 import { For, Show, createMemo, type Accessor } from "solid-js";
 import type { Message, Permission, MessagePart } from "../types";
 import { MessagePartRenderer } from "./MessagePartRenderer";
+import { isRenderablePart } from "./MessagePartRenderer";
 import { Streamdown } from "../lib/streamdown";
 import { vscode } from "../utils/vscode";
 import { useSync } from "../state/sync";
@@ -18,8 +19,10 @@ interface MessageItemProps {
 export function MessageItem(props: MessageItemProps) {
   const sync = useSync();
   // TUI pattern: parts are passed as prop, already reactive
-  const hasParts = () => props.parts.length > 0;
   const isUser = () => props.message.type === "user";
+  const hasAnyParts = () => props.parts.length > 0;
+  const renderableParts = createMemo(() => props.parts.filter(isRenderablePart));
+  const hasRenderableParts = () => renderableParts().length > 0;
   
   // Derive user message text from parts (text parts only, excluding synthetic/ignored)
   const userText = createMemo(() => {
@@ -81,60 +84,67 @@ export function MessageItem(props: MessageItemProps) {
         };
       });
   });
-  
+
+  const assistantText = createMemo(() => (props.message.text ?? "").trim());
+  const shouldRenderAssistantMessage = createMemo(
+    () => isUser() || hasAnyParts() || assistantText().length > 0
+  );
+
   return (
-    <div class={`message message--${props.message.type}`} role="article" aria-label={`${props.message.type} message`}>
-      <div class="message-content">
-        <Show when={isUser()}>
-          <Show when={userAttachments().length > 0}>
-            <div class="message-attachments">
-              <For each={userAttachments()}>
-                {(attachment) => (
-                  <button
-                    type="button"
-                    class="message-attachment"
-                    title={attachment.title ?? attachment.label}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (!attachment.url) return;
-                      vscode.postMessage({
-                        type: "open-file",
-                        url: attachment.url,
-                        startLine: attachment.startLine,
-                        endLine: attachment.endLine,
-                      });
-                    }}
-                  >
-                    <span class="message-attachment__text">{attachment.label}</span>
-                  </button>
-                )}
-              </For>
-            </div>
+    <Show when={shouldRenderAssistantMessage()}>
+      <div class={`message message--${props.message.type}`} role="article" aria-label={`${props.message.type} message`}>
+        <div class="message-content">
+          <Show when={isUser()}>
+            <Show when={userAttachments().length > 0}>
+              <div class="message-attachments">
+                <For each={userAttachments()}>
+                  {(attachment) => (
+                    <button
+                      type="button"
+                      class="message-attachment"
+                      title={attachment.title ?? attachment.label}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (!attachment.url) return;
+                        vscode.postMessage({
+                          type: "open-file",
+                          url: attachment.url,
+                          startLine: attachment.startLine,
+                          endLine: attachment.endLine,
+                        });
+                      }}
+                    >
+                      <span class="message-attachment__text">{attachment.label}</span>
+                    </button>
+                  )}
+                </For>
+              </div>
+            </Show>
+            <Show when={userText()}>
+              <div class="message-text user-message-text">{userText()}</div>
+            </Show>
           </Show>
-          <Show when={userText()}>
-            <div class="message-text user-message-text">{userText()}</div>
-          </Show>
-        </Show>
-        <Show
-          when={!isUser()}
-          fallback={null}
-        >
-          <Show 
-            when={hasParts()} 
-            fallback={
-              <Show when={props.message.text}>
-                <Streamdown mode={props.isStreaming ? "streaming" : "static"} class="message-text">
-                  {props.message.text!}
-                </Streamdown>
-              </Show>
-            }
+          <Show
+            when={!isUser()}
+            fallback={null}
           >
-            <For each={props.parts}>
-              {(part) => <MessagePartRenderer part={part} workspaceRoot={props.workspaceRoot} pendingPermissions={props.pendingPermissions} onPermissionResponse={props.onPermissionResponse} isStreaming={props.isStreaming} />}
-            </For>
+            <Show 
+              when={hasRenderableParts()} 
+              fallback={
+                <Show when={props.message.text}>
+                  <Streamdown mode={props.isStreaming ? "streaming" : "static"} class="message-text">
+                    {props.message.text!}
+                  </Streamdown>
+                </Show>
+              }
+            >
+              <For each={renderableParts()}>
+                {(part) => <MessagePartRenderer part={part} workspaceRoot={props.workspaceRoot} pendingPermissions={props.pendingPermissions} onPermissionResponse={props.onPermissionResponse} isStreaming={props.isStreaming} />}
+              </For>
+            </Show>
           </Show>
-        </Show>
+        </div>
       </div>
-    </div>
+    </Show>
   );
 }

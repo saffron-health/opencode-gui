@@ -29,12 +29,12 @@ interface MessageWithParts {
 export interface BootstrapContext {
   client: {
     app: { agents: () => Promise<{ data?: SDKAgent[] }> };
-    session: {
-      list: (opts?: { directory?: string }) => Promise<{ data?: SDKSession[] }>;
-      messages: (opts: { sessionID: string }) => Promise<{ data?: MessageWithParts[] }>;
-      get: (opts: { sessionID: string }) => Promise<{ data?: SDKSession }>;
-      status: (opts?: { directory?: string }) => Promise<{ data?: { [key: string]: any } }>;
-    };
+  session: {
+    list: (opts?: { directory?: string }) => Promise<{ data?: SDKSession[] }>;
+    messages: (opts: { sessionID: string }) => Promise<{ data?: MessageWithParts[] }>;
+    get: (opts: { sessionID: string }) => Promise<{ data?: SDKSession }>;
+    status?: (opts?: { directory?: string }) => Promise<{ data?: { [key: string]: any } }>;
+  };
     permission: {
       list: (opts?: { directory?: string }) => Promise<{ data?: any[] }>;
     };
@@ -109,10 +109,15 @@ const HIDDEN_AGENTS = new Set(["compaction", "title", "summary"]);
 export async function fetchBootstrapData(ctx: BootstrapContext): Promise<BootstrapResult> {
   const { client, sessionId, workspaceRoot } = ctx;
 
+  const sessionStatusPromise =
+    typeof client.session.status === "function"
+      ? client.session.status(workspaceRoot ? { directory: workspaceRoot } : undefined)
+      : Promise.resolve<{ data?: { [key: string]: any } }>({ data: {} });
+
   const [agentsRes, sessionsRes, sessionStatusRes] = await Promise.all([
     client.app.agents(),
     client.session.list(workspaceRoot ? { directory: workspaceRoot } : undefined),
-    client.session.status(workspaceRoot ? { directory: workspaceRoot } : undefined),
+    sessionStatusPromise,
   ]);
 
   const agents = (agentsRes?.data ?? [])

@@ -23,6 +23,12 @@ function isHiddenSystemTask(part: MessagePart): boolean {
   return !!subagentType && HIDDEN_SUBAGENT_TYPES.has(subagentType);
 }
 
+export function isRenderablePart(part: MessagePart): boolean {
+  if (isHiddenSystemTask(part)) return false;
+  if (part.type === "step-start" || part.type === "step-finish") return false;
+  return part.type === "text" || part.type === "reasoning" || part.type === "tool";
+}
+
 export function MessagePartRenderer(props: MessagePartRendererProps) {
   // Hide system task tool calls (compaction, title, summary)
   if (isHiddenSystemTask(props.part)) {

@@ -90,8 +90,9 @@ export class CallHandle<TArgs extends any[] = any[], TReturn = any> {
 	async reject(error: any): Promise<void> {
 		this.record.resultContainer = { success: false, error };
 		if (this.record.underlyingPromiseReady) {
-			// Signal that we don't need the underlying promise
-			this.record.underlyingPromise = Promise.reject(error);
+			// Signal that we don't need the underlying promise. Keep this resolved
+			// to avoid unhandled rejection warnings when tests inject failures.
+			this.record.underlyingPromise = Promise.resolve(undefined as unknown as TReturn);
 			this.record.underlyingPromiseReady.resolve();
 		}
 		this.record.enterDeferred.resolve();

@@ -62,6 +62,9 @@ export function TiptapEditor(props: TiptapEditorProps) {
       attributes: {
         class: "tiptap-editor",
         "data-placeholder": props.placeholder || "",
+        role: "textbox",
+        "aria-label": "Message input",
+        "aria-multiline": "true",
       },
       handleKeyDown: (view, event) => {
         // Let Tiptap handle suggestion navigation first
