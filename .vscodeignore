@@ -1,5 +1,8 @@
 .vscode/**
 .vscode-test/**
+.vscode-test-debug/**
+.vscode-test-user-data/**
+.vscode-test-demo/**
 tmp/**
 .opencode/**
 .agents/**
@@ -34,6 +37,12 @@ dark.jsonc
 media/preview.png
 .npmrc
 pnpm-lock.yaml
+scripts/**
+specs/**
+.bin/**
+tsconfig.integration.json
+playwright.config.ts
+opencode.json
 uikit.html
 uikit.tsx
 uikit.css
