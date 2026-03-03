@@ -194,8 +194,12 @@ This publishes to both VS Code Marketplace and Open VSX Registry.
 ## Troubleshooting
 
 **"Failed to start OpenCode"**
-- Make sure OpenCode CLI is installed: `which opencode`
+- Install OpenCode CLI: https://opencode.ai/install
+- Make sure OpenCode CLI is installed and on PATH:
+  - macOS/Linux: `which opencode`
+  - Windows: `where opencode`
 - Configure authentication: `opencode auth login`
+- If you installed OpenCode recently, fully restart VS Code so the extension host gets the updated PATH
 
 **"No response received"**
 - Check API credentials are valid
