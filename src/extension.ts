@@ -31,9 +31,6 @@ export async function activate(context: vscode.ExtensionContext) {
     logger.info("OpenCode service initialized successfully");
   } catch (error) {
     logger.error("Failed to initialize OpenCode service", error);
-    vscode.window.showErrorMessage(
-      "Failed to start OpenCode. Please check your configuration."
-    );
   }
 
   const provider = new OpenCodeViewProvider(
