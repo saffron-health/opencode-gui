@@ -114,14 +114,23 @@ function App() {
     }
   };
 
-  // Current agent for the active session
-  const selectedAgent = () => sessionAgents().get(sessionKey()) || defaultAgent();
+  // Current agent for the active session.
+  // New-session mode always uses the global default; existing sessions can override it.
+  const selectedAgent = () => {
+    const sessionId = sync.currentSessionId();
+    return sessionId ? sessionAgents().get(sessionId) || defaultAgent() : defaultAgent();
+  };
   const setSelectedAgent = (agent: string | null) => {
     if (!agent) return;
-    const key = sessionKey();
+    const sessionId = sync.currentSessionId();
+    if (!sessionId) {
+      // In new-session mode, agent choice defines the default for subsequent sessions.
+      setDefaultAgent(agent);
+      return;
+    }
     setSessionAgents((prev) => {
       const next = new Map(prev);
-      next.set(key, agent);
+      next.set(sessionId, agent);
       return next;
     });
   };
