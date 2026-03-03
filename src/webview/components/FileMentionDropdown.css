@@ -1,0 +1,58 @@
+.file-mention-dropdown {
+  /* Position is set inline via style prop */
+  min-width: 300px;
+  max-width: 425px;
+  max-height: 194px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--vscode-quickInput-background);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 3px;
+  box-shadow: var(--shadow-subtle);
+  padding: 0;
+}
+
+.file-mention-dropdown__empty {
+  padding: 4px 8px;
+  color: var(--vscode-disabledForeground, #6c6c6c);
+  font-size: 12px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+
+.file-mention-dropdown__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  height: 24px;
+  color: var(--vscode-quickInput-foreground, #cccccc);
+}
+
+.file-mention-dropdown__item:hover,
+.file-mention-dropdown__item--selected {
+  background: var(--vscode-list-hoverBackground, #2a2d2e);
+}
+
+/* Icons removed */
+
+.file-mention-dropdown__name {
+  flex-shrink: 0;
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.file-mention-dropdown__path {
+  flex-grow: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground, #6c6c6c);
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+/* Path color stays subdued on hover */

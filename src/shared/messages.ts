@@ -34,6 +34,10 @@ export const MessageSchema = z.object({
   id: z.string(),
   type: z.enum(["user", "assistant"]),
   text: z.string().optional(),
+  time: z.object({
+    created: z.number(),
+    completed: z.number().optional(),
+  }).optional(),
   // Note: parts are stored separately in store.part[messageID], not on Message
 });
 export type Message = z.infer<typeof MessageSchema>;
@@ -183,6 +187,10 @@ export const HostMessageSchema = z.discriminatedUnion("type", [
       })
       .optional(),
   }),
+  z.object({
+    type: z.literal("search-files-result"),
+    files: z.array(z.string()),
+  }),
 ]);
 export type HostMessage = z.infer<typeof HostMessageSchema>;
 
@@ -207,6 +215,10 @@ export const WebviewMessageSchema = z.discriminatedUnion("type", [
     url: z.string(),
     startLine: z.number().optional(),
     endLine: z.number().optional(),
+  }),
+  z.object({
+    type: z.literal("search-files"),
+    query: z.string(),
   }),
 ]);
 export type WebviewMessage = z.infer<typeof WebviewMessageSchema>;

@@ -144,6 +144,14 @@ describe("HostMessageSchema", () => {
     expect(HostMessageSchema.parse(msg)).toEqual(msg);
   });
 
+  it("parses search-files-result message", () => {
+    const msg = {
+      type: "search-files-result",
+      files: ["src/index.ts", "src/App.tsx", "package.json"],
+    };
+    expect(HostMessageSchema.parse(msg)).toEqual(msg);
+  });
+
   it("rejects unknown message type", () => {
     expect(() => HostMessageSchema.parse({ type: "unknown" })).toThrow();
   });
@@ -156,6 +164,11 @@ describe("WebviewMessageSchema", () => {
 
   it("parses agent-changed message", () => {
     const msg = { type: "agent-changed", agent: "coder" };
+    expect(WebviewMessageSchema.parse(msg)).toEqual(msg);
+  });
+
+  it("parses search-files message", () => {
+    const msg = { type: "search-files", query: "index" };
     expect(WebviewMessageSchema.parse(msg)).toEqual(msg);
   });
 

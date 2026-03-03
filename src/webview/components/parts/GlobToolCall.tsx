@@ -33,7 +33,7 @@ export function GlobToolCall(props: GlobToolCallProps) {
         <span class="tool-text" style={{ "font-family": "monospace" }}>
           {(inputs().pattern as string) || "Searching files"}
         </span>
-        <Show when={resultsCount() !== null && resultsCount()! > 0}>
+        <Show when={resultsCount() !== null}>
           <span class="tool-sub-text">{resultsCount()} results</span>
         </Show>
       </span>

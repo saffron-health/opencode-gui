@@ -1,0 +1,63 @@
+.tiptap-editor-container {
+  width: 100%;
+  min-height: 40px;
+  flex: 1;
+}
+
+.tiptap-editor {
+  width: 100%;
+  min-height: 40px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  outline: none;
+}
+
+.tiptap-editor:focus {
+  outline: none;
+}
+
+.tiptap-editor[data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--vscode-input-placeholderForeground, #6c6c6c);
+  pointer-events: none;
+  position: absolute;
+}
+
+.tiptap-editor p {
+  margin: 0;
+}
+
+.tiptap-editor p + p {
+  margin-top: 4px;
+}
+
+/* File mention styles */
+.tiptap-editor .file-mention {
+  display: inline-block;
+  padding: 2px 6px;
+  margin: 0 2px;
+  background: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.tiptap-editor .file-mention:hover {
+  background: var(--vscode-badge-background, #5a5a5a);
+}
+
+/* Prosemirror selection styles */
+.tiptap-editor .ProseMirror-selectednode {
+  outline: 2px solid var(--vscode-focusBorder, #007acc);
+  border-radius: 3px;
+}

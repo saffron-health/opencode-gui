@@ -33,7 +33,7 @@ export function GrepToolCall(props: GrepToolCallProps) {
         <span class="tool-text" style={{ "font-family": "monospace" }}>
           {(inputs().pattern as string) || "Searching content"}
         </span>
-        <Show when={resultsCount() !== null && resultsCount()! > 0}>
+        <Show when={resultsCount() !== null}>
           <span class="tool-sub-text">{resultsCount()} results</span>
         </Show>
       </span>

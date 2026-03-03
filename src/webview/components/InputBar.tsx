@@ -1,7 +1,9 @@
-import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Agent } from "../types";
 import type { QueuedMessage } from "../App";
 import { AgentSwitcher } from "./AgentSwitcher";
+import { TiptapEditor } from "./TiptapEditor";
+import { vscode } from "../utils/vscode";
 
 interface InputBarProps {
   value: string;
@@ -19,6 +21,7 @@ interface InputBarProps {
   onEditQueuedMessage: (id: string) => void;
   attachments: InputAttachment[];
   onRemoveAttachment: (id: string) => void;
+  editorRef?: (methods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void; focus: () => void }) => void;
 }
 
 interface InputAttachment {
@@ -28,24 +31,34 @@ interface InputAttachment {
 }
 
 export function InputBar(props: InputBarProps) {
-  let inputRef!: HTMLTextAreaElement;
   const [isShiftHeld, setIsShiftHeld] = createSignal(false);
+  let editorMethods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void; focus: () => void } | null = null;
 
-  const adjustTextareaHeight = () => {
-    if (inputRef) {
-      inputRef.style.height = "auto";
-      inputRef.style.height = `${Math.min(inputRef.scrollHeight, 120)}px`;
-    }
+  const searchFiles = async (query: string): Promise<string[]> => {
+    return new Promise((resolve) => {
+      const handleMessage = (event: MessageEvent) => {
+        const message = event.data;
+        if (message.type === "search-files-result") {
+          window.removeEventListener("message", handleMessage);
+          resolve(message.files);
+        }
+      };
+      
+      window.addEventListener("message", handleMessage);
+      
+      vscode.postMessage({
+        type: "search-files",
+        query,
+      });
+      
+      setTimeout(() => {
+        window.removeEventListener("message", handleMessage);
+        resolve([]);
+      }, 5000);
+    });
   };
 
-  createEffect(() => {
-    props.value;
-    adjustTextareaHeight();
-  });
-
   onMount(() => {
-    inputRef?.focus();
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Shift") {
         setIsShiftHeld(true);
@@ -79,31 +92,14 @@ export function InputBar(props: InputBarProps) {
     props.onSubmit();
   };
 
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape" && props.isThinking) {
-      e.preventDefault();
-      props.onCancel();
-      return;
-    }
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      if (props.isThinking && e.shiftKey && props.value.trim()) {
-        props.onQueue();
-      } else if (!props.isThinking || props.value.trim()) {
-        handleSubmit(e);
-      }
-    }
-  };
-
   const handleContainerClick = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     if (
       !target.closest("button") &&
       !target.closest(".agent-switcher-button") &&
-      !target.closest(".queued-message") &&
-      inputRef
+      !target.closest(".queued-message")
     ) {
-      inputRef.focus();
+      editorMethods?.focus();
     }
   };
 
@@ -161,14 +157,16 @@ export function InputBar(props: InputBarProps) {
             </For>
           </div>
         </Show>
-        <textarea
-          ref={inputRef!}
-          class="prompt-input"
-          placeholder=""
+        <TiptapEditor
           value={props.value}
-          onInput={(e) => props.onInput(e.currentTarget.value)}
-          onKeyDown={handleKeyDown}
-          aria-label="Message input"
+          onInput={props.onInput}
+          onSubmit={() => handleSubmit(new Event("submit"))}
+          disabled={props.disabled}
+          searchFiles={searchFiles}
+          ref={(methods) => {
+            editorMethods = methods;
+            props.editorRef?.(methods);
+          }}
         />
         <div class="input-buttons">
           <Show when={props.agents.length > 0 && !props.isThinking}>

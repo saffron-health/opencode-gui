@@ -18,7 +18,7 @@ export interface QueuedMessage {
   attachments: SelectionAttachment[];
 }
 
-// In-flight message tracking for the outbox
+// In-flight message tracking for the outbox (used for queue draining)
 interface InFlightMessage {
   messageID: string;
   sessionId: string;
@@ -33,6 +33,7 @@ interface SelectionAttachment {
 import { vscode } from "./utils/vscode";
 import { Id } from "./utils/id";
 import { logger } from "./utils/logger";
+import { extractMentions } from "./utils/editorContent";
 
 const NEW_SESSION_KEY = "__new__";
 
@@ -43,6 +44,7 @@ function App() {
   // Local UI-only state
   const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
+  const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
   const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
   const [selectionAttachmentsBySession, setSelectionAttachmentsBySession] = createSignal<
     Map<string, SelectionAttachment[]>
@@ -57,6 +59,9 @@ function App() {
   
   // In-flight message tracking for outbox pattern
   const [inFlightMessage, setInFlightMessage] = createSignal<InFlightMessage | null>(null);
+  
+  // Editor methods for managing content
+  let editorMethods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void } | null = null;
 
   // Get SDK hook for actions only
   const {
@@ -93,6 +98,20 @@ function App() {
       next.set(key, value);
       return next;
     });
+    
+    // Also save the editor JSON content when available
+    if (editorMethods) {
+      try {
+        const json = editorMethods.getJSON();
+        setDraftContents((prev) => {
+          const next = new Map(prev);
+          next.set(key, json);
+          return next;
+        });
+      } catch (err) {
+        // Editor might not be ready yet
+      }
+    }
   };
 
   // Current agent for the active session
@@ -108,14 +127,15 @@ function App() {
   };
   
   // Convenience accessors from sync store
-  const messages = () => sync.messages();
-  const agents = () => sync.agents();
-  const sessions = () => sync.sessions();
-  const pendingPermissions = () => sync.aggregatedPermissions();
-  const contextInfo = () => sync.contextInfo();
-  const fileChanges = () => sync.fileChanges();
-  const isThinking = () => sync.isThinking();
-  const sessionError = () => sync.sessionError();
+  // Use the sync memos directly (not wrapped in functions) to maintain reactivity
+  const messages = sync.messages;
+  const agents = sync.agents;
+  const sessions = sync.sessions;
+  const pendingPermissions = sync.aggregatedPermissions;
+  const contextInfo = sync.contextInfo;
+  const fileChanges = sync.fileChanges;
+  const isThinking = sync.isThinking;
+  const sessionError = sync.sessionError;
 
   const selectionAttachments = () => selectionAttachmentsBySession().get(sessionKey()) || [];
   const setSelectionAttachmentsForKey = (
@@ -281,6 +301,20 @@ function App() {
       setDefaultAgent(agentList[0].name);
     }
   });
+
+  // Restore editor content when session changes
+  createEffect(() => {
+    const key = sessionKey();
+    const savedContent = draftContents().get(key);
+    
+    if (editorMethods && savedContent) {
+      try {
+        editorMethods.setContent(savedContent);
+      } catch (err) {
+        logger.error("Failed to restore editor content", { error: err });
+      }
+    }
+  });
   
   // Clear inFlightMessage when session becomes idle and trigger queue drain
   onMount(() => {
@@ -312,7 +346,31 @@ function App() {
       ? selectedAgent()
       : null;
     const attachmentsKey = sessionKey();
-    const attachments = selectionAttachments();
+    let attachments = selectionAttachments();
+    
+    // Extract mentions from editor and add to attachments
+    if (editorMethods) {
+      try {
+        const editorJSON = editorMethods.getJSON();
+        const mentionedFiles = extractMentions(editorJSON);
+        const workspaceRoot = sync.workspaceRoot() || "";
+        
+        // Convert file paths to SelectionAttachment objects
+        const mentionAttachments: SelectionAttachment[] = mentionedFiles.map((path) => ({
+          id: `mention-${path}`,
+          filePath: path,
+          fileUrl: `file://${workspaceRoot}/${path}`,
+        }));
+        
+        // Merge with existing attachments (avoid duplicates)
+        const existingPaths = new Set(attachments.map(a => a.filePath));
+        const newAttachments = mentionAttachments.filter(a => !existingPaths.has(a.filePath));
+        attachments = [...attachments, ...newAttachments];
+      } catch (err) {
+        logger.error("Failed to extract mentions", { error: err });
+      }
+    }
+    
     const extraParts = buildSelectionParts(attachments);
 
     // Generate sortable client-side messageID for idempotent sends
@@ -336,7 +394,17 @@ function App() {
       }
     }
 
+    // Clear both text and JSON content
     setInput("");
+    if (editorMethods) {
+      editorMethods.clear();
+    }
+    const key = sessionKey();
+    setDraftContents((prev) => {
+      const next = new Map(prev);
+      next.delete(key);
+      return next;
+    });
     sync.setThinking(sessionId, true);
 
     // Track this message as in-flight
@@ -470,6 +538,15 @@ function App() {
     
     setMessageQueue((prev) => [...prev, queuedMessage]);
     setInput("");
+    if (editorMethods) {
+      editorMethods.clear();
+    }
+    const key = sessionKey();
+    setDraftContents((prev) => {
+      const next = new Map(prev);
+      next.delete(key);
+      return next;
+    });
     if (attachments.length > 0) {
       setSelectionAttachmentsForKey(attachmentsKey, []);
     }
@@ -489,6 +566,10 @@ function App() {
     setMessageQueue(queue.slice(0, index));
     // Put the message text in the input
     setInput(message.text);
+    // Set plain text content in editor (JSON not saved for queued messages)
+    if (editorMethods) {
+      editorMethods.setContent(message.text);
+    }
     setSelectionAttachments(message.attachments);
     // Set the agent if different
     if (message.agent) {
@@ -689,6 +770,7 @@ function App() {
           onEditQueuedMessage={handleEditQueuedMessage}
           attachments={attachmentChips()}
           onRemoveAttachment={handleRemoveAttachment}
+          editorRef={(methods) => { editorMethods = methods; }}
         />
       </Show>
 
@@ -744,6 +826,7 @@ function App() {
           onEditQueuedMessage={handleEditQueuedMessage}
           attachments={attachmentChips()}
           onRemoveAttachment={handleRemoveAttachment}
+          editorRef={(methods) => { editorMethods = methods; }}
         />
       </Show>
     </div>

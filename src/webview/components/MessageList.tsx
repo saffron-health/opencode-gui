@@ -1,5 +1,5 @@
 
-import { For, Show, createSignal, onMount, onCleanup, createEffect, on, type Accessor } from "solid-js";
+import { For, Show, createSignal, onMount, onCleanup, createEffect, createMemo, on, type Accessor } from "solid-js";
 import type { Message, Permission } from "../types";
 import { MessageItem } from "./MessageItem";
 import { EditableUserMessage } from "./EditableUserMessage";
@@ -142,6 +142,24 @@ export function MessageList(props: MessageListProps) {
     return props.messages.findIndex(m => m.id === messageId);
   };
 
+  // Find the last assistant message that hasn't completed yet
+  const pendingAssistantMessageId = createMemo(() => {
+    const msgs = props.messages;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const msg = msgs[i];
+      if (msg.type === "assistant" && !msg.time?.completed) {
+        return msg.id;
+      }
+    }
+    return null;
+  });
+
+  const isMessageQueued = (messageId: string, message: Message) => {
+    // User messages are queued if sent after pending assistant message started
+    const pending = pendingAssistantMessageId();
+    return pending && message.type === "user" && messageId > pending;
+  };
+
   const isMessageDimmed = (messageId: string) => {
     const editingId = props.editingMessageId;
     if (!editingId) return false;
@@ -153,69 +171,86 @@ export function MessageList(props: MessageListProps) {
     return currentIndex > editingIndex;
   };
 
+  // Split messages into non-queued and queued
+  const nonQueuedMessages = createMemo(() => {
+    return props.messages.filter(msg => !isMessageQueued(msg.id, msg));
+  });
+
+  const queuedMessages = createMemo(() => {
+    return props.messages.filter(msg => isMessageQueued(msg.id, msg));
+  });
+
+  const renderMessage = (message: Message, index: () => number) => {
+    const isLastMessage = () => index() === props.messages.length - 1;
+    const isStreaming = () => isLastMessage() && props.isThinking && message.type === "assistant";
+    const isEditing = () => props.editingMessageId === message.id;
+    const isQueued = () => isMessageQueued(message.id, message);
+    const isDimmed = () => isQueued() || isMessageDimmed(message.id);
+    
+    // Get the text content of the message for editing
+    const messageText = () => {
+      if (message.text) return message.text;
+      const msgParts = sync.getParts(message.id);
+      if (msgParts.length > 0) {
+        return msgParts
+          .filter(
+            (p) =>
+              p.type === "text" &&
+              p.text &&
+              !(p as { synthetic?: boolean }).synthetic
+          )
+          .map(p => p.text)
+          .join("\n");
+      }
+      return "";
+    };
+    
+    return (
+      <Show 
+        when={message.type === "user" && isEditing()}
+        fallback={
+          <div 
+            class={`message-wrapper ${isDimmed() ? "message-wrapper--dimmed" : ""}`}
+            onClick={() => {
+              if (message.type === "user" && props.onStartEdit && !props.isThinking) {
+                props.onStartEdit(message.id, messageText());
+              }
+            }}
+            style={{ cursor: message.type === "user" && !props.isThinking ? "text" : "default" }}
+          >
+            <MessageItem 
+              message={message}
+              parts={sync.getParts(message.id)}
+              workspaceRoot={props.workspaceRoot} 
+              pendingPermissions={props.pendingPermissions} 
+              onPermissionResponse={props.onPermissionResponse} 
+              isStreaming={isStreaming()} 
+            />
+          </div>
+        }
+      >
+        <EditableUserMessage
+          text={props.editingText || ""}
+          onTextChange={props.onEditTextChange || (() => {})}
+          onSubmit={() => props.onSubmitEdit?.(props.editingText || "")}
+          onCancel={props.onCancelEdit || (() => {})}
+        />
+      </Show>
+    );
+  };
+
   return (
     <div class="messages-container" ref={containerRef!} role="log" aria-label="Messages">
       <div class="messages-content" ref={contentRef!}>
-        <For each={props.messages}>
-          {(message, index) => {
-            const isLastMessage = () => index() === props.messages.length - 1;
-            const isStreaming = () => isLastMessage() && props.isThinking && message.type === "assistant";
-            const isEditing = () => props.editingMessageId === message.id;
-            const isDimmed = () => isMessageDimmed(message.id);
-            
-            // Get the text content of the message for editing
-            const messageText = () => {
-              if (message.text) return message.text;
-              const msgParts = sync.getParts(message.id);
-              if (msgParts.length > 0) {
-                return msgParts
-                  .filter(
-                    (p) =>
-                      p.type === "text" &&
-                      p.text &&
-                      !(p as { synthetic?: boolean }).synthetic
-                  )
-                  .map(p => p.text)
-                  .join("\n");
-              }
-              return "";
-            };
-            
-            return (
-              <Show 
-                when={message.type === "user" && isEditing()}
-                fallback={
-                  <div 
-                    class={`message-wrapper ${isDimmed() ? "message-wrapper--dimmed" : ""}`}
-                    onClick={() => {
-                      if (message.type === "user" && props.onStartEdit && !props.isThinking) {
-                        props.onStartEdit(message.id, messageText());
-                      }
-                    }}
-                    style={{ cursor: message.type === "user" && !props.isThinking ? "text" : "default" }}
-                  >
-                    <MessageItem 
-                      message={message} 
-                      workspaceRoot={props.workspaceRoot} 
-                      pendingPermissions={props.pendingPermissions} 
-                      onPermissionResponse={props.onPermissionResponse} 
-                      isStreaming={isStreaming()} 
-                    />
-                  </div>
-                }
-              >
-                <EditableUserMessage
-                  text={props.editingText || ""}
-                  onTextChange={props.onEditTextChange || (() => {})}
-                  onSubmit={() => props.onSubmitEdit?.(props.editingText || "")}
-                  onCancel={props.onCancelEdit || (() => {})}
-                />
-              </Show>
-            );
-          }}
+        <For each={nonQueuedMessages()} fallback={null}>
+          {(message, index) => renderMessage(message, index)}
         </For>
 
         <ThinkingIndicator when={props.isThinking} />
+
+        <For each={queuedMessages()}>
+          {(message, index) => renderMessage(message, index)}
+        </For>
         
         <Show when={props.sessionError}>
           <div class="session-error" role="alert">

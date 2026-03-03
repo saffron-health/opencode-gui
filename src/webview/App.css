@@ -199,6 +199,14 @@
   /* Padding combinations */
   --padding-button: var(--spacing-xs) var(--spacing-md);
   --padding-button-compact: var(--spacing-xs) var(--spacing-sm);
+
+  /* Shadows */
+  --shadow-subtle:
+    rgba(0, 0, 0, 0) 0px 0px 0px 0px,
+    rgba(0, 0, 0, 0) 0px 0px 0px 0px,
+    light-dark(rgba(38, 36, 42, 0.06), rgba(227, 226, 229, 0.06)) 0px 0px 0px 1px,
+    light-dark(rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.12)) 0px 1px 1px -0.5px,
+    light-dark(rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.12)) 0px 3px 3px -1.5px;
 }
 
 /* Use theme variables */
@@ -278,15 +286,17 @@ body {
 .message-attachment {
   display: inline-flex;
   align-items: center;
-  padding: 2px 4px;
-  border: none;
-  border-radius: 4px;
-  background-color: var(--input-background-muted);
-  color: var(--foreground);
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 50%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 30%, transparent);
+  color: color-mix(in srgb, var(--vscode-badge-foreground, #ffffff) 70%, transparent);
   font-family: var(--font-family);
-  font-size: var(--font-size-small);
+  font-size: 12px;
+  font-weight: 500;
   max-width: 100%;
   cursor: pointer;
+  transition: background-color 0.1s ease;
 }
 
 .message-attachment__text {
@@ -297,7 +307,7 @@ body {
 }
 
 .message-attachment:hover {
-  background-color: var(--hover-background-muted);
+  background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 50%, transparent);
 }
 
 /* Input Container */
@@ -1182,6 +1192,7 @@ body.vscode-high-contrast {
   background: var(--input-background);
   border: 1px solid var(--border-color);
   border-radius: 4px;
+  box-shadow: var(--shadow-subtle);
   z-index: 1000;
 }
 

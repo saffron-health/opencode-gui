@@ -1,5 +1,5 @@
 import { batch } from "solid-js";
-import { reconcile, type SetStoreFunction } from "solid-js/store";
+import { produce, reconcile, type SetStoreFunction } from "solid-js/store";
 import type {
   Agent as SDKAgent,
   Session as SDKSession,
@@ -160,6 +160,7 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
       ]);
 
       const rawMessages = messagesRes?.data ?? [];
+      console.log("[Bootstrap] Fetched messages", { count: rawMessages.length, sessionId });
 
       messageList = rawMessages
         .map((raw) => {
@@ -244,6 +245,12 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
     }
   }
 
+  console.log("[Bootstrap] Returning data", { 
+    agentCount: agents.length, 
+    sessionCount: sessions.length, 
+    messageCount: messageList.length,
+    sessionId 
+  });
   return { agents, sessions, messageList, partMap, permissionMap, sessionStatusMap, contextInfo, fileChanges };
 }
 
@@ -252,13 +259,33 @@ export function commitBootstrapData(
   sessionId: string | null,
   setStore: SetStoreFunction<SyncState>
 ): void {
+  console.log("[Bootstrap] Committing data", { 
+    messageCount: data.messageList.length, 
+    sessionId,
+    firstMsgId: data.messageList[0]?.id 
+  });
   batch(() => {
     setStore("agents", data.agents);
     setStore("sessions", data.sessions);
     if (sessionId) {
       setStore("message", sessionId, data.messageList);
+      console.log("[Bootstrap] Committed messages to store for session", sessionId);
     }
-    setStore("part", reconcile(data.partMap));
+    // Don't use reconcile for parts - it replaces the internal store proxy,
+    // which breaks reactive tracking for keys added later (e.g., assistant
+    // message parts that arrive via SSE after bootstrap).
+    // Instead, clear old entries and set new ones individually.
+    setStore("part", produce((draft) => {
+      // Remove old entries not in the new data
+      for (const key of Object.keys(draft)) {
+        if (!(key in data.partMap)) {
+          delete draft[key];
+        }
+      }
+    }));
+    for (const [messageId, parts] of Object.entries(data.partMap)) {
+      setStore("part", messageId, parts);
+    }
     setStore("permission", reconcile(data.permissionMap));
     setStore("sessionStatus", reconcile(data.sessionStatusMap));
     setStore("contextInfo", data.contextInfo);

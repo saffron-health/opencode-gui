@@ -1,14 +1,24 @@
-import * as vscode from 'vscode';
-import { OpenCodeService } from './OpenCodeService';
-import { getLogger } from './extension';
-import type { HostMessage, WebviewMessage, IncomingMessage } from './shared/messages';
-import { parseWebviewMessage } from './shared/messages';
-import { SseClient, SseConnectionState, SseEvent, SseLogger } from './transport/SseClient';
+import * as vscode from "vscode";
+import { execFile } from "child_process";
+import { OpenCodeService } from "./OpenCodeService";
+import { getLogger } from "./extension";
+import type {
+  HostMessage,
+  WebviewMessage,
+  IncomingMessage,
+} from "./shared/messages";
+import { parseWebviewMessage } from "./shared/messages";
+import {
+  SseClient,
+  SseConnectionState,
+  SseEvent,
+  SseLogger,
+} from "./transport/SseClient";
 
-const LAST_AGENT_KEY = 'opencode.lastUsedAgent';
+const LAST_AGENT_KEY = "opencode.lastUsedAgent";
 
 export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'opencode.chatView';
+  public static readonly viewType = "opencode.chatView";
   private _view?: vscode.WebviewView;
   private _sseClients = new Map<string, SseClient>();
   private _proxyFetchControllers = new Map<string, AbortController>();
@@ -18,65 +28,76 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly _extensionUri: vscode.Uri,
     private readonly _openCodeService: OpenCodeService,
-    private readonly _globalState: vscode.Memento
+    private readonly _globalState: vscode.Memento,
   ) {}
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
     context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ) {
     const logger = getLogger();
-    logger.info('resolveWebviewView called');
-    
+    logger.info("resolveWebviewView called");
+
     this._view = webviewView;
     this._webviewReady = false;
 
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this._extensionUri, 'out')
-      ]
+      localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, "out")],
+      portMapping: process.env.OPENCODE_DEV_SERVER_URL
+        ? [{ webviewPort: 5173, extensionHostPort: 5173 }]
+        : [],
     };
 
     const html = this._getHtmlForWebview(webviewView.webview);
-    logger.info('Generated webview HTML length:', html.length);
+    logger.info("Generated webview HTML length:", html.length);
     webviewView.webview.html = html;
 
     webviewView.webview.onDidReceiveMessage(async (data: unknown) => {
       // Handle proxy messages directly (they don't go through parseWebviewMessage)
-      if (typeof data === 'object' && data !== null) {
+      if (typeof data === "object" && data !== null) {
         const msg = data as Record<string, unknown>;
-        
+
         // Handle log messages from webview
-        if (msg.type === 'log') {
+        if (msg.type === "log") {
           const logger = getLogger();
-          const level = msg.level as 'debug' | 'info' | 'error';
+          const level = msg.level as "debug" | "info" | "error";
           const message = msg.message as string;
           const logData = msg.data;
-          if (level === 'error') {
+          if (level === "error") {
             logger.error(`[Webview] ${message}`, logData);
-          } else if (level === 'info') {
+          } else if (level === "info") {
             logger.info(`[Webview] ${message}`, logData);
           } else {
             logger.debug(`[Webview] ${message}`, logData);
           }
           return;
         }
-        
-        if (msg.type === 'proxyFetch') {
-          await this._handleProxyFetch(msg as { id: string; url: string; init?: { method?: string; headers?: Record<string, string>; body?: string } });
+
+        if (msg.type === "proxyFetch") {
+          await this._handleProxyFetch(
+            msg as {
+              id: string;
+              url: string;
+              init?: {
+                method?: string;
+                headers?: Record<string, string>;
+                body?: string;
+              };
+            },
+          );
           return;
         }
-        if (msg.type === 'proxyFetchAbort') {
+        if (msg.type === "proxyFetchAbort") {
           this._handleProxyFetchAbort(msg.id as string);
           return;
         }
-        if (msg.type === 'sseSubscribe') {
+        if (msg.type === "sseSubscribe") {
           this._handleSSESubscribe(msg as { id: string; url: string });
           return;
         }
-        if (msg.type === 'sseClose') {
+        if (msg.type === "sseClose") {
           this._handleSSEClose(msg.id as string);
           return;
         }
@@ -84,7 +105,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
       const message = parseWebviewMessage(data);
       if (!message) {
-        console.warn('[ViewProvider] Received invalid message from webview:', data);
+        console.warn(
+          "[ViewProvider] Received invalid message from webview:",
+          data,
+        );
         return;
       }
       await this._handleWebviewMessage(message);
@@ -93,19 +117,30 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
   private async _handleWebviewMessage(message: WebviewMessage) {
     switch (message.type) {
-      case 'ready':
+      case "ready":
         await this._handleReady();
         break;
-      case 'agent-changed':
+      case "agent-changed":
         await this._handleAgentChanged(message.agent);
         break;
-      case 'open-file':
-        await this._handleOpenFile(message.url, message.startLine, message.endLine);
+      case "open-file":
+        await this._handleOpenFile(
+          message.url,
+          message.startLine,
+          message.endLine,
+        );
+        break;
+      case "search-files":
+        await this._handleSearchFiles(message.query);
         break;
     }
   }
 
-  private async _handleOpenFile(url: string, startLine?: number, endLine?: number) {
+  private async _handleOpenFile(
+    url: string,
+    startLine?: number,
+    endLine?: number,
+  ) {
     try {
       const uri = vscode.Uri.parse(url);
       const document = await vscode.workspace.openTextDocument(uri);
@@ -114,40 +149,102 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       });
       if (startLine !== undefined) {
         const start = new vscode.Position(Math.max(startLine - 1, 0), 0);
-        const end = new vscode.Position(Math.max((endLine ?? startLine) - 1, 0), 0);
+        const end = new vscode.Position(
+          Math.max((endLine ?? startLine) - 1, 0),
+          0,
+        );
         const range = new vscode.Range(start, end);
         editor.selection = new vscode.Selection(range.start, range.end);
         editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
       }
     } catch (error) {
       const logger = getLogger();
-      logger.error('[ViewProvider] Failed to open file', { url, error });
-      vscode.window.showErrorMessage('OpenCode: Failed to open file.');
+      logger.error("[ViewProvider] Failed to open file", { url, error });
+      vscode.window.showErrorMessage("OpenCode: Failed to open file.");
+    }
+  }
+
+  private async _handleSearchFiles(query: string) {
+    try {
+      const logger = getLogger();
+      logger.info("[ViewProvider] Searching files", { query });
+
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        this._sendMessage({ type: "search-files-result", files: [] });
+        return;
+      }
+
+      const cwd = workspaceFolder.uri.fsPath;
+      const lowerQuery = query.toLowerCase();
+
+      const files = await new Promise<string[]>((resolve) => {
+        execFile(
+          "git",
+          ["ls-files", "--cached", "--others", "--exclude-standard"],
+          { cwd, maxBuffer: 10 * 1024 * 1024 },
+          (error, stdout) => {
+            if (error) {
+              logger.error("[ViewProvider] git ls-files failed", { error });
+              resolve([]);
+              return;
+            }
+            const matches = stdout
+              .split("\n")
+              .filter((f) => f && f.toLowerCase().includes(lowerQuery))
+              .slice(0, 50);
+            resolve(matches);
+          },
+        );
+      });
+
+      logger.info("[ViewProvider] File search complete", {
+        query,
+        count: files.length,
+      });
+
+      this._sendMessage({
+        type: "search-files-result",
+        files,
+      });
+    } catch (error) {
+      const logger = getLogger();
+      logger.error("[ViewProvider] Failed to search files", { query, error });
+      this._sendMessage({
+        type: "search-files-result",
+        files: [],
+      });
     }
   }
 
   private async _handleReady() {
     try {
-      const currentSessionId = this._openCodeService.getCurrentSessionId() ?? undefined;
-      const currentSessionTitle = this._openCodeService.getCurrentSessionTitle();
-      
+      const currentSessionId =
+        this._openCodeService.getCurrentSessionId() ?? undefined;
+      const currentSessionTitle =
+        this._openCodeService.getCurrentSessionTitle();
+
       let messages: IncomingMessage[] | undefined;
       if (currentSessionId) {
         try {
-          const sdkMessages = await this._openCodeService.getMessages(currentSessionId);
+          const sdkMessages =
+            await this._openCodeService.getMessages(currentSessionId);
           // Transform SDK Message[] to IncomingMessage[]
-          messages = sdkMessages.map(msg => ({
+          messages = sdkMessages.map((msg) => ({
             id: msg.id,
             role: msg.role,
           }));
         } catch (error) {
-          console.error('Error loading session messages:', error);
-          this._sendMessage({ type: 'error', message: `Failed to load session messages: ${(error as Error).message}` });
+          console.error("Error loading session messages:", error);
+          this._sendMessage({
+            type: "error",
+            message: `Failed to load session messages: ${(error as Error).message}`,
+          });
         }
       }
-      
+
       this._sendMessage({
-        type: 'init',
+        type: "init",
         ready: this._openCodeService.isReady(),
         workspaceRoot: this._openCodeService.getWorkspaceRoot(),
         serverUrl: this._openCodeService.getServerUrl(),
@@ -159,14 +256,17 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       this._webviewReady = true;
       this._flushPendingMessages();
     } catch (error) {
-      console.error('Error handling ready:', error);
-      this._sendMessage({ type: 'error', message: `Failed to initialize: ${(error as Error).message}` });
+      console.error("Error handling ready:", error);
       this._sendMessage({
-        type: 'init',
+        type: "error",
+        message: `Failed to initialize: ${(error as Error).message}`,
+      });
+      this._sendMessage({
+        type: "init",
         ready: this._openCodeService.isReady(),
         workspaceRoot: this._openCodeService.getWorkspaceRoot(),
         serverUrl: this._openCodeService.getServerUrl(),
-        currentSessionId: undefined
+        currentSessionId: undefined,
       });
       this._webviewReady = true;
       this._flushPendingMessages();
@@ -176,7 +276,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   private async _handleAgentChanged(agent: string) {
     await this._globalState.update(LAST_AGENT_KEY, agent);
     const logger = getLogger();
-    logger.info('[ViewProvider] Agent selection persisted:', agent);
+    logger.info("[ViewProvider] Agent selection persisted:", agent);
   }
 
   // SSE Proxy handlers using resilient SseClient
@@ -184,14 +284,18 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     const { id, url } = message;
     const logger = getLogger();
 
-    if (typeof id !== 'string' || typeof url !== 'string') {
-      logger.warn('[ViewProvider] Invalid sseSubscribe message', message);
+    if (typeof id !== "string" || typeof url !== "string") {
+      logger.warn("[ViewProvider] Invalid sseSubscribe message", message);
       return;
     }
 
     const serverUrl = this._openCodeService.getServerUrl();
     if (!serverUrl) {
-      this._sendMessage({ type: 'sseError', id, error: 'OpenCode server URL not configured' } as HostMessage);
+      this._sendMessage({
+        type: "sseError",
+        id,
+        error: "OpenCode server URL not configured",
+      } as HostMessage);
       return;
     }
 
@@ -201,12 +305,20 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       target = new URL(url);
       allowed = new URL(serverUrl);
     } catch {
-      this._sendMessage({ type: 'sseError', id, error: 'Invalid URL for SSE subscription' } as HostMessage);
+      this._sendMessage({
+        type: "sseError",
+        id,
+        error: "Invalid URL for SSE subscription",
+      } as HostMessage);
       return;
     }
 
     if (target.origin !== allowed.origin) {
-      this._sendMessage({ type: 'sseError', id, error: 'SSE only allowed to OpenCode server origin' } as HostMessage);
+      this._sendMessage({
+        type: "sseError",
+        id,
+        error: "SSE only allowed to OpenCode server origin",
+      } as HostMessage);
       return;
     }
 
@@ -225,43 +337,62 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     const workspaceRoot = this._openCodeService.getWorkspaceRoot();
     if (workspaceRoot) {
       // Encode directory as per SDK client (percent-encode non-ASCII)
-      headers['x-opencode-directory'] = encodeURIComponent(workspaceRoot);
+      headers["x-opencode-directory"] = encodeURIComponent(workspaceRoot);
     }
 
     const client = new SseClient(url, {
       onEvent: (event: SseEvent) => {
-        this._sendMessage({ type: 'sseEvent', id, data: event.data } as HostMessage);
+        this._sendMessage({
+          type: "sseEvent",
+          id,
+          data: event.data,
+        } as HostMessage);
       },
       onStateChange: (state: SseConnectionState) => {
-        logger.info('[ViewProvider] SSE state change', { id, state });
-        
+        logger.info("[ViewProvider] SSE state change", { id, state });
+
         // Send status to webview for observability
-        if (state.status === 'connecting') {
-          this._sendMessage({ type: 'sseStatus', id, status: 'connecting' } as HostMessage);
-        } else if (state.status === 'connected') {
-          this._sendMessage({ type: 'sseStatus', id, status: 'connected' } as HostMessage);
-        } else if (state.status === 'reconnecting') {
-          this._sendMessage({ 
-            type: 'sseStatus', 
-            id, 
-            status: 'reconnecting', 
-            attempt: state.attempt, 
-            nextRetryMs: state.nextRetryMs 
+        if (state.status === "connecting") {
+          this._sendMessage({
+            type: "sseStatus",
+            id,
+            status: "connecting",
           } as HostMessage);
-        } else if (state.status === 'closed') {
-          this._sendMessage({ 
-            type: 'sseStatus', 
-            id, 
-            status: 'closed', 
-            reason: state.reason 
+        } else if (state.status === "connected") {
+          this._sendMessage({
+            type: "sseStatus",
+            id,
+            status: "connected",
           } as HostMessage);
-          this._sendMessage({ type: 'sseClosed', id } as HostMessage);
+        } else if (state.status === "reconnecting") {
+          this._sendMessage({
+            type: "sseStatus",
+            id,
+            status: "reconnecting",
+            attempt: state.attempt,
+            nextRetryMs: state.nextRetryMs,
+          } as HostMessage);
+        } else if (state.status === "closed") {
+          this._sendMessage({
+            type: "sseStatus",
+            id,
+            status: "closed",
+            reason: state.reason,
+          } as HostMessage);
+          this._sendMessage({ type: "sseClosed", id } as HostMessage);
           this._sseClients.delete(id);
         }
       },
       onError: (error: Error) => {
-        logger.error('[ViewProvider] SSE unrecoverable error', { id, error: error.message });
-        this._sendMessage({ type: 'sseError', id, error: error.message } as HostMessage);
+        logger.error("[ViewProvider] SSE unrecoverable error", {
+          id,
+          error: error.message,
+        });
+        this._sendMessage({
+          type: "sseError",
+          id,
+          error: error.message,
+        } as HostMessage);
         this._sseClients.delete(id);
       },
       logger: sseLogger,
@@ -270,7 +401,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
     this._sseClients.set(id, client);
     client.connect();
-    logger.info('[ViewProvider] SSE subscription started with resilient client:', id);
+    logger.info(
+      "[ViewProvider] SSE subscription started with resilient client:",
+      id,
+    );
   }
 
   private _handleSSEClose(id: string) {
@@ -301,8 +435,8 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     const { id, url, init } = message;
     const logger = getLogger();
 
-    if (typeof id !== 'string' || typeof url !== 'string') {
-      logger.warn('[ViewProvider] Invalid proxyFetch message', message);
+    if (typeof id !== "string" || typeof url !== "string") {
+      logger.warn("[ViewProvider] Invalid proxyFetch message", message);
       return;
     }
 
@@ -310,10 +444,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 
     if (!serverUrl) {
       this._sendMessage({
-        type: 'proxyFetchResult',
+        type: "proxyFetchResult",
         id,
         ok: false,
-        error: 'Proxy fetch disabled: OpenCode server URL not configured',
+        error: "Proxy fetch disabled: OpenCode server URL not configured",
       } as HostMessage);
       return;
     }
@@ -325,20 +459,20 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       allowed = new URL(serverUrl);
     } catch {
       this._sendMessage({
-        type: 'proxyFetchResult',
+        type: "proxyFetchResult",
         id,
         ok: false,
-        error: 'Invalid URL for proxy fetch',
+        error: "Invalid URL for proxy fetch",
       } as HostMessage);
       return;
     }
 
     if (target.origin !== allowed.origin) {
       this._sendMessage({
-        type: 'proxyFetchResult',
+        type: "proxyFetchResult",
         id,
         ok: false,
-        error: 'Proxy fetch only allowed to OpenCode server origin',
+        error: "Proxy fetch only allowed to OpenCode server origin",
       } as HostMessage);
       return;
     }
@@ -362,7 +496,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       });
 
       this._sendMessage({
-        type: 'proxyFetchResult',
+        type: "proxyFetchResult",
         id,
         ok: true,
         status: res.status,
@@ -371,18 +505,18 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         bodyText,
       } as HostMessage);
     } catch (error) {
-      if ((error as Error).name === 'AbortError') {
-        logger.info('[ViewProvider] Proxy fetch aborted', { url, id });
+      if ((error as Error).name === "AbortError") {
+        logger.info("[ViewProvider] Proxy fetch aborted", { url, id });
         this._sendMessage({
-          type: 'proxyFetchResult',
+          type: "proxyFetchResult",
           id,
           ok: false,
-          error: 'Aborted',
+          error: "Aborted",
         } as HostMessage);
       } else {
-        logger.error('[ViewProvider] Proxy fetch failed', { url, error });
+        logger.error("[ViewProvider] Proxy fetch failed", { url, error });
         this._sendMessage({
-          type: 'proxyFetchResult',
+          type: "proxyFetchResult",
           id,
           ok: false,
           error: String((error as Error)?.message ?? error),
@@ -417,11 +551,30 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   }
 
   private _getHtmlForWebview(webview: vscode.Webview) {
+    const devServerUrl = process.env.OPENCODE_DEV_SERVER_URL;
+
+    if (devServerUrl) {
+      return `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${devServerUrl}; script-src 'unsafe-inline' ${devServerUrl}; connect-src ${devServerUrl} ws://localhost:5173 http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:* ${webview.cspSource};">
+          <title>OpenCode</title>
+        </head>
+        <body>
+          <div id="root"></div>
+          <script type="module" src="${devServerUrl}/@vite/client"></script>
+          <script type="module" src="${devServerUrl}/src/webview/main.tsx"></script>
+        </body>
+        </html>`;
+    }
+
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'out', 'main.js')
+      vscode.Uri.joinPath(this._extensionUri, "out", "main.js"),
     );
     const styleUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this._extensionUri, 'out', 'App.css')
+      vscode.Uri.joinPath(this._extensionUri, "out", "App.css"),
     );
 
     const nonce = getNonce();
@@ -444,8 +597,9 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
 }
 
 function getNonce() {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let text = "";
+  const possible =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   for (let i = 0; i < 32; i++) {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
   }

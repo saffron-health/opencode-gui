@@ -57,6 +57,8 @@ function createSync() {
     if (eventQueue.length === 0) return;
 
     const events = eventQueue.splice(0);
+    const eventTypes = events.map(e => e.type).join(", ");
+    logger.debug("Flushing event queue", { count: events.length, types: eventTypes });
     batch(() => {
       for (const event of events) {
         applyEvent(event, eventContext);
@@ -88,12 +90,15 @@ function createSync() {
     setCurrentSessionIdInternal(id);
   }
 
-  // Derived state
-  const messages = createMemo(() => {
+  // Plain function (NOT createMemo) so that every reactive consumer directly
+  // tracks the store proxy. A createMemo here would return the same proxy
+  // reference after in-place mutations, suppressing downstream updates.
+  const EMPTY_MESSAGES: Message[] = [];
+  const messages = () => {
     const sessionId = currentSessionId();
-    if (!sessionId) return [];
-    return store.message[sessionId] ?? [];
-  });
+    if (!sessionId) return EMPTY_MESSAGES;
+    return store.message[sessionId] ?? EMPTY_MESSAGES;
+  };
 
   const sessions = createMemo(() => store.sessions);
   const agents = createMemo(() => store.agents);
@@ -215,6 +220,9 @@ function createSync() {
   }
 
   function handleEvent(event: Event) {
+    // Log all events for debugging
+    logger.debug("SSE event received", { type: event.type, queueLength: eventQueue.length, status: store.status.status });
+    
     // Log error events prominently
     if (event.type === "session.error") {
       logger.error("SSE session.error event received", { event });
@@ -228,11 +236,17 @@ function createSync() {
       return;
     }
 
+    // Skip heartbeats - they carry no state and cause unnecessary batching
+    if ((event.type as string) === "server.heartbeat") return;
+
     // Buffer events during bootstrap, queue for batched processing
     eventQueue.push(event);
 
     // If bootstrapping, don't schedule flush - will flush after commit
-    if (store.status.status === "bootstrapping") return;
+    if (store.status.status === "bootstrapping") {
+      logger.debug("Event queued during bootstrap", { type: event.type, queueLength: eventQueue.length });
+      return;
+    }
 
     scheduleFlush();
   }
