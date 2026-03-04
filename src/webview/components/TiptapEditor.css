@@ -15,7 +15,7 @@
   border: none;
   font-family: inherit;
   font-size: inherit;
-  line-height: inherit;
+  line-height: 1.6;
   outline: none;
 }
 
@@ -35,7 +35,7 @@
 }
 
 .tiptap-editor p + p {
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 /* File mention styles */

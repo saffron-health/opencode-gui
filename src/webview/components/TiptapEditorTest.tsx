@@ -1,12 +1,14 @@
 import { createSignal } from "solid-js";
 import { createEditor, EditorContent } from "tiptap-solid";
-import StarterKit from "@tiptap/starter-kit";
+import Document from "@tiptap/extension-document";
+import Paragraph from "@tiptap/extension-paragraph";
+import Text from "@tiptap/extension-text";
 
 export function TiptapEditorTest() {
   const [content, setContent] = createSignal("");
 
   const editor = createEditor({
-    extensions: [StarterKit],
+    extensions: [Document, Paragraph, Text],
     content: "<p>Hello from Tiptap!</p>",
     onUpdate: ({ editor }) => {
       setContent(editor.getText());
