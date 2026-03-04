@@ -1,5 +1,4 @@
 import type { SuggestionOptions } from "@tiptap/suggestion";
-import { computePosition, flip, shift } from "@floating-ui/dom";
 import { render } from "solid-js/web";
 import { FileMentionDropdown, type FileItem, type FileMentionDropdownRef } from "../components/FileMentionDropdown";
 
@@ -8,6 +7,9 @@ interface FileMentionSuggestionOptions {
 }
 
 let debounceTimer: number | undefined;
+const DROPDOWN_PADDING = 8;
+const DROPDOWN_FALLBACK_WIDTH = 300;
+const DROPDOWN_FALLBACK_HEIGHT = 194;
 
 export function createFileMentionSuggestion(
   options: FileMentionSuggestionOptions
@@ -43,6 +45,76 @@ export function createFileMentionSuggestion(
       let dispose: (() => void) | null = null;
       let selectedIndex = 0;
       let items: FileItem[] = [];
+      let currentPosition = { top: 0, left: 0 };
+
+      const getReferenceRect = (props: Parameters<NonNullable<ReturnType<NonNullable<SuggestionOptions["render"]>>["onStart"]>>[0]) => {
+        const clientRect = props.clientRect?.();
+        if (clientRect) {
+          return clientRect;
+        }
+
+        const { view } = props.editor;
+        const coords = view.coordsAtPos(props.range.to);
+        return {
+          top: coords.top,
+          bottom: coords.bottom,
+          left: coords.left,
+          right: coords.left,
+          width: 0,
+          height: coords.bottom - coords.top,
+          x: coords.left,
+          y: coords.top,
+          toJSON: () => ({}),
+        } as DOMRect;
+      };
+
+      const getDropdownPosition = (
+        props: Parameters<NonNullable<ReturnType<NonNullable<SuggestionOptions["render"]>>["onStart"]>>[0],
+        dropdownElement?: HTMLDivElement | null,
+      ) => {
+        const reference = getReferenceRect(props);
+        const dropdownWidth = dropdownElement?.offsetWidth ?? DROPDOWN_FALLBACK_WIDTH;
+        const dropdownHeight = dropdownElement?.offsetHeight ?? DROPDOWN_FALLBACK_HEIGHT;
+
+        let top = reference.bottom;
+        let left = reference.left;
+
+        const maxLeft = window.innerWidth - dropdownWidth - DROPDOWN_PADDING;
+        left = Math.min(Math.max(left, DROPDOWN_PADDING), Math.max(DROPDOWN_PADDING, maxLeft));
+
+        if (top + dropdownHeight > window.innerHeight - DROPDOWN_PADDING) {
+          top = Math.max(DROPDOWN_PADDING, reference.top - dropdownHeight);
+        }
+
+        return { top, left };
+      };
+
+      const renderDropdown = (props: Parameters<NonNullable<ReturnType<NonNullable<SuggestionOptions["render"]>>["onStart"]>>[0]) => {
+        if (!container) {
+          return;
+        }
+
+        if (dispose) {
+          dispose();
+          dispose = null;
+        }
+
+        const DropdownComponent = () => {
+          return FileMentionDropdown({
+            items,
+            selectedIndex,
+            onSelect: (item) => {
+              props.command({ id: item.path, label: item.path });
+            },
+            position: currentPosition,
+            ref: (ref) => {
+              dropdownRef = ref;
+            },
+          });
+        };
+
+        dispose = render(DropdownComponent, container);
+      };
 
       return {
         onStart: (props) => {
@@ -58,100 +130,21 @@ export function createFileMentionSuggestion(
           container.style.left = "0";
           container.style.pointerEvents = "none"; // Allow clicks through container to dropdown
           document.body.appendChild(container);
+          container.style.background = "transparent";
+          container.style.border = "none";
+          container.style.padding = "0";
 
-          // Get cursor position from ProseMirror
-          const { view } = props.editor;
-          const { from } = props.range;
-          const coords = view.coordsAtPos(from);
-          
-          // Position dropdown directly below cursor using absolute positioning
-          // coords.top and coords.left are already viewport-relative
-          const dropdownTop = coords.bottom; // Position below the cursor line
-          const dropdownLeft = coords.left;
-          
-          // Render the dropdown at the calculated position
-          setTimeout(() => {
-            try {
-              const DropdownComponent = () => {
-                return FileMentionDropdown({
-                  items,
-                  selectedIndex,
-                  onSelect: (item) => {
-                    props.command({ id: item.path, label: item.path });
-                  },
-                  position: { top: dropdownTop, left: dropdownLeft },
-                  ref: (ref) => {
-                    dropdownRef = ref;
-                  },
-                });
-              };
-              
-              // Clear the test content
-              container!.innerHTML = "";
-              container!.style.background = "transparent";
-              container!.style.border = "none";
-              container!.style.padding = "0";
-              container!.style.position = "absolute";
-              
-              dispose = render(DropdownComponent, container!);
-            } catch (err) {
-              // Silently fail
-            }
-          }, 100);
+          currentPosition = getDropdownPosition(props, dropdownRef?.getElement());
+          renderDropdown(props);
         },
 
         onUpdate: (props) => {
           selectedIndex = 0;
           items = props.items as FileItem[];
 
-          if (container && dispose) {
-            // Get updated cursor position
-            const { view } = props.editor;
-            const { from } = props.range;
-            const coords = view.coordsAtPos(from);
-
-            const virtualElement = {
-              getBoundingClientRect: () => ({
-                width: 0,
-                height: 0,
-                top: coords.top,
-                right: coords.left,
-                bottom: coords.bottom,
-                left: coords.left,
-                x: coords.left,
-                y: coords.top,
-              }),
-            };
-
-            computePosition(virtualElement as Element, container, {
-              placement: "bottom-start",
-              middleware: [
-                flip(),
-                shift({ padding: 8 }),
-              ],
-            }).then(({ x, y }) => {
-              // Re-render with updated props
-              if (dispose) {
-                dispose();
-              }
-              if (container) {
-                const DropdownComponent = () => {
-                  return FileMentionDropdown({
-                    items,
-                    selectedIndex,
-                    onSelect: (item) => {
-                      props.command({ id: item.path, label: item.path });
-                    },
-                    position: { top: y, left: x },
-                    ref: (ref) => {
-                      dropdownRef = ref;
-                    },
-                  });
-                };
-                
-                dispose = render(DropdownComponent, container);
-              }
-            });
+          if (container) {
+            currentPosition = getDropdownPosition(props, dropdownRef?.getElement());
+            renderDropdown(props);
           }
         },
 
@@ -168,7 +161,9 @@ export function createFileMentionSuggestion(
             dispose = null;
           }
           if (container) {
-            document.body.removeChild(container);
+            if (container.parentNode) {
+              document.body.removeChild(container);
+            }
             container = null;
           }
           dropdownRef = null;

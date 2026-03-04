@@ -15,6 +15,7 @@ export interface FileMentionDropdownProps {
 
 export interface FileMentionDropdownRef {
   onKeyDown: (event: KeyboardEvent) => boolean;
+  getElement: () => HTMLDivElement;
 }
 
 export function FileMentionDropdown(props: FileMentionDropdownProps & { ref?: (ref: FileMentionDropdownRef) => void }) {
@@ -25,6 +26,7 @@ export function FileMentionDropdown(props: FileMentionDropdownProps & { ref?: (r
     if (props.ref) {
       props.ref({
         onKeyDown: handleKeyDown,
+        getElement: () => containerRef,
       });
     }
   });
