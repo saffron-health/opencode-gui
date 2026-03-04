@@ -1,5 +1,8 @@
 .vscode/**
 .vscode-test/**
+.vscode-test-debug/**
+.vscode-test-user-data/**
+.vscode-test-demo/**
 tmp/**
 .opencode/**
 .agents/**
@@ -19,6 +22,8 @@ vitest.config.ts
 **/*.map
 .env
 node_modules/**
+OpenCode.log
+*.vsix
 docs/**
 thoughts/**
 TODO.md
