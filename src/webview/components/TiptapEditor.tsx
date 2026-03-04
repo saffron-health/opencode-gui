@@ -1,6 +1,8 @@
 import { createEffect, createSignal, onCleanup } from "solid-js";
 import { createEditor, EditorContent } from "tiptap-solid";
-import StarterKit from "@tiptap/starter-kit";
+import Document from "@tiptap/extension-document";
+import Paragraph from "@tiptap/extension-paragraph";
+import Text from "@tiptap/extension-text";
 import { FileMention } from "../extensions/FileMention";
 import { createFileMentionSuggestion } from "../utils/fileMentionSuggestion";
 import "./TiptapEditor.css";
@@ -20,11 +22,9 @@ export function TiptapEditor(props: TiptapEditorProps) {
 
   const editor = createEditor({
     extensions: [
-      StarterKit.configure({
-        history: {
-          depth: 100,
-        },
-      }),
+      Document,
+      Paragraph,
+      Text,
       FileMention.configure({
         suggestion: (() => {
           const baseSuggestion = createFileMentionSuggestion({
@@ -78,13 +78,6 @@ export function TiptapEditor(props: TiptapEditorProps) {
 
         // Cmd/Ctrl + Enter to submit
         if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-          event.preventDefault();
-          props.onSubmit();
-          return true; // Handled
-        }
-
-        // Enter to submit (but not when Shift is held)
-        if (event.key === "Enter" && !event.shiftKey) {
           event.preventDefault();
           props.onSubmit();
           return true; // Handled
