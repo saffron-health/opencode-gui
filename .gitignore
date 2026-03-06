@@ -8,6 +8,7 @@ out
 .vscode-test-user-data
 .vscode-test-demo
 .env
+.codex/environments/
 
 OpenCode.log
 # Playwright test artifacts
