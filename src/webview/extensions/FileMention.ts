@@ -6,6 +6,14 @@ export interface FileMentionOptions {
   suggestion: Record<string, unknown>;
 }
 
+export function normalizeFileMentionLabel(value: string | null | undefined): string {
+  return (value ?? "").trim().replace(/^@+/, "");
+}
+
+export function formatFileMentionText(value: string | null | undefined): string {
+  return `@${normalizeFileMentionLabel(value)}`;
+}
+
 export const FileMention = Mention.extend<FileMentionOptions>({
   name: "fileMention",
 
@@ -25,10 +33,8 @@ export const FileMention = Mention.extend<FileMentionOptions>({
       },
       label: {
         default: null,
-        parseHTML: (element) => element.textContent,
-        renderHTML: (attributes) => {
-          return {};
-        },
+        parseHTML: (element) => normalizeFileMentionLabel(element.textContent),
+        renderHTML: () => ({}),
       },
     };
   },
@@ -45,15 +51,19 @@ export const FileMention = Mention.extend<FileMentionOptions>({
   },
 
   renderHTML({ node, HTMLAttributes }) {
+    const label = normalizeFileMentionLabel(
+      (node.attrs.label as string | null | undefined) ?? (node.attrs.id as string | null | undefined)
+    );
+
     return [
       "span",
       mergeAttributes(
         { "data-type": this.name },
-        { class: "file-mention" },
+        { class: "file-chip file-mention" },
         this.options.HTMLAttributes,
         HTMLAttributes
       ),
-      `@${node.attrs.label || node.attrs.id}`,
+      formatFileMentionText(label),
     ];
   },
 });

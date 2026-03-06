@@ -101,7 +101,7 @@ export function MessageItem(props: MessageItemProps) {
                   {(attachment) => (
                     <button
                       type="button"
-                      class="message-attachment"
+                      class="file-chip message-attachment"
                       title={attachment.title ?? attachment.label}
                       onClick={(event) => {
                         event.stopPropagation();

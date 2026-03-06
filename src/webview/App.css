@@ -283,17 +283,17 @@ body {
   padding-top: 2px;
 }
 
-.message-attachment {
+.file-chip {
   display: inline-flex;
   align-items: center;
-  padding: 2px 6px;
+  padding: 0 3px;
   border: 1px solid color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 50%, transparent);
   border-radius: 3px;
   background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 30%, transparent);
   color: color-mix(in srgb, var(--vscode-badge-foreground, #ffffff) 70%, transparent);
   font-family: var(--font-family);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 450;
   max-width: 100%;
   cursor: pointer;
   transition: background-color 0.1s ease;
@@ -306,7 +306,7 @@ body {
   max-width: 320px;
 }
 
-.message-attachment:hover {
+.file-chip:hover {
   background: color-mix(in srgb, var(--vscode-badge-background, #4d4d4d) 50%, transparent);
 }
 
