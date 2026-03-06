@@ -8,6 +8,7 @@ import type {
   IncomingMessage,
 } from "./shared/messages";
 import { parseWebviewMessage } from "./shared/messages";
+import { parseFileReferenceTarget } from "./shared/fileReferences";
 import {
   SseClient,
   SseConnectionState,
@@ -142,15 +143,20 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     endLine?: number,
   ) {
     try {
-      const uri = vscode.Uri.parse(url);
+      const parsedTarget = parseFileReferenceTarget(url);
+      const targetUrl = parsedTarget?.url ?? url;
+      const resolvedStartLine = startLine ?? parsedTarget?.startLine;
+      const resolvedEndLine = endLine ?? parsedTarget?.endLine;
+
+      const uri = vscode.Uri.parse(targetUrl);
       const document = await vscode.workspace.openTextDocument(uri);
       const editor = await vscode.window.showTextDocument(document, {
         preview: true,
       });
-      if (startLine !== undefined) {
-        const start = new vscode.Position(Math.max(startLine - 1, 0), 0);
+      if (resolvedStartLine !== undefined) {
+        const start = new vscode.Position(Math.max(resolvedStartLine - 1, 0), 0);
         const end = new vscode.Position(
-          Math.max((endLine ?? startLine) - 1, 0),
+          Math.max((resolvedEndLine ?? resolvedStartLine) - 1, 0),
           0,
         );
         const range = new vscode.Range(start, end);

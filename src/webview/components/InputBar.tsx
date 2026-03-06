@@ -2,7 +2,7 @@ import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Agent } from "../types";
 import type { QueuedMessage } from "../App";
 import { AgentSwitcher } from "./AgentSwitcher";
-import { TiptapEditor } from "./TiptapEditor";
+import { TiptapEditor, type TiptapEditorMethods } from "./TiptapEditor";
 import { vscode } from "../utils/vscode";
 
 interface InputBarProps {
@@ -21,7 +21,8 @@ interface InputBarProps {
   onEditQueuedMessage: (id: string) => void;
   attachments: InputAttachment[];
   onRemoveAttachment: (id: string) => void;
-  editorRef?: (methods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void; focus: () => void }) => void;
+  onFileMentionClick?: (filePath: string) => void;
+  editorRef?: (methods: TiptapEditorMethods) => void;
 }
 
 interface InputAttachment {
@@ -32,7 +33,7 @@ interface InputAttachment {
 
 export function InputBar(props: InputBarProps) {
   const [isShiftHeld, setIsShiftHeld] = createSignal(false);
-  let editorMethods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void; focus: () => void } | null = null;
+  let editorMethods: TiptapEditorMethods | null = null;
 
   const searchFiles = async (query: string): Promise<string[]> => {
     return new Promise((resolve) => {
@@ -163,6 +164,7 @@ export function InputBar(props: InputBarProps) {
           onSubmit={() => handleSubmit(new Event("submit"))}
           disabled={props.disabled}
           searchFiles={searchFiles}
+          onFileMentionClick={props.onFileMentionClick}
           ref={(methods) => {
             editorMethods = methods;
             props.editorRef?.(methods);

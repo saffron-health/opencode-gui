@@ -43,3 +43,12 @@
   outline: 2px solid var(--vscode-focusBorder, #007acc);
   border-radius: 3px;
 }
+
+.tiptap-editor .file-mention.ProseMirror-selectednode {
+  outline: none;
+  background: color-mix(
+    in srgb,
+    var(--vscode-badge-background, #4d4d4d) 50%,
+    transparent
+  );
+}

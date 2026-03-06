@@ -1,5 +1,6 @@
 import { createSignal, createMemo, Show, onMount, onCleanup, createEffect, For } from "solid-js";
 import { InputBar } from "./components/InputBar";
+import type { TiptapEditorMethods } from "./components/TiptapEditor";
 import { MessageList } from "./components/MessageList";
 import { TopBar } from "./components/TopBar";
 import { ContextIndicator } from "./components/ContextIndicator";
@@ -23,6 +24,13 @@ interface InFlightMessage {
   messageID: string;
   sessionId: string;
 }
+
+interface FileMentionInsertRequest {
+  filePath: string;
+  startLine?: number;
+  endLine?: number;
+}
+
 interface SelectionAttachment {
   id: string;
   filePath: string;
@@ -34,6 +42,10 @@ import { vscode } from "./utils/vscode";
 import { Id } from "./utils/id";
 import { logger } from "./utils/logger";
 import { extractMentions } from "./utils/editorContent";
+import {
+  encodeFileMentionReference,
+  parseFileMentionReference,
+} from "./utils/fileMentionReference";
 
 const NEW_SESSION_KEY = "__new__";
 
@@ -56,12 +68,16 @@ function App() {
   
   // Message queue for queuing messages while generating
   const [messageQueue, setMessageQueue] = createSignal<QueuedMessage[]>([]);
+
+  // Host selections received before editor methods are available
+  const [pendingMentionInsertions, setPendingMentionInsertions] = createSignal<FileMentionInsertRequest[]>([]);
+  const [pendingEditorFocus, setPendingEditorFocus] = createSignal(false);
   
   // In-flight message tracking for outbox pattern
   const [inFlightMessage, setInFlightMessage] = createSignal<InFlightMessage | null>(null);
   
   // Editor methods for managing content
-  let editorMethods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void } | null = null;
+  let editorMethods: TiptapEditorMethods | null = null;
 
   // Get SDK hook for actions only
   const {
@@ -171,6 +187,25 @@ function App() {
     return parts[parts.length - 1] || filePath;
   };
 
+  const buildWorkspaceFileUrl = (workspaceRoot: string, relativePath: string) => {
+    const normalizedRoot = workspaceRoot.replace(/\\/g, "/").replace(/\/+$/, "");
+    const normalizedPath = relativePath.replace(/\\/g, "/").replace(/^\/+/, "");
+    const base = `file://${normalizedRoot}/`;
+    return new URL(normalizedPath, base).toString();
+  };
+
+  const openFileFromMention = (filePath: string) => {
+    const workspaceRoot = sync.workspaceRoot();
+    if (!workspaceRoot) {
+      logger.error("Cannot open mention: workspace root unavailable", { filePath });
+      return;
+    }
+    vscode.postMessage({
+      type: "open-file",
+      url: buildWorkspaceFileUrl(workspaceRoot, filePath),
+    });
+  };
+
   const formatSelectionLabel = (attachment: SelectionAttachment) => {
     const filename = getFilename(attachment.filePath);
     if (attachment.startLine && attachment.endLine && attachment.startLine !== attachment.endLine) {
@@ -256,40 +291,112 @@ function App() {
       .sort((a, b) => b.time.updated - a.time.updated);
   });
 
+  const normalizeSelectionRange = (startLine?: number, endLine?: number) => {
+    if (startLine === undefined && endLine === undefined) return {};
+    if (startLine === undefined || endLine === undefined) {
+      const line = startLine ?? endLine;
+      return { startLine: line, endLine: line };
+    }
+    return {
+      startLine: Math.min(startLine, endLine),
+      endLine: Math.max(startLine, endLine),
+    };
+  };
+
+  const mentionInsertionKey = (request: FileMentionInsertRequest) =>
+    encodeFileMentionReference({
+      filePath: request.filePath,
+      startLine: request.startLine,
+      endLine: request.endLine,
+    });
+
+  const insertMentionFromHostSelection = (request: FileMentionInsertRequest): boolean => {
+    if (!editorMethods) {
+      return false;
+    }
+
+    try {
+      const existingMentions = new Set(extractMentions(editorMethods.getJSON()));
+      const requestKey = mentionInsertionKey(request);
+      if (!existingMentions.has(requestKey)) {
+        editorMethods.insertFileMention(request.filePath, request.startLine, request.endLine);
+      }
+      return true;
+    } catch (err) {
+      logger.error("Failed to insert file mention from editor selection", {
+        error: err,
+        filePath: request.filePath,
+        startLine: request.startLine,
+        endLine: request.endLine,
+      });
+      return false;
+    }
+  };
+
+  const queueMentionInsertion = (request: FileMentionInsertRequest) => {
+    const requestKey = mentionInsertionKey(request);
+    setPendingMentionInsertions((prev) => {
+      if (prev.some((item) => mentionInsertionKey(item) === requestKey)) {
+        return prev;
+      }
+      return [...prev, request];
+    });
+  };
+
+  const flushPendingMentionInsertions = () => {
+    if (!editorMethods) return;
+    const pending = pendingMentionInsertions();
+    if (pending.length === 0) return;
+
+    const failed: FileMentionInsertRequest[] = [];
+    for (const request of pending) {
+      if (!insertMentionFromHostSelection(request)) {
+        failed.push(request);
+      }
+    }
+    setPendingMentionInsertions(failed);
+  };
+
+  const focusEditorOrQueue = () => {
+    if (!editorMethods) {
+      setPendingEditorFocus(true);
+      return;
+    }
+    editorMethods.focus();
+    setPendingEditorFocus(false);
+  };
+
+  const handleEditorMethodsReady = (methods: TiptapEditorMethods) => {
+    editorMethods = methods;
+    if (pendingEditorFocus()) {
+      editorMethods.focus();
+      setPendingEditorFocus(false);
+    }
+    flushPendingMentionInsertions();
+  };
+
+  const insertMentionOrQueue = (request: FileMentionInsertRequest) => {
+    if (insertMentionFromHostSelection(request)) {
+      return;
+    }
+    queueMentionInsertion(request);
+  };
+
   onMount(() => {
     const handleHostMessage = (event: MessageEvent) => {
       const parsed = parseHostMessage(event.data);
       if (!parsed) return;
       if (parsed.type !== "editor-selection") return;
 
-      const startLine = parsed.selection?.startLine;
-      const endLine = parsed.selection?.endLine ?? startLine;
-      const normalizedStart =
-        startLine !== undefined && endLine !== undefined ? Math.min(startLine, endLine) : startLine;
-      const normalizedEnd =
-        startLine !== undefined && endLine !== undefined ? Math.max(startLine, endLine) : endLine;
-
-      setSelectionAttachments((prev) => {
-        if (
-          prev.some(
-            (item) =>
-              item.fileUrl === parsed.fileUrl &&
-              item.startLine === normalizedStart &&
-              item.endLine === normalizedEnd
-          )
-        ) {
-          return prev;
-        }
-        return [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            filePath: parsed.filePath,
-            fileUrl: parsed.fileUrl,
-            startLine: normalizedStart,
-            endLine: normalizedEnd,
-          },
-        ];
+      focusEditorOrQueue();
+      const normalizedRange = normalizeSelectionRange(
+        parsed.selection?.startLine,
+        parsed.selection?.endLine
+      );
+      insertMentionOrQueue({
+        filePath: parsed.filePath,
+        startLine: normalizedRange.startLine,
+        endLine: normalizedRange.endLine,
       });
     };
 
@@ -362,18 +469,33 @@ function App() {
       try {
         const editorJSON = editorMethods.getJSON();
         const mentionedFiles = extractMentions(editorJSON);
-        const workspaceRoot = sync.workspaceRoot() || "";
+        const workspaceRoot = sync.workspaceRoot();
+        if (!workspaceRoot) {
+          throw new Error("workspace root unavailable while extracting mentions");
+        }
         
-        // Convert file paths to SelectionAttachment objects
-        const mentionAttachments: SelectionAttachment[] = mentionedFiles.map((path) => ({
-          id: `mention-${path}`,
-          filePath: path,
-          fileUrl: `file://${workspaceRoot}/${path}`,
-        }));
+        // Convert mention references to SelectionAttachment objects
+        const mentionAttachments: SelectionAttachment[] = mentionedFiles
+          .map((mentionReference) => {
+            const parsedMention = parseFileMentionReference(mentionReference);
+            if (!parsedMention.filePath) return null;
+            return {
+              id: `mention-${mentionReference}`,
+              filePath: parsedMention.filePath,
+              fileUrl: buildWorkspaceFileUrl(workspaceRoot, parsedMention.filePath),
+              startLine: parsedMention.startLine,
+              endLine: parsedMention.endLine,
+            } satisfies SelectionAttachment;
+          })
+          .filter((attachment): attachment is SelectionAttachment => attachment !== null);
         
-        // Merge with existing attachments (avoid duplicates)
-        const existingPaths = new Set(attachments.map(a => a.filePath));
-        const newAttachments = mentionAttachments.filter(a => !existingPaths.has(a.filePath));
+        // Merge with existing attachments (avoid exact duplicates)
+        const attachmentKey = (attachment: SelectionAttachment) =>
+          `${attachment.filePath}:${attachment.startLine ?? ""}:${attachment.endLine ?? ""}`;
+        const existingKeys = new Set(attachments.map(attachmentKey));
+        const newAttachments = mentionAttachments.filter(
+          (attachment) => !existingKeys.has(attachmentKey(attachment))
+        );
         attachments = [...attachments, ...newAttachments];
       } catch (err) {
         logger.error("Failed to extract mentions", { error: err });
@@ -779,7 +901,8 @@ function App() {
           onEditQueuedMessage={handleEditQueuedMessage}
           attachments={attachmentChips()}
           onRemoveAttachment={handleRemoveAttachment}
-          editorRef={(methods) => { editorMethods = methods; }}
+          onFileMentionClick={openFileFromMention}
+          editorRef={handleEditorMethodsReady}
         />
       </Show>
 
@@ -835,7 +958,8 @@ function App() {
           onEditQueuedMessage={handleEditQueuedMessage}
           attachments={attachmentChips()}
           onRemoveAttachment={handleRemoveAttachment}
-          editorRef={(methods) => { editorMethods = methods; }}
+          onFileMentionClick={openFileFromMention}
+          editorRef={handleEditorMethodsReady}
         />
       </Show>
     </div>

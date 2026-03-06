@@ -3,9 +3,22 @@ import { createEditor, EditorContent } from "tiptap-solid";
 import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
 import Text from "@tiptap/extension-text";
+import type { JSONContent } from "@tiptap/core";
 import { FileMention } from "../extensions/FileMention";
 import { createFileMentionSuggestion } from "../utils/fileMentionSuggestion";
+import {
+  encodeFileMentionReference,
+  formatFileMentionLabel,
+} from "../utils/fileMentionReference";
 import "./TiptapEditor.css";
+
+export interface TiptapEditorMethods {
+  getJSON: () => JSONContent;
+  setContent: (content: JSONContent | string) => void;
+  clear: () => void;
+  focus: () => void;
+  insertFileMention: (filePath: string, startLine?: number, endLine?: number) => void;
+}
 
 export interface TiptapEditorProps {
   value: string;
@@ -14,7 +27,8 @@ export interface TiptapEditorProps {
   placeholder?: string;
   disabled?: boolean;
   searchFiles: (query: string) => Promise<string[]>;
-  ref?: (methods: { getJSON: () => any; setContent: (content: any) => void; clear: () => void; focus: () => void }) => void;
+  onFileMentionClick?: (filePath: string) => void;
+  ref?: (methods: TiptapEditorMethods) => void;
 }
 
 export function TiptapEditor(props: TiptapEditorProps) {
@@ -85,6 +99,26 @@ export function TiptapEditor(props: TiptapEditorProps) {
 
         return false; // Not handled, let Tiptap continue
       },
+      handleClick: (_view, _pos, event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) {
+          return false;
+        }
+        const mentionNode = target.closest('[data-type="fileMention"], .file-mention');
+        if (!(mentionNode instanceof HTMLElement)) {
+          return false;
+        }
+
+        const filePath = mentionNode.getAttribute("data-path");
+        if (!filePath) {
+          return false;
+        }
+
+        props.onFileMentionClick?.(filePath);
+        event.preventDefault();
+        event.stopPropagation();
+        return true;
+      },
     },
     onUpdate: ({ editor }: any) => {
       const text = editor.getText();
@@ -115,9 +149,36 @@ export function TiptapEditor(props: TiptapEditorProps) {
     if (currentEditor && props.ref) {
       props.ref({
         getJSON: () => currentEditor.getJSON(),
-        setContent: (content: any) => currentEditor.commands.setContent(content),
+        setContent: (content: JSONContent | string) => currentEditor.commands.setContent(content),
         clear: () => currentEditor.commands.clearContent(),
         focus: () => currentEditor.commands.focus(),
+        insertFileMention: (filePath: string, startLine?: number, endLine?: number) => {
+          const normalizedPath = filePath.trim();
+          if (!normalizedPath) return;
+          const mentionReference = {
+            filePath: normalizedPath,
+            startLine,
+            endLine,
+          };
+          const mentionId = encodeFileMentionReference(mentionReference);
+          const mentionLabel = formatFileMentionLabel(mentionReference);
+
+          const hasExistingText = currentEditor.getText().trim().length > 0;
+          const content: JSONContent[] = [];
+          if (hasExistingText) {
+            content.push({ type: "text", text: " " });
+          }
+          content.push({
+            type: "fileMention",
+            attrs: {
+              id: mentionId,
+              label: mentionLabel,
+            },
+          });
+          content.push({ type: "text", text: " " });
+
+          currentEditor.chain().focus("end").insertContent(content).run();
+        },
       });
     }
   });
