@@ -7,6 +7,7 @@ import type {
   Part as SDKPart,
   AssistantMessage,
   PermissionRequest as SDKPermission,
+  QuestionRequest as SDKQuestionRequest,
 } from "@opencode-ai/sdk/v2/client";
 import type {
   Message,
@@ -29,14 +30,17 @@ interface MessageWithParts {
 export interface BootstrapContext {
   client: {
     app: { agents: () => Promise<{ data?: SDKAgent[] }> };
-  session: {
-    list: (opts?: { directory?: string }) => Promise<{ data?: SDKSession[] }>;
-    messages: (opts: { sessionID: string }) => Promise<{ data?: MessageWithParts[] }>;
-    get: (opts: { sessionID: string }) => Promise<{ data?: SDKSession }>;
-    status?: (opts?: { directory?: string }) => Promise<{ data?: { [key: string]: any } }>;
-  };
+    session: {
+      list: (opts?: { directory?: string }) => Promise<{ data?: SDKSession[] }>;
+      messages: (opts: { sessionID: string }) => Promise<{ data?: MessageWithParts[] }>;
+      get: (opts: { sessionID: string }) => Promise<{ data?: SDKSession }>;
+      status?: (opts?: { directory?: string }) => Promise<{ data?: { [key: string]: any } }>;
+    };
     permission: {
-      list: (opts?: { directory?: string }) => Promise<{ data?: any[] }>;
+      list: (opts?: { directory?: string }) => Promise<{ data?: SDKPermission[] }>;
+    };
+    question: {
+      list: (opts?: { directory?: string }) => Promise<{ data?: SDKQuestionRequest[] }>;
     };
   };
   sessionId: string | null;
@@ -49,6 +53,7 @@ export interface BootstrapResult {
   messageList: Message[];
   partMap: { [messageID: string]: MessagePart[] };
   permissionMap: { [sessionID: string]: Permission[] };
+  questionMap: { [sessionID: string]: SDKQuestionRequest[] };
   sessionStatusMap: { [sessionID: string]: SessionStatus };
   contextInfo: ContextInfo | null;
   fileChanges: FileChangesInfo | null;
@@ -136,18 +141,18 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
   let fileChanges: FileChangesInfo | null = null;
   const partMap: { [messageID: string]: MessagePart[] } = {};
   const permissionMap: { [sessionID: string]: Permission[] } = {};
+  const questionMap: { [sessionID: string]: SDKQuestionRequest[] } = {};
   const sessionStatusMap: { [sessionID: string]: SessionStatus } = sessionStatusRes?.data ?? {};
+  const directoryOpts = workspaceRoot ? { directory: workspaceRoot } : undefined;
 
   // Fetch pending permissions
   try {
-    const permissionsRes = await client.permission.list(
-      workspaceRoot ? { directory: workspaceRoot } : undefined
-    );
+    const permissionsRes = await client.permission.list(directoryOpts);
     const permissions = permissionsRes?.data ?? [];
     
     // Group permissions by sessionID
     for (const sdkPerm of permissions) {
-      const perm = toPermission(sdkPerm as SDKPermission);
+      const perm = toPermission(sdkPerm);
       if (!permissionMap[perm.sessionID]) {
         permissionMap[perm.sessionID] = [];
       }
@@ -155,6 +160,22 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
     }
   } catch (err) {
     console.error("[Sync] Failed to load permissions during bootstrap:", err);
+  }
+
+  // Fetch pending questions
+  try {
+    const questionsRes = await client.question.list(directoryOpts);
+    const questions = questionsRes?.data ?? [];
+
+    // Group questions by sessionID
+    for (const question of questions) {
+      if (!questionMap[question.sessionID]) {
+        questionMap[question.sessionID] = [];
+      }
+      questionMap[question.sessionID].push(question);
+    }
+  } catch (err) {
+    console.error("[Sync] Failed to load questions during bootstrap:", err);
   }
 
   if (sessionId) {
@@ -256,7 +277,17 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
     messageCount: messageList.length,
     sessionId 
   });
-  return { agents, sessions, messageList, partMap, permissionMap, sessionStatusMap, contextInfo, fileChanges };
+  return {
+    agents,
+    sessions,
+    messageList,
+    partMap,
+    permissionMap,
+    questionMap,
+    sessionStatusMap,
+    contextInfo,
+    fileChanges,
+  };
 }
 
 export function commitBootstrapData(
@@ -292,6 +323,7 @@ export function commitBootstrapData(
       setStore("part", messageId, parts);
     }
     setStore("permission", reconcile(data.permissionMap));
+    setStore("question", reconcile(data.questionMap));
     setStore("sessionStatus", reconcile(data.sessionStatusMap));
     setStore("contextInfo", data.contextInfo);
     setStore("fileChanges", data.fileChanges);

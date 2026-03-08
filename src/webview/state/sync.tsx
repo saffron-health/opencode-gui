@@ -17,6 +17,7 @@ import {
 import { createStore, produce } from "solid-js/store";
 import { useOpenCode, type Event, type SSEStatus } from "../hooks/useOpenCode";
 import type { Message, Permission } from "../types";
+import type { QuestionRequest } from "@opencode-ai/sdk/v2/client";
 import { type SyncState, type SyncStatus, createEmptyState } from "./types";
 import { applyEvent, type EventHandlerContext } from "./eventHandlers";
 import { fetchBootstrapData, commitBootstrapData } from "./bootstrap";
@@ -81,6 +82,7 @@ function createSync() {
           for (const msg of prevMessages) { delete draft[msg.id]; }
         }));
         setStore("permission", produce((draft) => { delete draft[prevId]; }));
+        setStore("question", produce((draft) => { delete draft[prevId]; }));
       });
       // Clean up messageToSession mapping
       for (const msg of prevMessages) {
@@ -116,6 +118,17 @@ function createSync() {
     return map;
   });
 
+  const questions = createMemo(() => {
+    const sessionId = currentSessionId();
+    if (!sessionId) return new Map<string, QuestionRequest>();
+    const questionList = store.question[sessionId] ?? [];
+    const map = new Map<string, QuestionRequest>();
+    for (const q of questionList) {
+      map.set(q.id, q);
+    }
+    return map;
+  });
+
   // Aggregate permissions across current session and its children
   const aggregatedPermissions = createMemo(() => {
     const sessionId = currentSessionId();
@@ -140,6 +153,34 @@ function createSync() {
       for (const p of perms) {
         const key = p.tool?.callID || p.id;
         map.set(key, p);
+      }
+    }
+    return map;
+  });
+
+  // Aggregate questions across current session and its children
+  const aggregatedQuestions = createMemo(() => {
+    const sessionId = currentSessionId();
+    if (!sessionId) return new Map<string, QuestionRequest>();
+
+    const currentSession = store.sessions.find((s) => s.id === sessionId);
+
+    // Find root session (current if no parent, otherwise its parent)
+    let rootId = sessionId;
+    if (currentSession?.parentID) {
+      rootId = currentSession.parentID;
+    }
+
+    // Collect all sessions where parentID === root (and optionally root itself)
+    const childSessions = store.sessions.filter((s) => s.parentID === rootId);
+    const relevantSessionIds = [rootId, ...childSessions.map((s) => s.id)];
+
+    // Flatten questions from all relevant sessions
+    const map = new Map<string, QuestionRequest>();
+    for (const sid of relevantSessionIds) {
+      const questionList = store.question[sid] ?? [];
+      for (const q of questionList) {
+        map.set(q.id, q);
       }
     }
     return map;
@@ -330,7 +371,9 @@ function createSync() {
     sessions,
     agents,
     permissions,
+    questions,
     aggregatedPermissions,
+    aggregatedQuestions,
     isThinking,
     sessionError,
     sessionStatus,

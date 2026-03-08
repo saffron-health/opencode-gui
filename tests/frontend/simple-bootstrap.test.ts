@@ -4,6 +4,7 @@ import { fetchBootstrapData, type BootstrapContext } from "../../src/webview/sta
 import type {
   Agent as SDKAgent,
   Session as SDKSession,
+  QuestionRequest as SDKQuestionRequest,
 } from "@opencode-ai/sdk/v2/client";
 
 type AppApi = {
@@ -18,6 +19,10 @@ type SessionApi = {
 
 type PermissionApi = {
   list(opts?: { directory?: string }): Promise<{ data?: any[] }>;
+};
+
+type QuestionApi = {
+  list(opts?: { directory?: string }): Promise<{ data?: SDKQuestionRequest[] }>;
 };
 
 class MockAppApi implements AppApi {
@@ -63,12 +68,19 @@ class MockPermissionApi implements PermissionApi {
   }
 }
 
+class MockQuestionApi implements QuestionApi {
+  async list(_opts?: { directory?: string }): Promise<{ data?: SDKQuestionRequest[] }> {
+    return { data: [] };
+  }
+}
+
 describe("Simple Frontend Tests with Gatekeeper", () => {
   it("should fetch basic data without interception", async () => {
     const harness = new GatekeeperHarness()
       .add("appApi", () => new MockAppApi())
       .add("sessionApi", () => new MockSessionApi())
-      .add("permissionApi", () => new MockPermissionApi());
+      .add("permissionApi", () => new MockPermissionApi())
+      .add("questionApi", () => new MockQuestionApi());
 
     harness.lowerAllGates();
 
@@ -77,6 +89,7 @@ describe("Simple Frontend Tests with Gatekeeper", () => {
         app: harness.appApi.call,
         session: harness.sessionApi.call,
         permission: harness.permissionApi.call,
+        question: harness.questionApi.call,
       },
       sessionId: null,
       workspaceRoot: "/test",
@@ -92,7 +105,8 @@ describe("Simple Frontend Tests with Gatekeeper", () => {
     const harness = new GatekeeperHarness()
       .add("appApi", () => new MockAppApi())
       .add("sessionApi", () => new MockSessionApi())
-      .add("permissionApi", () => new MockPermissionApi());
+      .add("permissionApi", () => new MockPermissionApi())
+      .add("questionApi", () => new MockQuestionApi());
 
     harness.raiseAllGates();
 
@@ -101,6 +115,7 @@ describe("Simple Frontend Tests with Gatekeeper", () => {
         app: harness.appApi.intercept,
         session: harness.sessionApi.intercept,
         permission: harness.permissionApi.intercept,
+        question: harness.questionApi.intercept,
       },
       sessionId: null,
       workspaceRoot: "/test",
@@ -131,6 +146,10 @@ describe("Simple Frontend Tests with Gatekeeper", () => {
     await permissionListCall.proceed();
     await permissionListCall.deliverActual();
 
+    const questionListCall = await harness.questionApi.waitForCall("list");
+    await questionListCall.proceed();
+    await questionListCall.deliverActual();
+
     const result = await resultPromise;
 
     expect(result.agents).toHaveLength(1);
@@ -141,7 +160,8 @@ describe("Simple Frontend Tests with Gatekeeper", () => {
     const harness = new GatekeeperHarness()
       .add("appApi", () => new MockAppApi())
       .add("sessionApi", () => new MockSessionApi())
-      .add("permissionApi", () => new MockPermissionApi());
+      .add("permissionApi", () => new MockPermissionApi())
+      .add("questionApi", () => new MockQuestionApi());
 
     harness.raiseAllGates();
 
@@ -150,6 +170,7 @@ describe("Simple Frontend Tests with Gatekeeper", () => {
         app: harness.appApi.intercept,
         session: harness.sessionApi.intercept,
         permission: harness.permissionApi.intercept,
+        question: harness.questionApi.intercept,
       },
       sessionId: null,
       workspaceRoot: "/test",
@@ -172,6 +193,9 @@ describe("Simple Frontend Tests with Gatekeeper", () => {
 
     const permissionListCall = await harness.permissionApi.waitForCall("list");
     await permissionListCall.fulfill({ data: [] });
+
+    const questionListCall = await harness.questionApi.waitForCall("list");
+    await questionListCall.fulfill({ data: [] });
 
     const result = await resultPromise;
 

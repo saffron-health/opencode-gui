@@ -58,11 +58,11 @@ Add question-request support to the webview client using an accordion-style prom
 
 ### Phase 2: Bootstrap pending questions and expose selectors
 
-- [ ] Update `fetchBootstrapData` in `src/webview/state/bootstrap.ts` to call `client.question.list({ directory })` and group requests by session ID.
-- [ ] Include `questionMap` in `BootstrapResult` and commit path (`commitBootstrapData`).
-- [ ] Update `setCurrentSessionId` cleanup logic in `src/webview/state/sync.tsx` to clear stale question data when switching sessions (mirroring message/permission behavior).
-- [ ] Expose `questions` and `aggregatedQuestions` selectors from sync context (same root+child aggregation model as permissions).
-- [ ] Success criteria: after bootstrap, pending questions are visible in store without waiting for new SSE events.
+- [x] Update `fetchBootstrapData` in `src/webview/state/bootstrap.ts` to call `client.question.list({ directory })` and group requests by session ID.
+- [x] Include `questionMap` in `BootstrapResult` and commit path (`commitBootstrapData`).
+- [x] Update `setCurrentSessionId` cleanup logic in `src/webview/state/sync.tsx` to clear stale question data when switching sessions (mirroring message/permission behavior).
+- [x] Expose `questions` and `aggregatedQuestions` selectors from sync context (same root+child aggregation model as permissions).
+- [x] Success criteria: after bootstrap, pending questions are visible in store without waiting for new SSE events.
 
 ### Phase 3: Add SDK question helpers in webview hook
 
