@@ -48,13 +48,13 @@ Add question-request support to the webview client using an accordion-style prom
 
 ### Phase 1: Add question state and event plumbing
 
-- [ ] Extend `SyncState` with `question: { [sessionID: string]: QuestionRequest[] }` in `src/webview/state/types.ts` and initialize it in `createEmptyState`.
-- [ ] Add event handling in `src/webview/state/eventHandlers.ts` for:
-- [ ] `question.asked`: insert/update request in `store.question[sessionID]`.
-- [ ] `question.replied` and `question.rejected`: remove request by `requestID`.
-- [ ] On `question.asked`, clear `thinking` for that session so pending question state is obvious in UI.
-- [ ] Add/adjust types in webview code to import `QuestionRequest` from SDK v2 client types without introducing `any`.
-- [ ] Success criteria: unit tests validate add/remove behavior for question events and thinking state reset on `question.asked`.
+- [x] Extend `SyncState` with `question: { [sessionID: string]: QuestionRequest[] }` in `src/webview/state/types.ts` and initialize it in `createEmptyState`.
+- [x] Add event handling in `src/webview/state/eventHandlers.ts` for:
+- [x] `question.asked`: insert/update request in `store.question[sessionID]`.
+- [x] `question.replied` and `question.rejected`: remove request by `requestID`.
+- [x] On `question.asked`, do not mutate `thinking` state; question rendering should be explicit from question state itself.
+- [x] Add/adjust types in webview code to import `QuestionRequest` from SDK v2 client types without introducing `any`.
+- [x] Success criteria: unit tests validate add/update/remove behavior for question events.
 
 ### Phase 2: Bootstrap pending questions and expose selectors
 

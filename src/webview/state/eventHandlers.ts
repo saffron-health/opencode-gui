@@ -526,6 +526,45 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       break;
     }
 
+    case "question.asked": {
+      const question = event.properties;
+      const sessionId = question.sessionID;
+      if (!sessionId) break;
+
+      const questions = store.question[sessionId];
+      if (!questions) {
+        setStore("question", sessionId, [question]);
+        break;
+      }
+
+      const result = findById(questions, question.id, (q) => q.id);
+      if (result.found) {
+        setStore("question", sessionId, result.index, reconcile(question));
+      } else {
+        setStore("question", sessionId, [...questions, question]);
+      }
+      break;
+    }
+
+    case "question.replied":
+    case "question.rejected": {
+      const { sessionID, requestID } = event.properties;
+      const sessionId = sessionID ?? currentSessionId();
+      if (!sessionId) break;
+
+      const questions = store.question[sessionId];
+      if (!questions) break;
+
+      const result = findById(questions, requestID, (q) => q.id);
+      if (result.found) {
+        setStore("question", sessionId, [
+          ...questions.slice(0, result.index),
+          ...questions.slice(result.index + 1),
+        ]);
+      }
+      break;
+    }
+
     case "session.status": {
       const { sessionID, status } = event.properties;
       if (sessionID) {
