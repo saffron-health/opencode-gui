@@ -97,8 +97,8 @@ Add question-request support to the webview client using an accordion-style prom
 
 ### Phase 6: Verification and regression checks
 
-- [ ] Add targeted tests for reducer changes, submit gating rules, and app-level question render/handler wiring.
-- [ ] Run `pnpm test` and verify no regressions in existing permission prompt behavior.
+- [x] Add targeted tests for reducer changes, submit gating rules, and app-level question render/handler wiring.
+- [x] Run `pnpm test` and verify no regressions in existing permission prompt behavior.
 - [ ] Manual verification against a real backend session using a demo-question prompt:
 ```text
 Before making any edits, ask me exactly 3 demo questions using the question tool:
