@@ -66,33 +66,33 @@ Add question-request support to the webview client using an accordion-style prom
 
 ### Phase 3: Add SDK question helpers in webview hook
 
-- [ ] Add `respondToQuestion(requestId, answers)` helper in `src/webview/hooks/useOpenCode.tsx` calling `client.question.reply` with optional `directory`.
-- [ ] Add `rejectQuestion(requestId)` helper calling `client.question.reject` with optional `directory`.
-- [ ] Optionally add `getQuestions()` helper for direct reads where needed (if bootstrap path benefits from centralization).
-- [ ] Ensure helper failures throw actionable errors surfaced by UI callers.
-- [ ] Success criteria: hook unit test (or focused integration test) confirms helper calls SDK with expected payload (`answers: Array<QuestionAnswer>`).
+- [x] Add `respondToQuestion(requestId, answers)` helper in `src/webview/hooks/useOpenCode.tsx` calling `client.question.reply` with optional `directory`.
+- [x] Add `rejectQuestion(requestId)` helper calling `client.question.reject` with optional `directory`.
+- [x] Optionally add `getQuestions()` helper for direct reads where needed (if bootstrap path benefits from centralization).
+- [x] Ensure helper failures throw actionable errors surfaced by UI callers.
+- [x] Success criteria: hook unit test (or focused integration test) confirms helper calls SDK with expected payload (`answers: Array<QuestionAnswer>`).
 
 ### Phase 4: Build accordion QuestionPrompt component
 
-- [ ] Create `src/webview/components/QuestionPrompt.tsx` with accordion behavior per request:
-- [ ] Render one accordion item per `QuestionInfo` in request order.
-- [ ] Initial expanded item is index `0`.
-- [ ] Selecting an answer on current item auto-expands the next item when available.
-- [ ] Clicking an item header re-expands it for answer edits.
-- [ ] Keep answer state for all questions locally until submit.
-- [ ] Add custom-answer input support when `custom !== false`.
-- [ ] Add bottom actions: `Reject` and `Submit`.
-- [ ] `Submit` disabled until every question has at least one answer.
-- [ ] Add styles in `src/webview/App.css` for accordion headers/panels and answered-state affordances.
-- [ ] Success criteria: component tests verify auto-advance, answer editing on prior items, and submit payload shape.
+- [x] Create `src/webview/components/QuestionPrompt.tsx` with accordion behavior per request:
+- [x] Render one accordion item per `QuestionInfo` in request order.
+- [x] Initial expanded item is index `0`.
+- [x] Selecting an answer on current item auto-expands the next item when available.
+- [x] Clicking an item header re-expands it for answer edits.
+- [x] Keep answer state for all questions locally until submit.
+- [x] Add custom-answer input support when `custom !== false`.
+- [x] Add bottom actions: `Reject` and `Submit`.
+- [x] `Submit` disabled until every question has at least one answer.
+- [x] Add styles in `src/webview/App.css` for accordion headers/panels and answered-state affordances.
+- [x] Success criteria: component tests verify auto-advance, answer editing on prior items, and submit payload shape.
 
 ### Phase 5: Wire QuestionPrompt into App flow
 
-- [ ] In `src/webview/App.tsx`, derive standalone pending questions for current/root+child sessions and render `QuestionPrompt` blocks near existing standalone permission prompts.
-- [ ] Add `handleQuestionSubmit(requestId, answers)` and `handleQuestionReject(requestId)` handlers.
-- [ ] Surface inline session error when submit/reject transport fails.
-- [ ] Prevent conflicting queued/submitted prompt sends while unresolved question requests exist for the active session tree.
-- [ ] Ensure in-flight marker is cleared when a question arrives for that in-flight session.
+- [x] In `src/webview/App.tsx`, derive standalone pending questions for current/root+child sessions and render `QuestionPrompt` blocks near existing standalone permission prompts.
+- [x] Add `handleQuestionSubmit(requestId, answers)` and `handleQuestionReject(requestId)` handlers.
+- [x] Surface inline session error when submit/reject transport fails.
+- [x] Prevent conflicting queued/submitted prompt sends while unresolved question requests exist for the active session tree.
+- [x] Ensure in-flight marker is cleared when a question arrives for that in-flight session.
 - [ ] Success criteria: manual flow confirms question appears, answers can be revised via accordion, and submit clears prompt on `question.replied`.
 
 ### Phase 6: Verification and regression checks

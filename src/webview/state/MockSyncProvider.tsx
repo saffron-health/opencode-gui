@@ -29,6 +29,7 @@ export function MockSyncProvider(props: MockSyncProviderProps) {
   const sessions = createMemo(() => props.sessions ?? []);
   const agents = createMemo(() => props.agents ?? []);
   const permissions = createMemo(() => props.permissions ?? new Map());
+  const questions = createMemo(() => new Map());
   const contextInfo = createMemo(() => props.contextInfo ?? null);
   const fileChanges = createMemo(() => props.fileChanges ?? null);
 
@@ -51,6 +52,9 @@ export function MockSyncProvider(props: MockSyncProviderProps) {
     sessions,
     agents,
     permissions,
+    questions,
+    aggregatedPermissions: permissions,
+    aggregatedQuestions: questions,
     isThinking,
     sessionError,
     contextInfo,

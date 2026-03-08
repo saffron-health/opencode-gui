@@ -6,9 +6,10 @@ import { TopBar } from "./components/TopBar";
 import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
 import { PermissionPrompt } from "./components/PermissionPrompt";
+import { QuestionPrompt } from "./components/QuestionPrompt";
 import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
 import { useSync } from "./state/sync";
-import type { FilePartInput } from "@opencode-ai/sdk/v2/client";
+import type { FilePartInput, QuestionAnswer, QuestionRequest } from "@opencode-ai/sdk/v2/client";
 import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart } from "./types";
 import { parseHostMessage } from "./types";
 
@@ -86,6 +87,8 @@ function App() {
     abortSession,
     sendPrompt,
     respondToPermission,
+    respondToQuestion,
+    rejectQuestion,
     revertToMessage,
     hostError,
     clearHostError,
@@ -157,6 +160,7 @@ function App() {
   const agents = sync.agents;
   const sessions = sync.sessions;
   const pendingPermissions = sync.aggregatedPermissions;
+  const pendingQuestions = sync.aggregatedQuestions;
   const contextInfo = sync.contextInfo;
   const fileChanges = sync.fileChanges;
   const isThinking = sync.isThinking;
@@ -272,6 +276,19 @@ function App() {
     }
     return result;
   });
+
+  // Find questions that should show as standalone accordions (not inline with tools)
+  const standaloneQuestions = createMemo(() => {
+    const result: QuestionRequest[] = [];
+    for (const [, question] of pendingQuestions().entries()) {
+      if (!question.tool) {
+        result.push(question);
+      }
+    }
+    return result;
+  });
+
+  const hasPendingQuestions = createMemo(() => pendingQuestions().size > 0);
 
   const sessionsToShow = createMemo(() => {
     const root = sync.workspaceRoot();
@@ -451,10 +468,31 @@ function App() {
     onCleanup(cleanup);
   });
 
+  // If a question request arrives for an in-flight session, clear the in-flight
+  // marker so the app can transition into question-response mode immediately.
+  createEffect(() => {
+    const inflight = inFlightMessage();
+    if (!inflight) return;
+
+    for (const [, question] of pendingQuestions().entries()) {
+      if (question.sessionID === inflight.sessionId) {
+        setInFlightMessage(null);
+        return;
+      }
+    }
+  });
+
   // Handlers
   const handleSubmit = async () => {
     const text = input().trim();
     if (!text || !sync.isReady()) {
+      return;
+    }
+    if (hasPendingQuestions()) {
+      const sessionId = sync.currentSessionId();
+      if (sessionId) {
+        sync.setSessionError(sessionId, "Answer pending questions before sending another prompt.");
+      }
       return;
     }
 
@@ -596,6 +634,10 @@ function App() {
     if (queue.length === 0) {
       return;
     }
+
+    if (hasPendingQuestions()) {
+      return;
+    }
     
     // Don't process if there's already an in-flight message
     if (inflight) {
@@ -652,6 +694,13 @@ function App() {
   const handleQueueMessage = () => {
     const text = input().trim();
     if (!text || !sync.isReady()) return;
+    if (hasPendingQuestions()) {
+      const sessionId = sync.currentSessionId();
+      if (sessionId) {
+        sync.setSessionError(sessionId, "Answer pending questions before queueing another prompt.");
+      }
+      return;
+    }
     
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
@@ -846,6 +895,38 @@ function App() {
     // Permission removal is handled by store via SSE events
   };
 
+  const handleQuestionSubmit = async (requestId: string, answers: Array<QuestionAnswer>) => {
+    const question = pendingQuestions().get(requestId);
+    const sessionId = question?.sessionID ?? sync.currentSessionId();
+    if (!sessionId || !sync.isReady()) {
+      console.error("[App] Cannot respond to question: no session ID");
+      return;
+    }
+
+    try {
+      await respondToQuestion(requestId, answers);
+    } catch (err) {
+      const errorMessage = (err as Error).message;
+      sync.setSessionError(sessionId, errorMessage);
+    }
+  };
+
+  const handleQuestionReject = async (requestId: string) => {
+    const question = pendingQuestions().get(requestId);
+    const sessionId = question?.sessionID ?? sync.currentSessionId();
+    if (!sessionId || !sync.isReady()) {
+      console.error("[App] Cannot reject question: no session ID");
+      return;
+    }
+
+    try {
+      await rejectQuestion(requestId);
+    } catch (err) {
+      const errorMessage = (err as Error).message;
+      sync.setSessionError(sessionId, errorMessage);
+    }
+  };
+
   // Refresh sessions - just re-bootstrap
   const refreshSessions = async () => {
     await sync.bootstrap();
@@ -871,6 +952,20 @@ function App() {
       />
 
       <Show when={!hasMessages()}>
+        <Show when={standaloneQuestions().length > 0}>
+          <div class="standalone-permissions">
+            <For each={standaloneQuestions()}>
+              {(question) => (
+                <QuestionPrompt
+                  request={question}
+                  onSubmit={handleQuestionSubmit}
+                  onReject={handleQuestionReject}
+                />
+              )}
+            </For>
+          </div>
+        </Show>
+
         <Show when={standalonePermissions().length > 0}>
           <div class="standalone-permissions">
             <For each={standalonePermissions()}>
@@ -891,7 +986,7 @@ function App() {
           onSubmit={handleSubmit}
           onCancel={handleCancel}
           onQueue={handleQueueMessage}
-          disabled={!sync.isReady()}
+          disabled={!sync.isReady() || hasPendingQuestions()}
           isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}
@@ -941,6 +1036,20 @@ function App() {
             </For>
           </div>
         </Show>
+
+        <Show when={standaloneQuestions().length > 0}>
+          <div class="standalone-permissions">
+            <For each={standaloneQuestions()}>
+              {(question) => (
+                <QuestionPrompt
+                  request={question}
+                  onSubmit={handleQuestionSubmit}
+                  onReject={handleQuestionReject}
+                />
+              )}
+            </For>
+          </div>
+        </Show>
         
         <InputBar
           value={input()}
@@ -948,7 +1057,7 @@ function App() {
           onSubmit={handleSubmit}
           onCancel={handleCancel}
           onQueue={handleQueueMessage}
-          disabled={!sync.isReady()}
+          disabled={!sync.isReady() || hasPendingQuestions()}
           isThinking={isThinking()}
           selectedAgent={selectedAgent()}
           agents={agents()}
