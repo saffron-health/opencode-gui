@@ -182,7 +182,7 @@ export function TiptapEditor(props: TiptapEditorProps) {
     props.ref({
       getJSON: () => currentEditor.getJSON(),
       setContent: (content: JSONContent | string) => currentEditor.commands.setContent(content, false),
-      clear: () => currentEditor.commands.clearContent(),
+      clear: () => currentEditor.commands.clearContent(false),
       focus: () => currentEditor.commands.focus(),
       insertFileMention: (filePath: string, startLine?: number, endLine?: number) => {
         const normalizedPath = filePath.trim();
