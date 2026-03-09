@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup } from "solid-js";
+import { createEffect, createSignal, on, onCleanup } from "solid-js";
 import { createEditor, EditorContent } from "tiptap-solid";
 import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
@@ -35,6 +35,7 @@ export function TiptapEditor(props: TiptapEditorProps) {
   const [isSuggestionActive, setIsSuggestionActive] = createSignal(false);
   let initializedEditor: ReturnType<ReturnType<typeof createEditor>> | null = null;
   let exposedEditor: ReturnType<ReturnType<typeof createEditor>> | null = null;
+  let syncedValueEditor: ReturnType<ReturnType<typeof createEditor>> | null = null;
 
   const editor = createEditor({
     extensions: [
@@ -133,6 +134,7 @@ export function TiptapEditor(props: TiptapEditorProps) {
   createEffect(() => {
     const currentEditor = editor();
     if (currentEditor) {
+      syncedValueEditor = currentEditor;
       if (initializedEditor !== currentEditor) {
         initializedEditor = currentEditor;
         currentEditor.setEditable(!props.disabled, false);
@@ -146,6 +148,24 @@ export function TiptapEditor(props: TiptapEditorProps) {
       currentEditor.setEditable(!props.disabled, false);
     }
   });
+
+  // Sync external value changes without reacting to editor transactions.
+  createEffect(
+    on(
+      () => props.value,
+      (nextValue) => {
+        const currentEditor = syncedValueEditor;
+        if (!currentEditor) {
+          return;
+        }
+        if (nextValue === currentEditor.getText()) {
+          return;
+        }
+        currentEditor.commands.setContent(nextValue, false);
+      },
+      { defer: true }
+    )
+  );
 
   // Expose editor methods via ref
   createEffect(() => {
