@@ -24,6 +24,14 @@ describe("QuestionPrompt state helpers", () => {
     expect(next.expandedIndex).toBe(1);
   });
 
+  it("collapses the accordion after answering the last question", () => {
+    const state = createQuestionPromptState(2);
+    const answeredFirst = setSingleAnswer(state, 0, "Option A", 2);
+    const answeredLast = setSingleAnswer(answeredFirst, 1, "Option B", 2);
+
+    expect(answeredLast.expandedIndex).toBeNull();
+  });
+
   it("supports reopening and editing prior answers", () => {
     const state = createQuestionPromptState(2);
     const answeredFirst = setSingleAnswer(state, 0, "Option A", 2);

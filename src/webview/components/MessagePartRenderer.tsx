@@ -1,6 +1,7 @@
 
 import type { Accessor } from "solid-js";
 import type { MessagePart, Permission } from "../types";
+import type { QuestionAnswer, QuestionRequest } from "@opencode-ai/sdk/v2/client";
 import { TextBlock } from "./parts/TextBlock";
 import { ReasoningBlock } from "./parts/ReasoningBlock";
 import { ToolCall } from "./parts/ToolCall";
@@ -13,6 +14,9 @@ interface MessagePartRendererProps {
   workspaceRoot?: string;
   pendingPermissions?: Accessor<Map<string, Permission>>;
   onPermissionResponse?: (permissionId: string, response: "once" | "always" | "reject") => void;
+  pendingQuestions?: Accessor<Map<string, QuestionRequest>>;
+  onQuestionSubmit?: (requestId: string, answers: Array<QuestionAnswer>) => void | Promise<void>;
+  onQuestionReject?: (requestId: string) => void | Promise<void>;
   isStreaming?: boolean;
 }
 
@@ -41,7 +45,17 @@ export function MessagePartRenderer(props: MessagePartRendererProps) {
     case "reasoning":
       return <ReasoningBlock part={props.part} />;
     case "tool":
-      return <ToolCall part={props.part} workspaceRoot={props.workspaceRoot} pendingPermissions={props.pendingPermissions} onPermissionResponse={props.onPermissionResponse} />;
+      return (
+        <ToolCall
+          part={props.part}
+          workspaceRoot={props.workspaceRoot}
+          pendingPermissions={props.pendingPermissions}
+          onPermissionResponse={props.onPermissionResponse}
+          pendingQuestions={props.pendingQuestions}
+          onQuestionSubmit={props.onQuestionSubmit}
+          onQuestionReject={props.onQuestionReject}
+        />
+      );
     case "step-start":
     case "step-finish":
       return null;

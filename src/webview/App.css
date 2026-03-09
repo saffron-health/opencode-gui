@@ -1069,6 +1069,22 @@ body {
 .question-prompt__status {
   font-size: var(--font-size-small);
   color: var(--description-foreground);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 55%;
+  justify-content: flex-end;
+}
+
+.question-prompt__status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.question-prompt__status-check {
+  color: var(--git-added-foreground);
+  font-weight: 600;
 }
 
 .question-prompt__panel {

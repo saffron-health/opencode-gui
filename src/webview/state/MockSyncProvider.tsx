@@ -61,6 +61,8 @@ export function MockSyncProvider(props: MockSyncProviderProps) {
     fileChanges,
     status: () => ({ type: "connected" }) as const,
     getParts,
+    getQuestionByCallID: () => undefined,
+    getQuestionByMessageID: () => undefined,
     currentSessionId,
     setCurrentSessionId,
     setThinking,

@@ -25,7 +25,12 @@ function createTestContext(currentSession: string | null = null): EventHandlerCo
   };
 }
 
-function createQuestionRequest(id: string, sessionID: string, prompt: string): QuestionRequest {
+function createQuestionRequest(
+  id: string,
+  sessionID: string,
+  prompt: string,
+  tool?: { messageID: string; callID: string }
+): QuestionRequest {
   return {
     id,
     sessionID,
@@ -45,6 +50,7 @@ function createQuestionRequest(id: string, sessionID: string, prompt: string): Q
         ],
       },
     ],
+    ...(tool ? { tool } : {}),
   };
 }
 
@@ -52,7 +58,10 @@ describe("applyEvent question handling", () => {
   it("adds question.asked requests", () => {
     const ctx = createTestContext("ses_1");
 
-    const request = createQuestionRequest("req_1", "ses_1", "Continue?");
+    const request = createQuestionRequest("req_1", "ses_1", "Continue?", {
+      messageID: "msg_1",
+      callID: "call_1",
+    });
     const event: Event = {
       type: "question.asked",
       properties: request,
@@ -62,6 +71,8 @@ describe("applyEvent question handling", () => {
 
     expect(ctx.store.question.ses_1).toHaveLength(1);
     expect(ctx.store.question.ses_1?.[0]?.id).toBe("req_1");
+    expect(ctx.store.questionByCallID.call_1).toBe("req_1");
+    expect(ctx.store.questionByMessageID.msg_1).toBe("req_1");
   });
 
   it("updates an existing question.asked request by id", () => {
@@ -102,6 +113,31 @@ describe("applyEvent question handling", () => {
     expect(ctx.store.question.ses_1?.[0]?.id).toBe("req_2");
   });
 
+  it("removes question indexes on question.replied", () => {
+    const ctx = createTestContext("ses_1");
+    const request = createQuestionRequest("req_1", "ses_1", "First?", {
+      messageID: "msg_1",
+      callID: "call_1",
+    });
+    ctx.setStore("question", "ses_1", [request]);
+    ctx.setStore("questionByCallID", "call_1", "req_1");
+    ctx.setStore("questionByMessageID", "msg_1", "req_1");
+
+    const event: Event = {
+      type: "question.replied",
+      properties: {
+        sessionID: "ses_1",
+        requestID: "req_1",
+        answers: [["Yes"]],
+      },
+    };
+
+    applyEvent(event, ctx);
+
+    expect(ctx.store.questionByCallID.call_1).toBeUndefined();
+    expect(ctx.store.questionByMessageID.msg_1).toBeUndefined();
+  });
+
   it("removes requests on question.rejected", () => {
     const ctx = createTestContext("ses_1");
     ctx.setStore("question", "ses_1", [
@@ -121,5 +157,25 @@ describe("applyEvent question handling", () => {
 
     expect(ctx.store.question.ses_1).toHaveLength(1);
     expect(ctx.store.question.ses_1?.[0]?.id).toBe("req_1");
+  });
+
+  it("removes requests when question.replied omits sessionID", () => {
+    const ctx = createTestContext("ses_2");
+    ctx.setStore("question", "ses_1", [createQuestionRequest("req_1", "ses_1", "First?")]);
+    ctx.setStore("question", "ses_2", [createQuestionRequest("req_2", "ses_2", "Second?")]);
+
+    const event: Event = {
+      type: "question.replied",
+      properties: {
+        requestID: "req_1",
+        answers: [["Yes"]],
+      },
+    };
+
+    applyEvent(event, ctx);
+
+    expect(ctx.store.question.ses_1).toHaveLength(0);
+    expect(ctx.store.question.ses_2).toHaveLength(1);
+    expect(ctx.store.question.ses_2?.[0]?.id).toBe("req_2");
   });
 });

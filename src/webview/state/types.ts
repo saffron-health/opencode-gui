@@ -34,6 +34,9 @@ export interface SyncState {
   permission: { [sessionID: string]: Permission[] };
   /** Questions keyed by sessionID */
   question: { [sessionID: string]: QuestionRequest[] };
+  /** Question request IDs keyed by tool identifiers */
+  questionByCallID: { [callID: string]: string };
+  questionByMessageID: { [messageID: string]: string };
   /** Session status keyed by sessionID */
   sessionStatus: { [sessionID: string]: SessionStatus };
   /** UI state */
@@ -52,6 +55,8 @@ export function createEmptyState(): SyncState {
     part: {},
     permission: {},
     question: {},
+    questionByCallID: {},
+    questionByMessageID: {},
     sessionStatus: {},
     contextInfo: null,
     fileChanges: null,

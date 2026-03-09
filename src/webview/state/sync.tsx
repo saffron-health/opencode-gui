@@ -25,6 +25,25 @@ import { logger } from "../utils/logger";
 
 export type { SyncStatus } from "./types";
 
+function collectSessionTreeIds(
+  sessions: SyncState["sessions"],
+  rootId: string
+): string[] {
+  const seen = new Set<string>([rootId]);
+  const queue = [rootId];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    for (const session of sessions) {
+      if (session.parentID !== currentId || seen.has(session.id)) continue;
+      seen.add(session.id);
+      queue.push(session.id);
+    }
+  }
+
+  return Array.from(seen);
+}
+
 function createSync() {
   const sdk = useOpenCode();
   const [store, setStore] = createStore<SyncState>(createEmptyState());
@@ -76,13 +95,13 @@ function createSync() {
     const prevId = currentSessionId();
     if (prevId && prevId !== id) {
       const prevMessages = store.message[prevId] ?? [];
+      // Keep permission/question state across session switches so pending
+      // prompts remain available when users return to the original session.
       batch(() => {
         setStore("message", produce((draft) => { delete draft[prevId]; }));
         setStore("part", produce((draft) => {
           for (const msg of prevMessages) { delete draft[msg.id]; }
         }));
-        setStore("permission", produce((draft) => { delete draft[prevId]; }));
-        setStore("question", produce((draft) => { delete draft[prevId]; }));
       });
       // Clean up messageToSession mapping
       for (const msg of prevMessages) {
@@ -142,9 +161,7 @@ function createSync() {
       rootId = currentSession.parentID;
     }
 
-    // Collect all sessions where parentID === root (and optionally root itself)
-    const childSessions = store.sessions.filter((s) => s.parentID === rootId);
-    const relevantSessionIds = [rootId, ...childSessions.map((s) => s.id)];
+    const relevantSessionIds = collectSessionTreeIds(store.sessions, rootId);
 
     // Flatten permissions from all relevant sessions
     const map = new Map<string, Permission>();
@@ -171,16 +188,24 @@ function createSync() {
       rootId = currentSession.parentID;
     }
 
-    // Collect all sessions where parentID === root (and optionally root itself)
-    const childSessions = store.sessions.filter((s) => s.parentID === rootId);
-    const relevantSessionIds = [rootId, ...childSessions.map((s) => s.id)];
+    const relevantSessionIds = new Set(collectSessionTreeIds(store.sessions, rootId));
+    const visibleMessageIds = new Set(messages().map((message) => message.id));
 
-    // Flatten questions from all relevant sessions
+    // Flatten questions from relevant sessions.
+    // Also include tool-bound questions that target currently visible messages,
+    // even when their child session metadata is unavailable in store.sessions.
     const map = new Map<string, QuestionRequest>();
-    for (const sid of relevantSessionIds) {
-      const questionList = store.question[sid] ?? [];
-      for (const q of questionList) {
-        map.set(q.id, q);
+    for (const [sid, questionList] of Object.entries(store.question)) {
+      const inRelevantSession = relevantSessionIds.has(sid);
+      for (const q of questionList ?? []) {
+        if (inRelevantSession) {
+          map.set(q.id, q);
+          continue;
+        }
+        const toolMessageID = q.tool?.messageID;
+        if (toolMessageID && visibleMessageIds.has(toolMessageID)) {
+          map.set(q.id, q);
+        }
       }
     }
     return map;
@@ -249,6 +274,7 @@ function createSync() {
 
         // Flush any events that arrived during bootstrap
         flushEventQueue();
+        setStore("status", { status: "connected" });
       } catch (err) {
         console.error("[Sync] Bootstrap failed:", err);
         setStore("status", { status: "error", message: (err as Error).message });
@@ -364,6 +390,18 @@ function createSync() {
   });
 
   const getParts = (messageId: string) => store.part[messageId] ?? [];
+  const getQuestionById = (requestId?: string) => {
+    if (!requestId) return undefined;
+    for (const questions of Object.values(store.question)) {
+      const match = (questions ?? []).find((question) => question.id === requestId);
+      if (match) return match;
+    }
+    return undefined;
+  };
+  const getQuestionByCallID = (callID?: string) =>
+    getQuestionById(callID ? store.questionByCallID[callID] : undefined);
+  const getQuestionByMessageID = (messageID?: string) =>
+    getQuestionById(messageID ? store.questionByMessageID[messageID] : undefined);
   const sessionStatus = (sessionId: string) => store.sessionStatus[sessionId] ?? null;
 
   return {
@@ -381,6 +419,8 @@ function createSync() {
     fileChanges,
     status: () => store.status,
     getParts,
+    getQuestionByCallID,
+    getQuestionByMessageID,
 
     currentSessionId,
     setCurrentSessionId,

@@ -277,7 +277,8 @@ function App() {
     return result;
   });
 
-  // Find questions that should show as standalone accordions (not inline with tools)
+  // Questions associated with tool calls render inline at the tool location.
+  // Keep standalone rendering only for non-tool questions.
   const standaloneQuestions = createMemo(() => {
     const result: QuestionRequest[] = [];
     for (const [, question] of pendingQuestions().entries()) {
@@ -1006,7 +1007,10 @@ function App() {
         isThinking={isThinking()}
         workspaceRoot={sync.workspaceRoot()}
         pendingPermissions={pendingPermissions}
+        pendingQuestions={pendingQuestions}
         onPermissionResponse={handlePermissionResponse}
+        onQuestionSubmit={handleQuestionSubmit}
+        onQuestionReject={handleQuestionReject}
         editingMessageId={editingMessageId()}
         editingText={editingText()}
         onStartEdit={handleStartEdit}

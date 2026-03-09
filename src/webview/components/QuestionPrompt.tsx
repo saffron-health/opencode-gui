@@ -11,32 +11,32 @@ export interface QuestionPromptProps {
 }
 
 export interface QuestionPromptState {
-  expandedIndex: number;
+  expandedIndex: number | null;
   answers: Array<QuestionAnswer>;
   customInputs: string[];
 }
 
-function clampExpandedIndex(index: number, questionCount: number): number {
-  if (questionCount <= 0) return 0;
+function clampExpandedIndex(index: number, questionCount: number): number | null {
+  if (questionCount <= 0) return null;
   if (index < 0) return 0;
   if (index >= questionCount) return questionCount - 1;
   return index;
 }
 
 function shouldAutoAdvance(
-  expandedIndex: number,
+  expandedIndex: number | null,
   answerIndex: number,
   questionCount: number
-): number {
+): number | null {
   if (expandedIndex !== answerIndex) return expandedIndex;
   const nextIndex = answerIndex + 1;
-  if (nextIndex >= questionCount) return expandedIndex;
+  if (nextIndex >= questionCount) return null;
   return nextIndex;
 }
 
 export function createQuestionPromptState(questionCount: number): QuestionPromptState {
   return {
-    expandedIndex: 0,
+    expandedIndex: questionCount > 0 ? 0 : null,
     answers: Array.from({ length: questionCount }, () => []),
     customInputs: Array.from({ length: questionCount }, () => ""),
   };
@@ -140,6 +140,13 @@ function isOptionSelected(selected: QuestionAnswer, label: string): boolean {
   return selected.includes(label);
 }
 
+function formatAnswerSummary(selected: QuestionAnswer): string {
+  if (selected.length === 0) return "";
+  if (selected.length === 1) return selected[0] ?? "";
+  const [first, ...rest] = selected;
+  return `${first} +${rest.length}`;
+}
+
 export function QuestionPrompt(props: QuestionPromptProps) {
   const questionCount = props.request.questions.length;
   const [state, setState] = createSignal<QuestionPromptState>(
@@ -191,8 +198,15 @@ export function QuestionPrompt(props: QuestionPromptProps) {
                   aria-expanded={expanded()}
                 >
                   <span class="question-prompt__title">{question.header}</span>
-                  <Show when={answered()}>
-                    <span class="question-prompt__status">Answered</span>
+                  <Show when={answered() && !expanded()}>
+                    <span class="question-prompt__status">
+                      <span class="question-prompt__status-text">
+                        {formatAnswerSummary(selectedAnswers())}
+                      </span>
+                      <span class="question-prompt__status-check" aria-hidden="true">
+                        ✓
+                      </span>
+                    </span>
                   </Show>
                 </button>
 

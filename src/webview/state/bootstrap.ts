@@ -324,6 +324,17 @@ export function commitBootstrapData(
     }
     setStore("permission", reconcile(data.permissionMap));
     setStore("question", reconcile(data.questionMap));
+    const questionByCallID: Record<string, string> = {};
+    const questionByMessageID: Record<string, string> = {};
+    for (const questionList of Object.values(data.questionMap)) {
+      for (const question of questionList ?? []) {
+        if (!question.tool) continue;
+        questionByCallID[question.tool.callID] = question.id;
+        questionByMessageID[question.tool.messageID] = question.id;
+      }
+    }
+    setStore("questionByCallID", reconcile(questionByCallID));
+    setStore("questionByMessageID", reconcile(questionByMessageID));
     setStore("sessionStatus", reconcile(data.sessionStatusMap));
     setStore("contextInfo", data.contextInfo);
     setStore("fileChanges", data.fileChanges);
