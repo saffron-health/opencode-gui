@@ -6,6 +6,7 @@ import type {
   Session as SDKSession,
   Message as SDKMessage,
   Part as SDKPart,
+  QuestionRequest as SDKQuestionRequest,
 } from "@opencode-ai/sdk/v2/client";
 
 type AppApi = {
@@ -20,6 +21,10 @@ type SessionApi = {
 
 type PermissionApi = {
   list(opts?: { directory?: string }): Promise<{ data?: any[] }>;
+};
+
+type QuestionApi = {
+  list(opts?: { directory?: string }): Promise<{ data?: SDKQuestionRequest[] }>;
 };
 
 class MockAppApi implements AppApi {
@@ -76,12 +81,19 @@ class MockPermissionApi implements PermissionApi {
   }
 }
 
+class MockQuestionApi implements QuestionApi {
+  async list(_opts?: { directory?: string }): Promise<{ data?: SDKQuestionRequest[] }> {
+    return { data: [] };
+  }
+}
+
 describe("Frontend Bootstrap", () => {
   it("should fetch agents and sessions", async () => {
     const harness = new GatekeeperHarness()
       .add("appApi", () => new MockAppApi())
       .add("sessionApi", () => new MockSessionApi())
-      .add("permissionApi", () => new MockPermissionApi());
+      .add("permissionApi", () => new MockPermissionApi())
+      .add("questionApi", () => new MockQuestionApi());
 
     harness.lowerAllGates();
 
@@ -90,6 +102,7 @@ describe("Frontend Bootstrap", () => {
         app: harness.appApi.call,
         session: harness.sessionApi.call,
         permission: harness.permissionApi.call,
+        question: harness.questionApi.call,
       },
       sessionId: null,
       workspaceRoot: "/test",
@@ -107,7 +120,8 @@ describe("Frontend Bootstrap", () => {
     const harness = new GatekeeperHarness()
       .add("appApi", () => new MockAppApi())
       .add("sessionApi", () => new MockSessionApi())
-      .add("permissionApi", () => new MockPermissionApi());
+      .add("permissionApi", () => new MockPermissionApi())
+      .add("questionApi", () => new MockQuestionApi());
 
     harness.raiseAllGates();
 
@@ -116,6 +130,7 @@ describe("Frontend Bootstrap", () => {
         app: harness.appApi.intercept,
         session: harness.sessionApi.intercept,
         permission: harness.permissionApi.intercept,
+        question: harness.questionApi.intercept,
       },
       sessionId: null,
       workspaceRoot: "/test",
@@ -142,6 +157,9 @@ describe("Frontend Bootstrap", () => {
     const permissionListCall = await harness.permissionApi.waitForCall("list");
     await permissionListCall.fulfill({ data: [] });
 
+    const questionListCall = await harness.questionApi.waitForCall("list");
+    await questionListCall.fulfill({ data: [] });
+
     const result = await resultPromise;
 
     expect(result.agents).toHaveLength(1);
@@ -153,7 +171,8 @@ describe("Frontend Bootstrap", () => {
     const harness = new GatekeeperHarness()
       .add("appApi", () => new MockAppApi())
       .add("sessionApi", () => new MockSessionApi())
-      .add("permissionApi", () => new MockPermissionApi());
+      .add("permissionApi", () => new MockPermissionApi())
+      .add("questionApi", () => new MockQuestionApi());
 
     harness.raiseAllGates();
 
@@ -162,6 +181,7 @@ describe("Frontend Bootstrap", () => {
         app: harness.appApi.intercept,
         session: harness.sessionApi.intercept,
         permission: harness.permissionApi.intercept,
+        question: harness.questionApi.intercept,
       },
       sessionId: null,
       workspaceRoot: "/test",
@@ -202,6 +222,9 @@ describe("Frontend Bootstrap", () => {
     const permissionListCall = await harness.permissionApi.waitForCall("list");
     await permissionListCall.fulfill({ data: [] });
 
+    const questionListCall = await harness.questionApi.waitForCall("list");
+    await questionListCall.fulfill({ data: [] });
+
     const result = await resultPromise;
 
     expect(result.agents).toHaveLength(1);
@@ -212,7 +235,8 @@ describe("Frontend Bootstrap", () => {
     const harness = new GatekeeperHarness()
       .add("appApi", () => new MockAppApi())
       .add("sessionApi", () => new MockSessionApi())
-      .add("permissionApi", () => new MockPermissionApi());
+      .add("permissionApi", () => new MockPermissionApi())
+      .add("questionApi", () => new MockQuestionApi());
 
     harness.raiseAllGates();
 
@@ -221,6 +245,7 @@ describe("Frontend Bootstrap", () => {
         app: harness.appApi.intercept,
         session: harness.sessionApi.intercept,
         permission: harness.permissionApi.intercept,
+        question: harness.questionApi.intercept,
       },
       sessionId: null,
       workspaceRoot: "/test",
@@ -258,6 +283,9 @@ describe("Frontend Bootstrap", () => {
     const permissionListCall = await harness.permissionApi.waitForCall("list");
     await permissionListCall.fulfill({ data: [] });
 
+    const questionListCall = await harness.questionApi.waitForCall("list");
+    await questionListCall.fulfill({ data: [] });
+
     const result = await resultPromise;
 
     expect(result.sessions).toHaveLength(1);
@@ -268,7 +296,8 @@ describe("Frontend Bootstrap", () => {
     const harness = new GatekeeperHarness()
       .add("appApi", () => new MockAppApi())
       .add("sessionApi", () => new MockSessionApi())
-      .add("permissionApi", () => new MockPermissionApi());
+      .add("permissionApi", () => new MockPermissionApi())
+      .add("questionApi", () => new MockQuestionApi());
 
     harness.raiseAllGates();
 
@@ -277,6 +306,7 @@ describe("Frontend Bootstrap", () => {
         app: harness.appApi.intercept,
         session: harness.sessionApi.intercept,
         permission: harness.permissionApi.intercept,
+        question: harness.questionApi.intercept,
       },
       sessionId: null,
       workspaceRoot: "/test",
@@ -293,10 +323,81 @@ describe("Frontend Bootstrap", () => {
     const permissionListCall = await harness.permissionApi.waitForCall("list");
     await permissionListCall.reject(new Error("Network error"));
 
+    const questionListCall = await harness.questionApi.waitForCall("list");
+    await questionListCall.fulfill({ data: [] });
+
     const result = await resultPromise;
 
     expect(result.agents).toHaveLength(0);
     expect(result.sessions).toHaveLength(0);
     expect(result.permissionMap).toEqual({});
+    expect(result.questionMap).toEqual({});
+  });
+
+  it("should group pending questions by session", async () => {
+    const harness = new GatekeeperHarness()
+      .add("appApi", () => new MockAppApi())
+      .add("sessionApi", () => new MockSessionApi())
+      .add("permissionApi", () => new MockPermissionApi())
+      .add("questionApi", () => new MockQuestionApi());
+
+    harness.raiseAllGates();
+
+    const ctx: BootstrapContext = {
+      client: {
+        app: harness.appApi.intercept,
+        session: harness.sessionApi.intercept,
+        permission: harness.permissionApi.intercept,
+        question: harness.questionApi.intercept,
+      },
+      sessionId: null,
+      workspaceRoot: "/test",
+    };
+
+    const resultPromise = fetchBootstrapData(ctx);
+
+    const agentsCall = await harness.appApi.waitForCall("agents");
+    await agentsCall.fulfill({ data: [] });
+
+    const sessionListCall = await harness.sessionApi.waitForCall("list");
+    await sessionListCall.fulfill({ data: [] });
+
+    const permissionListCall = await harness.permissionApi.waitForCall("list");
+    await permissionListCall.fulfill({ data: [] });
+
+    const questionListCall = await harness.questionApi.waitForCall("list");
+    await questionListCall.fulfill({
+      data: [
+        {
+          id: "req-1",
+          sessionID: "session-1",
+          questions: [
+            {
+              header: "Q1",
+              question: "First question?",
+              options: [{ label: "A", description: "Option A" }],
+            },
+          ],
+        },
+        {
+          id: "req-2",
+          sessionID: "session-2",
+          questions: [
+            {
+              header: "Q2",
+              question: "Second question?",
+              options: [{ label: "B", description: "Option B" }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await resultPromise;
+
+    expect(result.questionMap["session-1"]).toHaveLength(1);
+    expect(result.questionMap["session-1"]?.[0]?.id).toBe("req-1");
+    expect(result.questionMap["session-2"]).toHaveLength(1);
+    expect(result.questionMap["session-2"]?.[0]?.id).toBe("req-2");
   });
 });

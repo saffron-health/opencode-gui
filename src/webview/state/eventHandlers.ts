@@ -6,6 +6,7 @@ import type {
   Session as SDKSession,
   PermissionRequest as SDKPermission,
   AssistantMessage,
+  QuestionRequest,
 } from "@opencode-ai/sdk/v2/client";
 import type { Message, MessagePart, Session, Permission } from "../types";
 import type { SyncState } from "./types";
@@ -79,6 +80,48 @@ function resolveMessageText(parts: MessagePart[] | undefined, fallbackText: stri
   return extracted.length > 0 ? extracted : (fallbackText ?? "");
 }
 
+function findQuestionByRequest(
+  store: SyncState,
+  requestId: string
+): { sessionId: string; question: QuestionRequest; index: number } | undefined {
+  for (const [sessionId, questions] of Object.entries(store.question)) {
+    const list = questions ?? [];
+    const index = list.findIndex((question) => question.id === requestId);
+    if (index >= 0) {
+      return { sessionId, question: list[index], index };
+    }
+  }
+  return undefined;
+}
+
+function indexQuestionRequest(
+  setStore: SetStoreFunction<SyncState>,
+  question: QuestionRequest
+): void {
+  const tool = question.tool;
+  if (!tool) return;
+  setStore("questionByCallID", tool.callID, question.id);
+  setStore("questionByMessageID", tool.messageID, question.id);
+}
+
+function removeQuestionIndexes(
+  setStore: SetStoreFunction<SyncState>,
+  question: QuestionRequest
+): void {
+  const tool = question.tool;
+  if (!tool) return;
+  setStore("questionByCallID", produce((draft) => {
+    if (draft[tool.callID] === question.id) {
+      delete draft[tool.callID];
+    }
+  }));
+  setStore("questionByMessageID", produce((draft) => {
+    if (draft[tool.messageID] === question.id) {
+      delete draft[tool.messageID];
+    }
+  }));
+}
+
 export function applyEvent(event: Event, ctx: EventHandlerContext): void {
   const { store, setStore, currentSessionId, messageToSession, sessionIdleCallbacks } = ctx;
   
@@ -114,7 +157,6 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       messageToSession.set(info.id, sessionId);
 
       if (!messages.length) {
-        console.log("[EventHandler] Creating message array for session", { sessionId, msgId: msg.id });
         setStore("message", sessionId, [msg]);
       } else if (result.found) {
         setStore("message", sessionId, result.index, msg);
@@ -522,6 +564,62 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
         setStore("permission", sessionId, produce((draft) => {
           draft.splice(result.index, 1);
         }));
+      }
+      break;
+    }
+
+    case "question.asked": {
+      const question = event.properties;
+      const sessionId = question.sessionID;
+      if (!sessionId) break;
+
+      const questions = store.question[sessionId];
+      if (!questions) {
+        setStore("question", sessionId, [question]);
+        indexQuestionRequest(setStore, question);
+        break;
+      }
+
+      const result = findById(questions, question.id, (q) => q.id);
+      if (result.found) {
+        setStore("question", sessionId, result.index, reconcile(question));
+      } else {
+        setStore("question", sessionId, [...questions, question]);
+      }
+      indexQuestionRequest(setStore, question);
+      break;
+    }
+
+    case "question.replied":
+    case "question.rejected": {
+      const { sessionID, requestID } = event.properties;
+      const resolved =
+        findQuestionByRequest(store, requestID) ??
+        (sessionID
+          ? (() => {
+              const questions = store.question[sessionID] ?? [];
+              const index = questions.findIndex((question) => question.id === requestID);
+              return index >= 0
+                ? { sessionId: sessionID, question: questions[index], index }
+                : undefined;
+            })()
+          : undefined);
+      const sessionId = resolved?.sessionId ?? sessionID ?? currentSessionId();
+      if (!sessionId) break;
+
+      const questions = store.question[sessionId];
+      if (!questions) break;
+
+      const result = findById(questions, requestID, (q) => q.id);
+      if (result.found) {
+        const question = resolved?.question ?? questions[result.index];
+        setStore("question", sessionId, [
+          ...questions.slice(0, result.index),
+          ...questions.slice(result.index + 1),
+        ]);
+        if (question) {
+          removeQuestionIndexes(setStore, question);
+        }
       }
       break;
     }

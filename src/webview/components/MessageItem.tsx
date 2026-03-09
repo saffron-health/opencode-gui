@@ -1,6 +1,7 @@
 
 import { For, Show, createMemo, type Accessor } from "solid-js";
 import type { Message, Permission, MessagePart } from "../types";
+import type { QuestionAnswer, QuestionRequest } from "@opencode-ai/sdk/v2/client";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 import { isRenderablePart } from "./MessagePartRenderer";
 import { Streamdown } from "../lib/streamdown";
@@ -14,6 +15,9 @@ interface MessageItemProps {
   workspaceRoot?: string;
   pendingPermissions?: Accessor<Map<string, Permission>>;
   onPermissionResponse?: (permissionId: string, response: "once" | "always" | "reject") => void;
+  pendingQuestions?: Accessor<Map<string, QuestionRequest>>;
+  onQuestionSubmit?: (requestId: string, answers: Array<QuestionAnswer>) => void | Promise<void>;
+  onQuestionReject?: (requestId: string) => void | Promise<void>;
   isStreaming?: boolean;
 }
 
@@ -144,7 +148,18 @@ export function MessageItem(props: MessageItemProps) {
               }
             >
               <For each={renderableParts()}>
-                {(part) => <MessagePartRenderer part={part} workspaceRoot={props.workspaceRoot} pendingPermissions={props.pendingPermissions} onPermissionResponse={props.onPermissionResponse} isStreaming={props.isStreaming} />}
+                {(part) => (
+                  <MessagePartRenderer
+                    part={part}
+                    workspaceRoot={props.workspaceRoot}
+                    pendingPermissions={props.pendingPermissions}
+                    onPermissionResponse={props.onPermissionResponse}
+                    pendingQuestions={props.pendingQuestions}
+                    onQuestionSubmit={props.onQuestionSubmit}
+                    onQuestionReject={props.onQuestionReject}
+                    isStreaming={props.isStreaming}
+                  />
+                )}
               </For>
             </Show>
           </Show>

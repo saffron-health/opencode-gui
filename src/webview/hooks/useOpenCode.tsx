@@ -11,11 +11,18 @@ import {
   type FilePartInput,
   type AgentPartInput,
   type SubtaskPartInput,
+  type QuestionAnswer,
+  type QuestionRequest,
 } from "@opencode-ai/sdk/v2/client";
 
 import { hasVscodeApi, vscode } from "../utils/vscode";
 import { proxyFetch } from "../utils/proxyFetch";
 import { proxyEventSource } from "../utils/proxyEventSource";
+import {
+  listQuestionRequests,
+  rejectQuestionRequest,
+  replyToQuestionRequest,
+} from "./questionApi";
 
 // Re-export types for convenience
 export type { Event, Agent, Session, SDKMessage, Part };
@@ -197,6 +204,28 @@ function createOpenCode() {
     });
   }
 
+  async function respondToQuestion(
+    requestId: string,
+    answers: Array<QuestionAnswer>
+  ) {
+    const c = client();
+    if (!c) throw new Error("Not connected");
+    return replyToQuestionRequest(c, requestId, answers, workspaceRoot());
+  }
+
+  async function rejectQuestion(requestId: string) {
+    const c = client();
+    if (!c) throw new Error("Not connected");
+    return rejectQuestionRequest(c, requestId, workspaceRoot());
+  }
+
+  async function getQuestions(): Promise<QuestionRequest[] | undefined> {
+    const c = client();
+    if (!c) throw new Error("Not connected");
+    const result = await listQuestionRequests(c, workspaceRoot());
+    return result.data;
+  }
+
   return {
     client,
     isReady,
@@ -226,6 +255,9 @@ function createOpenCode() {
     sendPrompt,
     subscribeToEvents,
     respondToPermission,
+    respondToQuestion,
+    rejectQuestion,
+    getQuestions,
     revertToMessage,
   };
 }

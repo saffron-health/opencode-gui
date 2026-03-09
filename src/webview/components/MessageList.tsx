@@ -1,6 +1,7 @@
 
 import { For, Show, createSignal, onMount, onCleanup, createEffect, createMemo, on, type Accessor } from "solid-js";
 import type { Message, Permission } from "../types";
+import type { QuestionAnswer, QuestionRequest } from "@opencode-ai/sdk/v2/client";
 import { MessageItem } from "./MessageItem";
 import { EditableUserMessage } from "./EditableUserMessage";
 import { ThinkingIndicator } from "./ThinkingIndicator";
@@ -11,7 +12,10 @@ interface MessageListProps {
   isThinking: boolean;
   workspaceRoot?: string;
   pendingPermissions?: Accessor<Map<string, Permission>>;
+  pendingQuestions?: Accessor<Map<string, QuestionRequest>>;
   onPermissionResponse?: (permissionId: string, response: "once" | "always" | "reject") => void;
+  onQuestionSubmit?: (requestId: string, answers: Array<QuestionAnswer>) => void | Promise<void>;
+  onQuestionReject?: (requestId: string) => void | Promise<void>;
   editingMessageId?: string | null;
   editingText?: string;
   onStartEdit?: (messageId: string, text: string) => void;
@@ -230,6 +234,9 @@ export function MessageList(props: MessageListProps) {
               workspaceRoot={props.workspaceRoot} 
               pendingPermissions={props.pendingPermissions} 
               onPermissionResponse={props.onPermissionResponse} 
+              pendingQuestions={props.pendingQuestions}
+              onQuestionSubmit={props.onQuestionSubmit}
+              onQuestionReject={props.onQuestionReject}
               isStreaming={isStreaming()} 
             />
           </div>
