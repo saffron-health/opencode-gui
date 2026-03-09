@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup } from "solid-js";
+import { createEffect, createSignal, on, onCleanup } from "solid-js";
 import { createEditor, EditorContent } from "tiptap-solid";
 import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
@@ -33,6 +33,9 @@ export interface TiptapEditorProps {
 
 export function TiptapEditor(props: TiptapEditorProps) {
   const [isSuggestionActive, setIsSuggestionActive] = createSignal(false);
+  let initializedEditor: ReturnType<ReturnType<typeof createEditor>> | null = null;
+  let exposedEditor: ReturnType<ReturnType<typeof createEditor>> | null = null;
+  let syncedValueEditor: ReturnType<ReturnType<typeof createEditor>> | null = null;
 
   const editor = createEditor({
     extensions: [
@@ -127,60 +130,88 @@ export function TiptapEditor(props: TiptapEditorProps) {
     editable: !props.disabled,
   });
 
-  // Sync external value changes
-  createEffect(() => {
-    const currentEditor = editor();
-    if (currentEditor && props.value !== currentEditor.getText()) {
-      currentEditor.commands.setContent(props.value);
-    }
-  });
-
   // Sync disabled state
   createEffect(() => {
     const currentEditor = editor();
     if (currentEditor) {
-      currentEditor.setEditable(!props.disabled);
+      syncedValueEditor = currentEditor;
+      if (initializedEditor !== currentEditor) {
+        initializedEditor = currentEditor;
+        currentEditor.setEditable(!props.disabled, false);
+        return;
+      }
+
+      if (currentEditor.isEditable === !props.disabled) {
+        return;
+      }
+
+      currentEditor.setEditable(!props.disabled, false);
     }
   });
+
+  // Sync external value changes without reacting to editor transactions.
+  createEffect(
+    on(
+      () => props.value,
+      (nextValue) => {
+        const currentEditor = syncedValueEditor;
+        if (!currentEditor) {
+          return;
+        }
+        if (nextValue === currentEditor.getText()) {
+          return;
+        }
+        currentEditor.commands.setContent(nextValue, false);
+      },
+      { defer: true }
+    )
+  );
 
   // Expose editor methods via ref
   createEffect(() => {
     const currentEditor = editor();
-    if (currentEditor && props.ref) {
-      props.ref({
-        getJSON: () => currentEditor.getJSON(),
-        setContent: (content: JSONContent | string) => currentEditor.commands.setContent(content),
-        clear: () => currentEditor.commands.clearContent(),
-        focus: () => currentEditor.commands.focus(),
-        insertFileMention: (filePath: string, startLine?: number, endLine?: number) => {
-          const normalizedPath = filePath.trim();
-          if (!normalizedPath) return;
-          const mentionReference = {
-            filePath: normalizedPath,
-            startLine,
-            endLine,
-          };
-          const mentionId = encodeFileMentionReference(mentionReference);
-          const mentionLabel = formatFileMentionLabel(mentionReference);
-
-          const hasExistingText = currentEditor.getText().trim().length > 0;
-          const content: JSONContent[] = [];
-          if (hasExistingText) {
-            content.push({ type: "text", text: " " });
-          }
-          content.push({
-            type: "fileMention",
-            attrs: {
-              id: mentionId,
-              label: mentionLabel,
-            },
-          });
-          content.push({ type: "text", text: " " });
-
-          currentEditor.chain().focus("end").insertContent(content).run();
-        },
-      });
+    if (!currentEditor || !props.ref) {
+      return;
     }
+
+    if (exposedEditor === currentEditor) {
+      return;
+    }
+    exposedEditor = currentEditor;
+
+    props.ref({
+      getJSON: () => currentEditor.getJSON(),
+      setContent: (content: JSONContent | string) => currentEditor.commands.setContent(content, false),
+      clear: () => currentEditor.commands.clearContent(false),
+      focus: () => currentEditor.commands.focus(),
+      insertFileMention: (filePath: string, startLine?: number, endLine?: number) => {
+        const normalizedPath = filePath.trim();
+        if (!normalizedPath) return;
+        const mentionReference = {
+          filePath: normalizedPath,
+          startLine,
+          endLine,
+        };
+        const mentionId = encodeFileMentionReference(mentionReference);
+        const mentionLabel = formatFileMentionLabel(mentionReference);
+
+        const hasExistingText = currentEditor.getText().trim().length > 0;
+        const content: JSONContent[] = [];
+        if (hasExistingText) {
+          content.push({ type: "text", text: " " });
+        }
+        content.push({
+          type: "fileMention",
+          attrs: {
+            id: mentionId,
+            label: mentionLabel,
+          },
+        });
+        content.push({ type: "text", text: " " });
+
+        currentEditor.chain().focus("end").insertContent(content).run();
+      },
+    });
   });
 
   onCleanup(() => {

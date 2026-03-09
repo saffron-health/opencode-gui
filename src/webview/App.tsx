@@ -695,12 +695,12 @@ function App() {
     const message = queue[index];
     // Remove this message and all after it
     setMessageQueue(queue.slice(0, index));
-    // Put the message text in the input
-    setInput(message.text);
-    // Set plain text content in editor (JSON not saved for queued messages)
+    // Update editor first so setInput captures the new JSON draft content.
     if (editorMethods) {
       editorMethods.setContent(message.text);
     }
+    // Put the message text in the input
+    setInput(message.text);
     setSelectionAttachments(message.attachments);
     // Set the agent if different
     if (message.agent) {
