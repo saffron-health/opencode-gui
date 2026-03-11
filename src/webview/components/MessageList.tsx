@@ -144,22 +144,39 @@ export function MessageList(props: MessageListProps) {
     return props.messages.findIndex(m => m.id === messageId);
   };
 
-  // Find the last assistant message that hasn't completed yet
-  const pendingAssistantMessageId = createMemo(() => {
+  // Find the last assistant message that hasn't completed yet.
+  // We use message position (not ID comparison) to classify queued user messages.
+  const pendingAssistantMessageIndex = createMemo(() => {
     const msgs = props.messages;
     for (let i = msgs.length - 1; i >= 0; i--) {
       const msg = msgs[i];
       if (msg.type === "assistant" && !msg.time?.completed) {
-        return msg.id;
+        return i;
       }
     }
-    return null;
+    return -1;
   });
 
-  const isMessageQueued = (messageId: string, message: Message) => {
-    // User messages are queued if sent after pending assistant message started
-    const pending = pendingAssistantMessageId();
-    return pending && message.type === "user" && messageId > pending;
+  const queuedMessageIds = createMemo(() => {
+    const queued = new Set<string>();
+    const msgs = props.messages;
+    const pendingIndex = pendingAssistantMessageIndex();
+
+    // Only show "queued" section while actively thinking.
+    if (!props.isThinking || pendingIndex === -1) return queued;
+
+    for (let i = pendingIndex + 1; i < msgs.length; i++) {
+      const msg = msgs[i];
+      if (msg.type === "user") {
+        queued.add(msg.id);
+      }
+    }
+
+    return queued;
+  });
+
+  const isMessageQueued = (messageId: string) => {
+    return queuedMessageIds().has(messageId);
   };
 
   const isMessageDimmed = (messageId: string) => {
@@ -173,24 +190,29 @@ export function MessageList(props: MessageListProps) {
     return currentIndex > editingIndex;
   };
 
-  // Split messages into non-queued and queued
-  const nonQueuedMessages = createMemo(() => {
-    const result = props.messages.filter(msg => !isMessageQueued(msg.id, msg));
-    console.log("[MessageList] nonQueuedMessages memo recomputed", { total: props.messages.length, nonQueued: result.length });
-    return result;
+  const separatedMessages = createMemo(() => {
+    const nonQueued: Message[] = [];
+    const queued: Message[] = [];
+    const queuedIds = queuedMessageIds();
+
+    for (const message of props.messages) {
+      if (queuedIds.has(message.id)) {
+        queued.push(message);
+      } else {
+        nonQueued.push(message);
+      }
+    }
+
+    return { nonQueued, queued };
   });
 
-  const queuedMessages = createMemo(() => {
-    const result = props.messages.filter(msg => isMessageQueued(msg.id, msg));
-    console.log("[MessageList] queuedMessages memo recomputed", { total: props.messages.length, queued: result.length });
-    return result;
-  });
-
-  const renderMessage = (message: Message, index: () => number) => {
-    const isLastMessage = () => index() === props.messages.length - 1;
-    const isStreaming = () => isLastMessage() && props.isThinking && message.type === "assistant";
+  const renderMessage = (message: Message) => {
+    const isStreaming = () =>
+      props.messages[props.messages.length - 1]?.id === message.id &&
+      props.isThinking &&
+      message.type === "assistant";
     const isEditing = () => props.editingMessageId === message.id;
-    const isQueued = () => isMessageQueued(message.id, message);
+    const isQueued = () => isMessageQueued(message.id);
     const isDimmed = () => isQueued() || isMessageDimmed(message.id);
     
     // Get the text content of the message for editing
@@ -248,14 +270,14 @@ export function MessageList(props: MessageListProps) {
   return (
     <div class="messages-container" ref={containerRef!} role="log" aria-label="Messages">
       <div class="messages-content" ref={contentRef!}>
-        <For each={nonQueuedMessages()} fallback={null}>
-          {(message, index) => renderMessage(message, index)}
+        <For each={separatedMessages().nonQueued} fallback={null}>
+          {(message) => renderMessage(message)}
         </For>
 
         <ThinkingIndicator when={props.isThinking} />
 
-        <For each={queuedMessages()}>
-          {(message, index) => renderMessage(message, index)}
+        <For each={separatedMessages().queued}>
+          {(message) => renderMessage(message)}
         </For>
         
         <Show when={props.sessionError}>

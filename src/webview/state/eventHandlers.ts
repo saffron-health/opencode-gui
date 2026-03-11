@@ -114,7 +114,9 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       messageToSession.set(info.id, sessionId);
 
       if (!messages.length) {
-        console.log("[EventHandler] Creating message array for session", { sessionId, msgId: msg.id });
+        console.log(
+          `[EventHandler] Creating message array for session sessionId=${sessionId} msgId=${msg.id}`
+        );
         setStore("message", sessionId, [msg]);
       } else if (result.found) {
         setStore("message", sessionId, result.index, msg);

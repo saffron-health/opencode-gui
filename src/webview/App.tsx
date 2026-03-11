@@ -93,6 +93,53 @@ function App() {
 
   // Get the current session key for drafts/agents
   const sessionKey = () => sync.currentSessionId() || NEW_SESSION_KEY;
+
+  const getSdkErrorMessage = (error: unknown): string => {
+    if (typeof error === "string" && error.length > 0) return error;
+    if (!error || typeof error !== "object") return "Unknown error";
+
+    const record = error as Record<string, unknown>;
+    const topLevelMessage = record.message;
+    if (typeof topLevelMessage === "string" && topLevelMessage.length > 0) {
+      return topLevelMessage;
+    }
+
+    const data = record.data;
+    if (data && typeof data === "object") {
+      const dataMessage = (data as Record<string, unknown>).message;
+      if (typeof dataMessage === "string" && dataMessage.length > 0) {
+        return dataMessage;
+      }
+    }
+
+    const nestedError = record.error;
+    if (nestedError && typeof nestedError === "object") {
+      const nestedRecord = nestedError as Record<string, unknown>;
+      const nestedMessage = nestedRecord.message;
+      if (typeof nestedMessage === "string" && nestedMessage.length > 0) {
+        return nestedMessage;
+      }
+      const nestedData = nestedRecord.data;
+      if (nestedData && typeof nestedData === "object") {
+        const nestedDataMessage = (nestedData as Record<string, unknown>).message;
+        if (typeof nestedDataMessage === "string" && nestedDataMessage.length > 0) {
+          return nestedDataMessage;
+        }
+      }
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  };
+
+  const getResponseStatus = (result: unknown): number | undefined => {
+    if (!result || typeof result !== "object") return undefined;
+    const response = (result as { response?: { status?: unknown } }).response;
+    return typeof response?.status === "number" ? response.status : undefined;
+  };
   
   // Derive current session title from store
   const isDefaultTitle = (title: string) => /^(New session|Child session) - \d{4}-\d{2}-\d{2}T/.test(title);
@@ -547,27 +594,27 @@ function App() {
       const result = await sendPrompt(sessionId, text, agent, extraParts, messageID);
       
       // Log the full result for debugging
+      const responseStatus = getResponseStatus(result);
       logger.info("sendPrompt result", { 
         hasError: !!result?.error, 
         hasData: !!result?.data,
-        response: result?.response?.status,
+        responseStatus,
       });
       
       // Check for SDK error in result (SDK doesn't throw by default)
       if (result?.error) {
+        const errorMessage = getSdkErrorMessage(result.error);
+
         // Log full error structure for debugging
         logger.error("sendPrompt returned error", { 
+          sessionId,
+          messageID,
+          responseStatus,
+          errorMessage,
           error: result.error,
           response: result?.response,
         });
-        
-        // Extract error message from nested structure: result.error may be { error: { data: { message } } } or { data: { message } }
-        const errorData = result.error as { data?: { message?: string }; error?: { data?: { message?: string } } };
-        const errorMessage = 
-          errorData.data?.message || 
-          errorData.error?.data?.message || 
-          (typeof errorData === 'string' ? errorData : JSON.stringify(errorData)) ||
-          "Unknown error";
+
         sync.setThinking(sessionId, false);
         setInFlightMessage(null);
         sync.setSessionError(sessionId, errorMessage);
@@ -622,15 +669,18 @@ function App() {
       const extraParts = buildSelectionParts(next.attachments);
       
       const result = await sendPrompt(sessionId, next.text, next.agent, extraParts, messageID);
+      const responseStatus = getResponseStatus(result);
       
       // Check for SDK error in result (SDK doesn't throw by default)
       if (result?.error) {
-        const errorData = result.error as { data?: { message?: string }; error?: { data?: { message?: string } } };
-        const errorMessage = 
-          errorData.data?.message || 
-          errorData.error?.data?.message || 
-          (typeof errorData === 'string' ? errorData : JSON.stringify(errorData)) ||
-          "Unknown error";
+        const errorMessage = getSdkErrorMessage(result.error);
+        logger.error("queue sendPrompt returned error", {
+          sessionId,
+          messageID,
+          responseStatus,
+          errorMessage,
+          error: result.error,
+        });
         sync.setThinking(sessionId, false);
         setInFlightMessage(null);
         setMessageQueue([]);
@@ -798,15 +848,19 @@ function App() {
     try {
       await revertToMessage(sessionId, messageId);
       const result = await sendPrompt(sessionId, newText.trim(), agent, [], newMessageID);
+      const responseStatus = getResponseStatus(result);
       
       // Check for SDK error in result (SDK doesn't throw by default)
       if (result?.error) {
-        const errorData = result.error as { data?: { message?: string }; error?: { data?: { message?: string } } };
-        const errorMessage = 
-          errorData.data?.message || 
-          errorData.error?.data?.message || 
-          (typeof errorData === 'string' ? errorData : JSON.stringify(errorData)) ||
-          "Unknown error";
+        const errorMessage = getSdkErrorMessage(result.error);
+        logger.error("edit sendPrompt returned error", {
+          sessionId,
+          messageId,
+          newMessageID,
+          responseStatus,
+          errorMessage,
+          error: result.error,
+        });
         sync.setThinking(sessionId, false);
         setInFlightMessage(null);
         sync.setSessionError(sessionId, `Error editing message: ${errorMessage}`);

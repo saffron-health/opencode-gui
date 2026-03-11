@@ -195,10 +195,10 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
             id: messageId,
             type: role,
             text,
+            time: msgInfo.time,
           } as Message;
         })
-        .filter((m) => !!m.id)
-        .sort((a, b) => a.id.localeCompare(b.id));
+        .filter((m) => !!m.id);
 
       const session = sessionRes?.data;
       
