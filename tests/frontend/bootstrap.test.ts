@@ -299,4 +299,82 @@ describe("Frontend Bootstrap", () => {
     expect(result.sessions).toHaveLength(0);
     expect(result.permissionMap).toEqual({});
   });
+
+  it("should preserve message time metadata and API order from session.messages", async () => {
+    const harness = new GatekeeperHarness()
+      .add("appApi", () => new MockAppApi())
+      .add("sessionApi", () => new MockSessionApi())
+      .add("permissionApi", () => new MockPermissionApi());
+
+    harness.raiseAllGates();
+
+    const ctx: BootstrapContext = {
+      client: {
+        app: harness.appApi.intercept,
+        session: harness.sessionApi.intercept,
+        permission: harness.permissionApi.intercept,
+      },
+      sessionId: "session-1",
+      workspaceRoot: "/test",
+    };
+
+    const resultPromise = fetchBootstrapData(ctx);
+
+    const agentsCall = await harness.appApi.waitForCall("agents");
+    await agentsCall.fulfill({ data: [] });
+
+    const sessionListCall = await harness.sessionApi.waitForCall("list");
+    await sessionListCall.fulfill({ data: [] });
+
+    const permissionListCall = await harness.permissionApi.waitForCall("list");
+    await permissionListCall.fulfill({ data: [] });
+
+    const messagesCall = await harness.sessionApi.waitForCall("messages");
+    await messagesCall.fulfill({
+      data: [
+        {
+          info: {
+            id: "msg_ffffffffffffAAA",
+            role: "assistant",
+            time: { created: 20, completed: 30 },
+            tokens: {
+              input: 1,
+              output: 1,
+              reasoning: 0,
+              cache: { read: 0, write: 0 },
+            },
+          },
+          parts: [{ id: "prt_2", type: "text", text: "second" }],
+        },
+        {
+          info: {
+            id: "msg_000000000000AAA",
+            role: "user",
+            time: { created: 10 },
+          },
+          parts: [{ id: "prt_1", type: "text", text: "first" }],
+        },
+      ],
+    });
+
+    const sessionGetCall = await harness.sessionApi.waitForCall("get");
+    await sessionGetCall.fulfill({
+      data: {
+        id: "session-1",
+        title: "Test Session",
+        projectID: "proj-1",
+        directory: "/test",
+        parentID: undefined,
+        time: { created: Date.now(), updated: Date.now() },
+      },
+    });
+
+    const result = await resultPromise;
+
+    expect(result.messageList).toHaveLength(2);
+    expect(result.messageList[0].id).toBe("msg_ffffffffffffAAA");
+    expect(result.messageList[1].id).toBe("msg_000000000000AAA");
+    expect(result.messageList[0].time).toEqual({ created: 20, completed: 30 });
+    expect(result.messageList[1].time).toEqual({ created: 10 });
+  });
 });

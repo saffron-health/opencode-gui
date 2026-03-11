@@ -15,8 +15,41 @@ function getVscode(): { postMessage(message: unknown): void } | null {
   return null;
 }
 
+function serializeForLog(value: unknown): string {
+  if (value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (value instanceof Error) {
+    return `${value.name}: ${value.message}${value.stack ? `\n${value.stack}` : ""}`;
+  }
+
+  try {
+    const seen = new WeakSet<object>();
+    return JSON.stringify(
+      value,
+      (_key, current) => {
+        if (current instanceof Error) {
+          return {
+            name: current.name,
+            message: current.message,
+            stack: current.stack,
+          };
+        }
+        if (typeof current === "object" && current !== null) {
+          if (seen.has(current)) return "[Circular]";
+          seen.add(current);
+        }
+        return current;
+      },
+      2
+    );
+  } catch {
+    return String(value);
+  }
+}
+
 function log(level: "debug" | "info" | "error", message: string, data?: unknown) {
   const vscode = getVscode();
+  const serialized = data !== undefined ? serializeForLog(data) : undefined;
   
   if (vscode) {
     // Send to extension host
@@ -24,13 +57,13 @@ function log(level: "debug" | "info" | "error", message: string, data?: unknown)
       type: "log",
       level,
       message,
-      data,
+      data: serialized,
     });
   }
   
   // Always log to console as well for debugging
   const prefix = `[OpenCode]`;
-  const logData = data !== undefined ? [message, data] : [message];
+  const logData = serialized !== undefined ? [message, serialized] : [message];
   
   switch (level) {
     case "debug":

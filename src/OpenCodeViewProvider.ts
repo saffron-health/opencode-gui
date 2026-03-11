@@ -18,6 +18,14 @@ import {
 
 const LAST_AGENT_KEY = "opencode.lastUsedAgent";
 
+interface DevServerConfig {
+  origin: string;
+  port: number;
+  viteClientUrl: string;
+  mainEntryUrl: string;
+  wsOrigin: string;
+}
+
 export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "opencode.chatView";
   private _view?: vscode.WebviewView;
@@ -39,6 +47,15 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   ) {
     const logger = getLogger();
     logger.info("resolveWebviewView called");
+    const devServerConfig = this._getDevServerConfig();
+    if (devServerConfig) {
+      logger.info("[ViewProvider] Using dev server for webview", {
+        origin: devServerConfig.origin,
+        port: devServerConfig.port,
+        viteClientUrl: devServerConfig.viteClientUrl,
+        mainEntryUrl: devServerConfig.mainEntryUrl,
+      });
+    }
 
     this._view = webviewView;
     this._webviewReady = false;
@@ -46,12 +63,12 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this._extensionUri, "out")],
-      portMapping: process.env.OPENCODE_DEV_SERVER_URL
-        ? [{ webviewPort: 5173, extensionHostPort: 5173 }]
+      portMapping: devServerConfig
+        ? [{ webviewPort: devServerConfig.port, extensionHostPort: devServerConfig.port }]
         : [],
     };
 
-    const html = this._getHtmlForWebview(webviewView.webview);
+    const html = this._getHtmlForWebview(webviewView.webview, devServerConfig);
     logger.info("Generated webview HTML length:", html.length);
     webviewView.webview.html = html;
 
@@ -556,22 +573,53 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private _getHtmlForWebview(webview: vscode.Webview) {
-    const devServerUrl = process.env.OPENCODE_DEV_SERVER_URL;
+  private _getDevServerConfig(): DevServerConfig | null {
+    const raw = process.env.OPENCODE_DEV_SERVER_URL?.trim();
+    if (!raw) return null;
 
-    if (devServerUrl) {
+    try {
+      const parsed = new URL(raw);
+      const originRoot = `${parsed.origin}/`;
+      const viteClientUrl = new URL("/@vite/client", originRoot).toString();
+      const mainEntryUrl = new URL("/src/webview/main.tsx", originRoot).toString();
+
+      const wsUrl = new URL(originRoot);
+      wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
+
+      const port =
+        parsed.port.length > 0
+          ? Number(parsed.port)
+          : parsed.protocol === "https:"
+            ? 443
+            : 80;
+
+      return {
+        origin: parsed.origin,
+        port,
+        viteClientUrl,
+        mainEntryUrl,
+        wsOrigin: wsUrl.origin,
+      };
+    } catch {
+      getLogger().warn("[ViewProvider] Invalid OPENCODE_DEV_SERVER_URL; falling back to bundled webview");
+      return null;
+    }
+  }
+
+  private _getHtmlForWebview(webview: vscode.Webview, devServerConfig: DevServerConfig | null) {
+    if (devServerConfig) {
       return `<!DOCTYPE html>
         <html lang="en">
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${devServerUrl}; script-src 'unsafe-inline' ${devServerUrl}; connect-src ${devServerUrl} ws://localhost:5173 http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:* ${webview.cspSource};">
+          <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${devServerConfig.origin}; script-src 'unsafe-inline' ${devServerConfig.origin}; connect-src ${devServerConfig.origin} ${devServerConfig.wsOrigin} http://127.0.0.1:* ws://127.0.0.1:* http://localhost:* ws://localhost:* ${webview.cspSource};">
           <title>OpenCode</title>
         </head>
         <body>
           <div id="root"></div>
-          <script type="module" src="${devServerUrl}/@vite/client"></script>
-          <script type="module" src="${devServerUrl}/src/webview/main.tsx"></script>
+          <script type="module" src="${devServerConfig.viteClientUrl}"></script>
+          <script type="module" src="${devServerConfig.mainEntryUrl}"></script>
         </body>
         </html>`;
     }
