@@ -215,6 +215,14 @@ function createOpenCode() {
       const dir = workspaceRoot();
       return client()?.session.create(dir ? { directory: dir } : undefined);
     },
+    updateSession: (id: string, title: string) => {
+      const dir = workspaceRoot();
+      return client()?.session.update({
+        sessionID: id,
+        title,
+        ...(dir ? { directory: dir } : {}),
+      });
+    },
     getAgents: () => client()?.app.agents(),
     getMessages: (id: string) => client()?.session.messages({ sessionID: id }),
     getConfig: () => {

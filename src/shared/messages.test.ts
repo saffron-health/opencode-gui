@@ -167,6 +167,16 @@ describe("WebviewMessageSchema", () => {
     expect(WebviewMessageSchema.parse(msg)).toEqual(msg);
   });
 
+  it("parses session-changed message", () => {
+    const msg = { type: "session-changed", sessionId: "ses_123" };
+    expect(WebviewMessageSchema.parse(msg)).toEqual(msg);
+  });
+
+  it("parses cleared session-changed message", () => {
+    const msg = { type: "session-changed", sessionId: null };
+    expect(WebviewMessageSchema.parse(msg)).toEqual(msg);
+  });
+
   it("parses search-files message", () => {
     const msg = { type: "search-files", query: "index" };
     expect(WebviewMessageSchema.parse(msg)).toEqual(msg);

@@ -17,6 +17,7 @@ import {
 } from "./transport/SseClient";
 
 const LAST_AGENT_KEY = "opencode.lastUsedAgent";
+const LAST_SESSION_KEY_PREFIX = "opencode.lastSession";
 
 interface DevServerConfig {
   origin: string;
@@ -141,6 +142,9 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
       case "agent-changed":
         await this._handleAgentChanged(message.agent);
         break;
+      case "session-changed":
+        await this._handleSessionChanged(message.sessionId ?? null);
+        break;
       case "open-file":
         await this._handleOpenFile(
           message.url,
@@ -152,6 +156,13 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         await this._handleSearchFiles(message.query);
         break;
     }
+  }
+
+  private _lastSessionKey(): string {
+    const workspaceRoot = this._openCodeService.getWorkspaceRoot();
+    return workspaceRoot
+      ? `${LAST_SESSION_KEY_PREFIX}:${workspaceRoot}`
+      : LAST_SESSION_KEY_PREFIX;
   }
 
   private async _handleOpenFile(
@@ -243,7 +254,9 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
   private async _handleReady() {
     try {
       const currentSessionId =
-        this._openCodeService.getCurrentSessionId() ?? undefined;
+        this._globalState.get<string>(this._lastSessionKey()) ??
+        this._openCodeService.getCurrentSessionId() ??
+        undefined;
       const currentSessionTitle =
         this._openCodeService.getCurrentSessionTitle();
 
@@ -300,6 +313,12 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     await this._globalState.update(LAST_AGENT_KEY, agent);
     const logger = getLogger();
     logger.info("[ViewProvider] Agent selection persisted:", agent);
+  }
+
+  private async _handleSessionChanged(sessionId: string | null) {
+    await this._globalState.update(this._lastSessionKey(), sessionId ?? undefined);
+    const logger = getLogger();
+    logger.info("[ViewProvider] Session selection persisted", { sessionId });
   }
 
   // SSE Proxy handlers using resilient SseClient

@@ -211,6 +211,10 @@ export const WebviewMessageSchema = z.discriminatedUnion("type", [
     agent: z.string(),
   }),
   z.object({
+    type: z.literal("session-changed"),
+    sessionId: z.string().nullish(),
+  }),
+  z.object({
     type: z.literal("open-file"),
     url: z.string(),
     startLine: z.number().optional(),

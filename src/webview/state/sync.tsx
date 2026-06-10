@@ -8,6 +8,7 @@ import {
   createSignal,
   createEffect,
   createMemo,
+  untrack,
   onCleanup,
   batch,
   createContext,
@@ -21,13 +22,41 @@ import { type SyncState, type SyncStatus, createEmptyState } from "./types";
 import { applyEvent, type EventHandlerContext } from "./eventHandlers";
 import { fetchBootstrapData, commitBootstrapData } from "./bootstrap";
 import { logger } from "../utils/logger";
+import { vscode } from "../utils/vscode";
 
 export type { SyncStatus } from "./types";
+
+const LAST_SESSION_STATE_KEY = "opencodeGuiLastSessionId";
+
+type WebviewState = Record<string, unknown>;
+
+function getWebviewState(): WebviewState {
+  const state = vscode.getState();
+  return state && typeof state === "object" && !Array.isArray(state)
+    ? (state as WebviewState)
+    : {};
+}
+
+function readPersistedSessionId(): string | null {
+  const id = getWebviewState()[LAST_SESSION_STATE_KEY];
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+function persistSessionId(id: string | null) {
+  vscode.setState({
+    ...getWebviewState(),
+    [LAST_SESSION_STATE_KEY]: id,
+  });
+  vscode.postMessage({ type: "session-changed", sessionId: id });
+}
 
 function createSync() {
   const sdk = useOpenCode();
   const [store, setStore] = createStore<SyncState>(createEmptyState());
-  const [currentSessionId, setCurrentSessionIdInternal] = createSignal<string | null>(null);
+  const [currentSessionId, setCurrentSessionIdInternal] = createSignal<string | null>(
+    readPersistedSessionId()
+  );
+  const [sessionSelectionVersion, setSessionSelectionVersion] = createSignal(0);
   const [sseCleanup, setSseCleanup] = createSignal<(() => void) | null>(null);
   const [bootstrapCount, setBootstrapCount] = createSignal(0);
 
@@ -35,6 +64,7 @@ function createSync() {
   let bootstrapToken = 0;
   const messageToSession = new Map<string, string>();
   const sessionIdleCallbacks = new Set<(sessionId: string) => void>();
+  let didApplyInitSession = false;
 
   // Event batching: queue events and flush every 30ms
   const EVENT_BATCH_MS = 30;
@@ -88,6 +118,8 @@ function createSync() {
       }
     }
     setCurrentSessionIdInternal(id);
+    setSessionSelectionVersion((version) => version + 1);
+    persistSessionId(id);
   }
 
   // Plain function (NOT createMemo) so that every reactive consumer directly
@@ -306,12 +338,16 @@ function createSync() {
     await bootstrap();
   });
 
-  // Initialize from SDK init data
+  // Initialize from SDK init data once. Use untrack because setCurrentSessionId
+  // reads currentSessionId internally; tracking that read would make this effect
+  // rerun on user-driven session switches and reset the UI back to the init
+  // session.
   createEffect(() => {
     const init = sdk.initData();
-    if (!init) return;
+    if (!init || didApplyInitSession) return;
     if (init.currentSessionId) {
-      setCurrentSessionIdInternal(init.currentSessionId);
+      didApplyInitSession = true;
+      untrack(() => setCurrentSessionId(init.currentSessionId ?? null));
     }
   });
 
@@ -340,6 +376,7 @@ function createSync() {
     getParts,
 
     currentSessionId,
+    sessionSelectionVersion,
     setCurrentSessionId,
 
     setThinking,

@@ -52,7 +52,7 @@ const NEW_SESSION_KEY = "__new__";
 function App() {
   // Use the sync context for server-owned state
   const sync = useSync();
-  
+
   // Local UI-only state
   const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
@@ -61,21 +61,21 @@ function App() {
   const [selectionAttachmentsBySession, setSelectionAttachmentsBySession] = createSignal<
     Map<string, SelectionAttachment[]>
   >(new Map());
-  
+
   // Editing state for previous messages
   const [editingMessageId, setEditingMessageId] = createSignal<string | null>(null);
   const [editingText, setEditingText] = createSignal<string>("");
-  
+
   // Message queue for queuing messages while generating
   const [messageQueue, setMessageQueue] = createSignal<QueuedMessage[]>([]);
 
   // Host selections received before editor methods are available
   const [pendingMentionInsertions, setPendingMentionInsertions] = createSignal<FileMentionInsertRequest[]>([]);
   const [pendingEditorFocus, setPendingEditorFocus] = createSignal(false);
-  
+
   // In-flight message tracking for outbox pattern
   const [inFlightMessage, setInFlightMessage] = createSignal<InFlightMessage | null>(null);
-  
+
   // Editor methods for managing content
   let editorMethods: TiptapEditorMethods | null = null;
 
@@ -83,6 +83,7 @@ function App() {
   const {
     initData,
     createSession,
+    updateSession,
     abortSession,
     sendPrompt,
     respondToPermission,
@@ -93,6 +94,7 @@ function App() {
 
   // Get the current session key for drafts/agents
   const sessionKey = () => sync.currentSessionId() || NEW_SESSION_KEY;
+  const sessionRenderKey = () => `${sessionKey()}:${sync.sessionSelectionVersion()}`;
 
   const getSdkErrorMessage = (error: unknown): string => {
     if (typeof error === "string" && error.length > 0) return error;
@@ -140,16 +142,28 @@ function App() {
     const response = (result as { response?: { status?: unknown } }).response;
     return typeof response?.status === "number" ? response.status : undefined;
   };
-  
-  // Derive current session title from store
+
+  // Derive current session title from store. Keep default generated titles
+  // distinguishable so users can verify that switching sessions worked.
   const isDefaultTitle = (title: string) => /^(New session|Child session) - \d{4}-\d{2}-\d{2}T/.test(title);
+  const formatUntitledSession = (session: Session) => {
+    const updated = new Date(session.time.updated).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `New Session · ${updated}`;
+  };
   const currentSessionTitle = createMemo(() => {
     const id = sync.currentSessionId();
     if (!id) return "New Session";
     const sessions = sync.sessions();
     const session = sessions.find(s => s.id === id);
-    const title = session?.title;
-    return title && !isDefaultTitle(title) ? title : "New Session";
+    if (!session) return "New Session";
+
+    const title = session.title;
+    return title && !isDefaultTitle(title) ? title : formatUntitledSession(session);
   });
 
   // Current input for the active session
@@ -161,7 +175,7 @@ function App() {
       next.set(key, value);
       return next;
     });
-    
+
     // Also save the editor JSON content when available
     if (editorMethods) {
       try {
@@ -197,7 +211,7 @@ function App() {
       return next;
     });
   };
-  
+
   // Convenience accessors from sync store
   // Use the sync memos directly (not wrapped in functions) to maintain reactivity
   const messages = sync.messages;
@@ -267,7 +281,7 @@ function App() {
   const buildSelectionParts = (attachments: SelectionAttachment[]): FilePartInput[] => {
     return attachments.map((attachment) => {
       const url = new URL(attachment.fileUrl);
-      
+
       if (attachment.startLine !== undefined) {
         const start = attachment.endLine
           ? Math.min(attachment.startLine, attachment.endLine)
@@ -278,7 +292,7 @@ function App() {
         url.searchParams.set("start", String(start));
         url.searchParams.set("end", String(end));
       }
-      
+
       return {
         type: "file" as const,
         mime: "text/plain",
@@ -323,15 +337,15 @@ function App() {
   const sessionsToShow = createMemo(() => {
     const root = sync.workspaceRoot();
     const currentId = sync.currentSessionId();
-    
+
     return sessions()
       .filter(s => {
         // Only list sessions with primary agents (no parentID)
         if (s.parentID) return false;
-        
+
         // Filter to sessions in the same repo/worktree
         if (root && s.directory !== root) return false;
-        
+
         return true;
       })
       // Sort by edited time (updated) instead of started time (created)
@@ -455,7 +469,7 @@ function App() {
   createEffect(() => {
     const init = initData();
     if (!init) return;
-    
+
     const agentList = agents();
     const persistedDefault = init.defaultAgent;
     if (persistedDefault && agentList.some(a => a.name === persistedDefault)) {
@@ -469,7 +483,7 @@ function App() {
   createEffect(() => {
     const key = sessionKey();
     const savedContent = draftContents().get(key);
-    
+
     if (editorMethods && savedContent) {
       try {
         editorMethods.setContent(savedContent);
@@ -478,18 +492,18 @@ function App() {
       }
     }
   });
-  
+
   // Clear inFlightMessage when session becomes idle and trigger queue drain
   onMount(() => {
     const cleanup = sync.onSessionIdle((sessionId) => {
       const inflight = inFlightMessage();
-      
+
       if (inflight?.sessionId !== sessionId) {
         return;
       }
-      
+
       setInFlightMessage(null);
-      
+
       // Schedule queue drain in a microtask to avoid interleaving with SSE batch
       queueMicrotask(() => {
         void processNextQueuedMessage();
@@ -510,7 +524,7 @@ function App() {
       : null;
     const attachmentsKey = sessionKey();
     let attachments = selectionAttachments();
-    
+
     // Extract mentions from editor and add to attachments
     if (editorMethods) {
       try {
@@ -520,7 +534,7 @@ function App() {
         if (!workspaceRoot) {
           throw new Error("workspace root unavailable while extracting mentions");
         }
-        
+
         // Convert mention references to SelectionAttachment objects
         const mentionAttachments: SelectionAttachment[] = mentionedFiles
           .map((mentionReference) => {
@@ -535,7 +549,7 @@ function App() {
             } satisfies SelectionAttachment;
           })
           .filter((attachment): attachment is SelectionAttachment => attachment !== null);
-        
+
         // Merge with existing attachments (avoid exact duplicates)
         const attachmentKey = (attachment: SelectionAttachment) =>
           `${attachment.filePath}:${attachment.startLine ?? ""}:${attachment.endLine ?? ""}`;
@@ -548,7 +562,7 @@ function App() {
         logger.error("Failed to extract mentions", { error: err });
       }
     }
-    
+
     const extraParts = buildSelectionParts(attachments);
 
     // Generate sortable client-side messageID for idempotent sends
@@ -592,21 +606,21 @@ function App() {
 
     try {
       const result = await sendPrompt(sessionId, text, agent, extraParts, messageID);
-      
+
       // Log the full result for debugging
       const responseStatus = getResponseStatus(result);
-      logger.info("sendPrompt result", { 
-        hasError: !!result?.error, 
+      logger.info("sendPrompt result", {
+        hasError: !!result?.error,
         hasData: !!result?.data,
         responseStatus,
       });
-      
+
       // Check for SDK error in result (SDK doesn't throw by default)
       if (result?.error) {
         const errorMessage = getSdkErrorMessage(result.error);
 
         // Log full error structure for debugging
-        logger.error("sendPrompt returned error", { 
+        logger.error("sendPrompt returned error", {
           sessionId,
           messageID,
           responseStatus,
@@ -620,14 +634,14 @@ function App() {
         sync.setSessionError(sessionId, errorMessage);
         return;
       }
-      
+
       if (attachments.length > 0) {
         setSelectionAttachmentsForKey(attachmentsKey, []);
       }
     } catch (err) {
       logger.error("sendPrompt exception", { error: String(err), stack: (err as Error).stack });
       const errorMessage = (err as Error).message;
-      
+
       // Show all errors inline and clear in-flight
       sync.setThinking(sessionId, false);
       setInFlightMessage(null);
@@ -639,38 +653,38 @@ function App() {
     const queue = messageQueue();
     const inflight = inFlightMessage();
     const sessionId = sync.currentSessionId();
-    
+
     if (queue.length === 0) {
       return;
     }
-    
+
     // Don't process if there's already an in-flight message
     if (inflight) {
       return;
     }
-    
+
     if (!sessionId || !sync.isReady()) {
       return;
     }
-    
+
     const [next, ...rest] = queue;
-    
+
     // Generate a FRESH messageID right before sending to ensure it's newer than the last assistant message
     // This is critical - IDs generated earlier (when queueing) will be older than assistant responses
     const messageID = Id.ascending("message");
-    
+
     setMessageQueue(rest);
     sync.setThinking(sessionId, true);
-    
+
     // Track this queued message as in-flight using the fresh messageID
     setInFlightMessage({ messageID, sessionId });
 
     try {
       const extraParts = buildSelectionParts(next.attachments);
-      
+
       const result = await sendPrompt(sessionId, next.text, next.agent, extraParts, messageID);
       const responseStatus = getResponseStatus(result);
-      
+
       // Check for SDK error in result (SDK doesn't throw by default)
       if (result?.error) {
         const errorMessage = getSdkErrorMessage(result.error);
@@ -690,7 +704,7 @@ function App() {
     } catch (err) {
       console.error("[App] Queue sendPrompt failed:", err);
       const errorMessage = (err as Error).message;
-      
+
       // Show all errors inline and clear queue + in-flight
       sync.setThinking(sessionId, false);
       setInFlightMessage(null);
@@ -702,13 +716,13 @@ function App() {
   const handleQueueMessage = () => {
     const text = input().trim();
     if (!text || !sync.isReady()) return;
-    
+
     const agent = agents().some((a) => a.name === selectedAgent())
       ? selectedAgent()
       : null;
     const attachmentsKey = sessionKey();
     const attachments = selectionAttachments();
-    
+
     // Queue the message without a messageID - we'll generate it fresh when sending
     const queuedMessage: QueuedMessage = {
       id: crypto.randomUUID(),
@@ -716,7 +730,7 @@ function App() {
       agent,
       attachments,
     };
-    
+
     setMessageQueue((prev) => [...prev, queuedMessage]);
     setInput("");
     if (editorMethods) {
@@ -741,7 +755,7 @@ function App() {
     const queue = messageQueue();
     const index = queue.findIndex((m) => m.id === id);
     if (index === -1) return;
-    
+
     const message = queue[index];
     // Remove this message and all after it
     setMessageQueue(queue.slice(0, index));
@@ -764,15 +778,20 @@ function App() {
 
   const handleSessionSelect = async (sessionId: string) => {
     if (!sync.isReady()) return;
-    
+    if (sessionId === sync.currentSessionId()) return;
+
     // Clear local UI state
     setMessageQueue([]);
     setInFlightMessage(null);
     setEditingMessageId(null);
     setEditingText("");
-    
-    // Set session and bootstrap to load messages
+    setSelectionAttachments([]);
+
+    // Set session immediately, then reconnect SSE/bootstrap for that session.
+    // This keeps the selected session from being visually stuck on the
+    // previously created "New Session" while messages are loading.
     sync.setCurrentSessionId(sessionId);
+    sync.reconnect();
     await sync.bootstrap();
   };
 
@@ -788,12 +807,31 @@ function App() {
       setInFlightMessage(null);
       setEditingMessageId(null);
       setEditingText("");
-      
+
       // Set new session and bootstrap
       sync.setCurrentSessionId(newSession.id);
+      sync.reconnect();
       await sync.bootstrap();
     } catch (err) {
       console.error("[App] Failed to create session:", err);
+    }
+  };
+
+  const handleRenameSession = async (title: string) => {
+    const sessionId = sync.currentSessionId();
+    if (!sync.isReady() || !sessionId) return;
+
+    try {
+      const result = await updateSession(sessionId, title);
+      if (result?.error) {
+        const errorMessage = getSdkErrorMessage(result.error);
+        sync.setSessionError(sessionId, `Error renaming session: ${errorMessage}`);
+        return;
+      }
+      await sync.bootstrap();
+    } catch (err) {
+      const errorMessage = (err as Error).message;
+      sync.setSessionError(sessionId, `Error renaming session: ${errorMessage}`);
     }
   };
 
@@ -849,7 +887,7 @@ function App() {
       await revertToMessage(sessionId, messageId);
       const result = await sendPrompt(sessionId, newText.trim(), agent, [], newMessageID);
       const responseStatus = getResponseStatus(result);
-      
+
       // Check for SDK error in result (SDK doesn't throw by default)
       if (result?.error) {
         const errorMessage = getSdkErrorMessage(result.error);
@@ -869,7 +907,7 @@ function App() {
     } catch (err) {
       console.error("[App] Failed to edit message:", err);
       const errorMessage = (err as Error).message;
-      
+
       // Show all errors inline and clear in-flight
       sync.setThinking(sessionId, false);
       setInFlightMessage(null);
@@ -913,7 +951,7 @@ function App() {
           <button class="error-banner__dismiss" onClick={clearHostError} aria-label="Dismiss error">×</button>
         </div>
       </Show>
-      
+
       <TopBar
         sessions={sessionsToShow()}
         currentSessionId={sync.currentSessionId()}
@@ -921,100 +959,108 @@ function App() {
         sessionStatus={sync.sessionStatus}
         onSessionSelect={handleSessionSelect}
         onNewSession={handleNewSession}
+        onRenameSession={handleRenameSession}
         onRefreshSessions={refreshSessions}
       />
 
+      <Show when={sessionRenderKey()} keyed>
+        {() => (
+          <>
       <Show when={!hasMessages()}>
-        <Show when={standalonePermissions().length > 0}>
-          <div class="standalone-permissions">
-            <For each={standalonePermissions()}>
-              {(permission) => (
-                <PermissionPrompt
-                  permission={permission}
-                  onResponse={handlePermissionResponse}
-                  workspaceRoot={sync.workspaceRoot()}
-                />
-              )}
-            </For>
-          </div>
-        </Show>
-        
-        <InputBar
-          value={input()}
-          onInput={setInput}
-          onSubmit={handleSubmit}
-          onCancel={handleCancel}
-          onQueue={handleQueueMessage}
-          disabled={!sync.isReady()}
-          isThinking={isThinking()}
-          selectedAgent={selectedAgent()}
-          agents={agents()}
-          onAgentChange={handleAgentChange}
-          queuedMessages={messageQueue()}
-          onRemoveFromQueue={handleRemoveFromQueue}
-          onEditQueuedMessage={handleEditQueuedMessage}
-          attachments={attachmentChips()}
-          onRemoveAttachment={handleRemoveAttachment}
-          onFileMentionClick={openFileFromMention}
-          editorRef={handleEditorMethodsReady}
-        />
-      </Show>
+                    <Show when={standalonePermissions().length > 0}>
+                      <div class="standalone-permissions">
+                        <For each={standalonePermissions()}>
+                          {(permission) => (
+                            <PermissionPrompt
+                              permission={permission}
+                              onResponse={handlePermissionResponse}
+                              workspaceRoot={sync.workspaceRoot()}
+                            />
+                          )}
+                        </For>
+                      </div>
+                    </Show>
 
-      <MessageList
-        messages={messages()}
-        isThinking={isThinking()}
-        workspaceRoot={sync.workspaceRoot()}
-        pendingPermissions={pendingPermissions}
-        onPermissionResponse={handlePermissionResponse}
-        editingMessageId={editingMessageId()}
-        editingText={editingText()}
-        onStartEdit={handleStartEdit}
-        onCancelEdit={handleCancelEdit}
-        onSubmitEdit={handleSubmitEdit}
-        onEditTextChange={setEditingText}
-        sessionError={sessionError()}
-      />
+                    <InputBar
+                      value={input()}
+                      onInput={setInput}
+                      onSubmit={handleSubmit}
+                      onCancel={handleCancel}
+                      onQueue={handleQueueMessage}
+                      disabled={!sync.isReady()}
+                      isThinking={isThinking()}
+                      selectedAgent={selectedAgent()}
+                      agents={agents()}
+                      onAgentChange={handleAgentChange}
+                      queuedMessages={messageQueue()}
+                      onRemoveFromQueue={handleRemoveFromQueue}
+                      onEditQueuedMessage={handleEditQueuedMessage}
+                      attachments={attachmentChips()}
+                      onRemoveAttachment={handleRemoveAttachment}
+                      onFileMentionClick={openFileFromMention}
+                      editorRef={handleEditorMethodsReady}
+                    />
+                  </Show>
 
-      <Show when={hasMessages()}>
-        <div class="input-divider" />
-        <div class="input-status-row">
-          <FileChangesSummary fileChanges={fileChanges()} />
-          <ContextIndicator contextInfo={contextInfo()} />
-        </div>
-        
-        <Show when={standalonePermissions().length > 0}>
-          <div class="standalone-permissions">
-            <For each={standalonePermissions()}>
-              {(permission) => (
-                <PermissionPrompt
-                  permission={permission}
-                  onResponse={handlePermissionResponse}
-                  workspaceRoot={sync.workspaceRoot()}
-                />
-              )}
-            </For>
-          </div>
-        </Show>
-        
-        <InputBar
-          value={input()}
-          onInput={setInput}
-          onSubmit={handleSubmit}
-          onCancel={handleCancel}
-          onQueue={handleQueueMessage}
-          disabled={!sync.isReady()}
-          isThinking={isThinking()}
-          selectedAgent={selectedAgent()}
-          agents={agents()}
-          onAgentChange={handleAgentChange}
-          queuedMessages={messageQueue()}
-          onRemoveFromQueue={handleRemoveFromQueue}
-          onEditQueuedMessage={handleEditQueuedMessage}
-          attachments={attachmentChips()}
-          onRemoveAttachment={handleRemoveAttachment}
-          onFileMentionClick={openFileFromMention}
-          editorRef={handleEditorMethodsReady}
-        />
+                  <MessageList
+                    messages={messages()}
+                    isThinking={isThinking()}
+                    workspaceRoot={sync.workspaceRoot()}
+                    pendingPermissions={pendingPermissions}
+                    onPermissionResponse={handlePermissionResponse}
+                    editingMessageId={editingMessageId()}
+                    editingText={editingText()}
+                    onStartEdit={handleStartEdit}
+                    onCancelEdit={handleCancelEdit}
+                    onSubmitEdit={handleSubmitEdit}
+                    onEditTextChange={setEditingText}
+                    sessionError={sessionError()}
+                  />
+
+                  <Show when={hasMessages()}>
+                    <div class="input-divider" />
+                    <div class="input-status-row">
+                      <FileChangesSummary fileChanges={fileChanges()} />
+                      <ContextIndicator contextInfo={contextInfo()} />
+                    </div>
+
+                    <Show when={standalonePermissions().length > 0}>
+                      <div class="standalone-permissions">
+                        <For each={standalonePermissions()}>
+                          {(permission) => (
+                            <PermissionPrompt
+                              permission={permission}
+                              onResponse={handlePermissionResponse}
+                              workspaceRoot={sync.workspaceRoot()}
+                            />
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+
+                    <InputBar
+                      value={input()}
+                      onInput={setInput}
+                      onSubmit={handleSubmit}
+                      onCancel={handleCancel}
+                      onQueue={handleQueueMessage}
+                      disabled={!sync.isReady()}
+                      isThinking={isThinking()}
+                      selectedAgent={selectedAgent()}
+                      agents={agents()}
+                      onAgentChange={handleAgentChange}
+                      queuedMessages={messageQueue()}
+                      onRemoveFromQueue={handleRemoveFromQueue}
+                      onEditQueuedMessage={handleEditQueuedMessage}
+                      attachments={attachmentChips()}
+                      onRemoveAttachment={handleRemoveAttachment}
+                      onFileMentionClick={openFileFromMention}
+                      editorRef={handleEditorMethodsReady}
+                    />
+                  </Show>
+
+          </>
+        )}
       </Show>
     </div>
   );
