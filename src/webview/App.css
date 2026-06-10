@@ -1173,6 +1173,62 @@ body.vscode-high-contrast {
   border-left: 2px solid transparent;
 }
 
+.session-rename-form {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.session-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--padding-button-compact);
+  border: 1px solid var(--focus-border);
+  border-radius: 4px;
+  background-color: var(--input-background);
+  color: var(--input-foreground);
+  font-family: var(--font-family);
+  font-size: var(--font-size-small);
+  font-weight: 500;
+  box-sizing: border-box;
+}
+
+.session-rename-input:focus {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 0;
+}
+
+.session-rename-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background-color: transparent;
+  color: var(--input-foreground);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.session-rename-action:hover:not(:disabled) {
+  background-color: var(--hover-background);
+  opacity: 1;
+}
+
+.session-rename-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.session-rename-action:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 0;
+}
+
 .dropdown-arrow {
   font-size: 10px;
   opacity: 0.7;
@@ -1292,9 +1348,14 @@ body.vscode-high-contrast {
   opacity: 0.7;
 }
 
-.new-session-button:hover {
+.new-session-button:hover:not(:disabled) {
   background-color: var(--hover-background);
   opacity: 1;
+}
+
+.new-session-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
 }
 
 .new-session-button:focus-visible {

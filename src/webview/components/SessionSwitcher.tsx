@@ -2,12 +2,26 @@ import { createSignal, Show, For, onCleanup } from "solid-js";
 import type { Session } from "../types";
 import type { SessionStatus } from "../state/types";
 
+const isDefaultTitle = (title: string) => /^(New session|Child session) - \d{4}-\d{2}-\d{2}T/.test(title);
+
+function formatSessionTitle(session: Session): string {
+  if (session.title && !isDefaultTitle(session.title)) return session.title;
+
+  const updated = new Date(session.time.updated).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `New Session · ${updated}`;
+}
+
 interface SessionSwitcherProps {
   sessions: Session[];
   currentSessionId: string | null;
   currentSessionTitle: string;
   sessionStatus: (sessionId: string) => SessionStatus | null;
-  onSessionSelect: (sessionId: string) => void;
+  onSessionSelect: (sessionId: string) => void | Promise<void>;
   onRefreshSessions: () => Promise<void>;
 }
 
@@ -15,6 +29,7 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
   const [isOpen, setIsOpen] = createSignal(false);
   const [isLoading, setIsLoading] = createSignal(false);
   const [spinnerFrame, setSpinnerFrame] = createSignal(0);
+  const [pendingSessionId, setPendingSessionId] = createSignal<string | null>(null);
   
   const spinnerFrames = ['\\', '|', '/', '-'];
   
@@ -37,8 +52,14 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
   };
 
   const handleSessionClick = (sessionId: string) => {
-    props.onSessionSelect(sessionId);
-    setIsOpen(false);
+    setPendingSessionId(sessionId);
+    void Promise.resolve(props.onSessionSelect(sessionId))
+      .then(() => {
+        setIsOpen(false);
+      })
+      .finally(() => {
+        setPendingSessionId(null);
+      });
   };
 
   const formatRelativeTime = (timestamp: number): string => {
@@ -86,7 +107,7 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
                   return (
                     <div
                       class={`session-item ${
-                        session.id === props.currentSessionId ? "current" : ""
+                        session.id === (pendingSessionId() ?? props.currentSessionId) ? "current" : ""
                       }`}
                       onClick={() => handleSessionClick(session.id)}
                     >
@@ -96,7 +117,7 @@ export function SessionSwitcher(props: SessionSwitcherProps) {
                             {spinnerFrames[spinnerFrame()]}
                           </span>
                         </Show>
-                        {session.title}
+                        {formatSessionTitle(session)}
                       </div>
                       <div class="session-item-time">
                         {formatRelativeTime(session.time.updated)}
