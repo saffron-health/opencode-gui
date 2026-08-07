@@ -30,12 +30,8 @@ export class OpenCodeService {
 
     this.isInitializing = true;
 
-    const prevCwd = process.cwd();
-    const shouldChdir =
-      Boolean(workspaceRoot) && fs.existsSync(workspaceRoot as string);
-
-    if (shouldChdir) {
-      this.workspaceDir = workspaceRoot as string;
+    if (workspaceRoot && fs.existsSync(workspaceRoot)) {
+      this.workspaceDir = workspaceRoot;
     }
 
     try {
@@ -55,10 +51,6 @@ export class OpenCodeService {
 
       this.ensureOpencodeCliAvailable();
 
-      if (shouldChdir) {
-        process.chdir(workspaceRoot as string);
-      }
-
       logger.info("Starting OpenCode server...");
 
       this.opencode = await createOpencode({
@@ -73,13 +65,6 @@ export class OpenCodeService {
       await this.showStartupError(error);
       throw error;
     } finally {
-      if (shouldChdir) {
-        try {
-          process.chdir(prevCwd);
-        } catch (e) {
-          getLogger().warn("Failed to restore working directory", e);
-        }
-      }
       this.isInitializing = false;
     }
   }
