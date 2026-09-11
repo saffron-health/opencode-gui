@@ -22,7 +22,6 @@ export interface EventHandlerContext {
   setStore: SetStoreFunction<SyncState>;
   currentSessionId: () => string | null;
   messageToSession: Map<string, string>;
-  sessionIdleCallbacks: Set<(sessionId: string) => void>;
 }
 
 /** Convert SDK Part to our internal MessagePart type */
@@ -101,7 +100,7 @@ function ensureMessage(
 }
 
 export function applyEvent(event: Event, ctx: EventHandlerContext): void {
-  const { store, setStore, currentSessionId, messageToSession, sessionIdleCallbacks } = ctx;
+  const { store, setStore, currentSessionId, messageToSession } = ctx;
   
   logger.debug("Applying event", { type: event.type });
 
@@ -356,10 +355,6 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       const { sessionID } = event.properties;
       
       if (sessionID) {
-        // Fire callbacks first to clear inFlightMessage
-        for (const callback of sessionIdleCallbacks) {
-          callback(sessionID);
-        }
         setStore("thinking", sessionID, false);
       }
       break;
@@ -378,10 +373,6 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       });
       
       if (sessionID) {
-        // Fire callbacks to clear inFlightMessage so queue can drain after errors
-        for (const callback of sessionIdleCallbacks) {
-          callback(sessionID);
-        }
         batch(() => {
           setStore("thinking", sessionID, false);
           setStore("sessionError", produce((draft: Record<string, string>) => {

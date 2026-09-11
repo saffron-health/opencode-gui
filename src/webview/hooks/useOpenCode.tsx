@@ -128,23 +128,23 @@ function createOpenCode() {
 
   // High-level helper to send a prompt
   // Accepts optional messageID for idempotent sends
-  async function sendPrompt(
-    sessionId: string,
-    text: string,
-    agent?: string | null,
-    extraParts: PromptPartInput[] = [],
-    messageID?: string,
-    model?: { providerID: string; modelID: string } | null
-  ) {
+  async function sendPrompt(opts: {
+    sessionId: string;
+    text: string;
+    agent?: string | null;
+    parts?: PromptPartInput[];
+    messageID?: string;
+    model?: { providerID: string; modelID: string } | null;
+  }) {
     const c = client();
     if (!c) throw new Error("Not connected");
 
     return c.session.prompt({
-      sessionID: sessionId,
-      parts: [{ type: "text", text }, ...extraParts],
-      ...(agent ? { agent } : {}),
-      ...(messageID ? { messageID } : {}),
-      ...(model ? { model } : {}),
+      sessionID: opts.sessionId,
+      parts: [{ type: "text", text: opts.text }, ...(opts.parts ?? [])],
+      ...(opts.agent ? { agent: opts.agent } : {}),
+      ...(opts.messageID ? { messageID: opts.messageID } : {}),
+      ...(opts.model ? { model: opts.model } : {}),
     });
   }
 

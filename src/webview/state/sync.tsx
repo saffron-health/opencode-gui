@@ -34,7 +34,6 @@ function createSync() {
   const inflight = new Map<string, Promise<void>>();
   let bootstrapToken = 0;
   const messageToSession = new Map<string, string>();
-  const sessionIdleCallbacks = new Set<(sessionId: string) => void>();
 
   // Event batching: queue events and flush every 30ms
   const EVENT_BATCH_MS = 30;
@@ -46,7 +45,6 @@ function createSync() {
     setStore,
     currentSessionId,
     messageToSession,
-    sessionIdleCallbacks,
   };
 
   function flushEventQueue() {
@@ -149,6 +147,11 @@ function createSync() {
     const sessionId = currentSessionId();
     return sessionId ? store.thinking[sessionId] ?? false : false;
   });
+
+  // Reactive per-session thinking accessor (tracks store.thinking[id] when read
+  // inside a tracking scope). Used to drain the queue when a specific session
+  // finishes, without a separate idle-callback registry.
+  const isSessionThinking = (sessionId: string) => store.thinking[sessionId] ?? false;
 
   const sessionError = createMemo(() => {
     const sessionId = currentSessionId();
@@ -284,11 +287,6 @@ function createSync() {
     setBootstrapCount((c) => c + 1);
   }
 
-  function onSessionIdle(callback: (sessionId: string) => void): () => void {
-    sessionIdleCallbacks.add(callback);
-    return () => sessionIdleCallbacks.delete(callback);
-  }
-
   // SSE startup
   let sseStarted = false;
   createEffect(() => {
@@ -332,6 +330,7 @@ function createSync() {
     permissions,
     aggregatedPermissions,
     isThinking,
+    isSessionThinking,
     sessionError,
     sessionStatus,
     contextInfo,
@@ -346,7 +345,6 @@ function createSync() {
     setSessionError,
     bootstrap,
     reconnect,
-    onSessionIdle,
 
     isReady: sdk.isReady,
     workspaceRoot: sdk.workspaceRoot,

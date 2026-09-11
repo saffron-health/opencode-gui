@@ -19,12 +19,6 @@ export interface QueuedMessage {
   attachments: SelectionAttachment[];
 }
 
-// In-flight message tracking for the outbox (used for queue draining)
-interface InFlightMessage {
-  messageID: string;
-  sessionId: string;
-}
-
 interface FileMentionInsertRequest {
   filePath: string;
   startLine?: number;
@@ -78,7 +72,9 @@ function App() {
   const [pendingEditorFocus, setPendingEditorFocus] = createSignal(false);
   
   // In-flight message tracking for outbox pattern
-  const [inFlightMessage, setInFlightMessage] = createSignal<InFlightMessage | null>(null);
+  // Session we last dispatched a prompt to; used to drain the queue once it
+  // finishes (replaces the old in-flight object + idle-callback registry).
+  const [pendingSessionId, setPendingSessionId] = createSignal<string | null>(null);
   
   // Editor methods for managing content
   let editorMethods: TiptapEditorMethods | null = null;
@@ -542,24 +538,76 @@ function App() {
     }
   });
   
-  // Clear inFlightMessage when session becomes idle and trigger queue drain
-  onMount(() => {
-    const cleanup = sync.onSessionIdle((sessionId) => {
-      const inflight = inFlightMessage();
-      
-      if (inflight?.sessionId !== sessionId) {
-        return;
-      }
-      
-      setInFlightMessage(null);
-      
-      // Schedule queue drain in a microtask to avoid interleaving with SSE batch
-      queueMicrotask(() => {
-        void processNextQueuedMessage();
-      });
+  // Drain the queue once the session we dispatched to finishes (goes idle).
+  // Tracks store.thinking for that session reactively, so session.idle/error
+  // (which flip thinking to false) trigger the next send.
+  createEffect(() => {
+    const pending = pendingSessionId();
+    if (!pending) return;
+    if (sync.isSessionThinking(pending)) return; // still running
+    setPendingSessionId(null);
+    // Defer to a microtask to avoid interleaving with the SSE event batch.
+    queueMicrotask(() => {
+      void processNextQueuedMessage();
     });
-    onCleanup(cleanup);
   });
+
+  // Shared prompt dispatch used by submit / queue-drain / edit paths.
+  // Returns true on success, false when the send errored.
+  const dispatchPrompt = async (opts: {
+    sessionId: string;
+    text: string;
+    agent: string | null;
+    messageID: string;
+    parts?: PromptPartInput[];
+    errorPrefix?: string;
+    before?: () => Promise<unknown>;
+  }): Promise<boolean> => {
+    const { sessionId, text, agent, messageID, parts = [], errorPrefix, before } = opts;
+
+    sync.setThinking(sessionId, true);
+    setPendingSessionId(sessionId);
+
+    const fail = (message: string) => {
+      sync.setThinking(sessionId, false);
+      setPendingSessionId(null);
+      sync.setSessionError(sessionId, errorPrefix ? `${errorPrefix}${message}` : message);
+    };
+
+    try {
+      if (before) await before();
+      const result = await sendPrompt({
+        sessionId,
+        text,
+        agent,
+        parts,
+        messageID,
+        model: selectedModel(),
+      });
+      if (result?.error) {
+        const errorMessage = getSdkErrorMessage(result.error);
+        logger.error("sendPrompt returned error", {
+          sessionId,
+          messageID,
+          responseStatus: getResponseStatus(result),
+          errorMessage,
+          error: result.error,
+        });
+        fail(errorMessage);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      logger.error("sendPrompt exception", {
+        sessionId,
+        messageID,
+        error: String(err),
+        stack: (err as Error).stack,
+      });
+      fail((err as Error).message);
+      return false;
+    }
+  };
 
   // Handlers
   const handleSubmit = async () => {
@@ -646,120 +694,40 @@ function App() {
       next.delete(key);
       return next;
     });
-    sync.setThinking(sessionId, true);
-
-    // Track this message as in-flight
-    setInFlightMessage({ messageID, sessionId });
 
     logger.info("Sending prompt", { sessionId, messageID, textLen: text.length });
 
-    try {
-      const result = await sendPrompt(sessionId, text, agent, extraParts, messageID, selectedModel());
-      
-      // Log the full result for debugging
-      const responseStatus = getResponseStatus(result);
-      logger.info("sendPrompt result", { 
-        hasError: !!result?.error, 
-        hasData: !!result?.data,
-        responseStatus,
-      });
-      
-      // Check for SDK error in result (SDK doesn't throw by default)
-      if (result?.error) {
-        const errorMessage = getSdkErrorMessage(result.error);
-
-        // Log full error structure for debugging
-        logger.error("sendPrompt returned error", { 
-          sessionId,
-          messageID,
-          responseStatus,
-          errorMessage,
-          error: result.error,
-          response: result?.response,
-        });
-
-        sync.setThinking(sessionId, false);
-        setInFlightMessage(null);
-        sync.setSessionError(sessionId, errorMessage);
-        return;
-      }
-      
-      if (attachments.length > 0) {
-        setSelectionAttachmentsForKey(attachmentsKey, []);
-      }
-    } catch (err) {
-      logger.error("sendPrompt exception", { error: String(err), stack: (err as Error).stack });
-      const errorMessage = (err as Error).message;
-      
-      // Show all errors inline and clear in-flight
-      sync.setThinking(sessionId, false);
-      setInFlightMessage(null);
-      sync.setSessionError(sessionId, errorMessage);
+    const ok = await dispatchPrompt({ sessionId, text, agent, messageID, parts: extraParts });
+    if (ok && attachments.length > 0) {
+      setSelectionAttachmentsForKey(attachmentsKey, []);
     }
   };
 
   const processNextQueuedMessage = async () => {
     const queue = messageQueue();
-    const inflight = inFlightMessage();
     const sessionId = sync.currentSessionId();
-    
-    if (queue.length === 0) {
-      return;
-    }
-    
-    // Don't process if there's already an in-flight message
-    if (inflight) {
-      return;
-    }
-    
-    if (!sessionId || !sync.isReady()) {
-      return;
-    }
-    
-    const [next, ...rest] = queue;
-    
-    // Generate a FRESH messageID right before sending to ensure it's newer than the last assistant message
-    // This is critical - IDs generated earlier (when queueing) will be older than assistant responses
-    const messageID = Id.ascending("message");
-    
-    setMessageQueue(rest);
-    sync.setThinking(sessionId, true);
-    
-    // Track this queued message as in-flight using the fresh messageID
-    setInFlightMessage({ messageID, sessionId });
 
-    try {
-      const extraParts = buildSelectionParts(next.attachments);
-      
-      const result = await sendPrompt(sessionId, next.text, next.agent, extraParts, messageID, selectedModel());
-      const responseStatus = getResponseStatus(result);
-      
-      // Check for SDK error in result (SDK doesn't throw by default)
-      if (result?.error) {
-        const errorMessage = getSdkErrorMessage(result.error);
-        logger.error("queue sendPrompt returned error", {
-          sessionId,
-          messageID,
-          responseStatus,
-          errorMessage,
-          error: result.error,
-        });
-        sync.setThinking(sessionId, false);
-        setInFlightMessage(null);
-        setMessageQueue([]);
-        sync.setSessionError(sessionId, errorMessage);
-        return;
-      }
-    } catch (err) {
-      console.error("[App] Queue sendPrompt failed:", err);
-      const errorMessage = (err as Error).message;
-      
-      // Show all errors inline and clear queue + in-flight
-      sync.setThinking(sessionId, false);
-      setInFlightMessage(null);
-      setMessageQueue([]);
-      sync.setSessionError(sessionId, errorMessage);
-    }
+    if (queue.length === 0) return;
+    // Don't process while a send is still in flight for the current session.
+    if (sync.isThinking()) return;
+    if (!sessionId || !sync.isReady()) return;
+
+    const [next, ...rest] = queue;
+
+    // Generate a FRESH messageID right before sending so it sorts after the last
+    // assistant message (IDs made at queue time would be older).
+    const messageID = Id.ascending("message");
+    setMessageQueue(rest);
+
+    const ok = await dispatchPrompt({
+      sessionId,
+      text: next.text,
+      agent: next.agent,
+      messageID,
+      parts: buildSelectionParts(next.attachments),
+    });
+    // On failure, drop the rest of the queue (matches prior behavior).
+    if (!ok) setMessageQueue([]);
   };
 
   const handleQueueMessage = () => {
@@ -830,7 +798,7 @@ function App() {
     
     // Clear local UI state
     setMessageQueue([]);
-    setInFlightMessage(null);
+    setPendingSessionId(null);
     setEditingMessageId(null);
     setEditingText("");
     
@@ -848,7 +816,7 @@ function App() {
 
       // Clear local UI state
       setMessageQueue([]);
-      setInFlightMessage(null);
+      setPendingSessionId(null);
       setEditingMessageId(null);
       setEditingText("");
       
@@ -867,7 +835,7 @@ function App() {
       await abortSession(sessionId);
     } finally {
       sync.setThinking(sessionId, false);
-      setInFlightMessage(null);
+      setPendingSessionId(null);
     }
   };
 
@@ -912,43 +880,17 @@ function App() {
     // Generate sortable client-side messageID for the new prompt
     const newMessageID = Id.ascending("message");
 
-    sync.setThinking(sessionId, true);
     setEditingMessageId(null);
     setEditingText("");
 
-    // Track this as in-flight
-    setInFlightMessage({ messageID: newMessageID, sessionId });
-
-    try {
-      await revertToMessage(sessionId, messageId);
-      const result = await sendPrompt(sessionId, newText.trim(), agent, [], newMessageID, selectedModel());
-      const responseStatus = getResponseStatus(result);
-      
-      // Check for SDK error in result (SDK doesn't throw by default)
-      if (result?.error) {
-        const errorMessage = getSdkErrorMessage(result.error);
-        logger.error("edit sendPrompt returned error", {
-          sessionId,
-          messageId,
-          newMessageID,
-          responseStatus,
-          errorMessage,
-          error: result.error,
-        });
-        sync.setThinking(sessionId, false);
-        setInFlightMessage(null);
-        sync.setSessionError(sessionId, `Error editing message: ${errorMessage}`);
-        return;
-      }
-    } catch (err) {
-      console.error("[App] Failed to edit message:", err);
-      const errorMessage = (err as Error).message;
-      
-      // Show all errors inline and clear in-flight
-      sync.setThinking(sessionId, false);
-      setInFlightMessage(null);
-      sync.setSessionError(sessionId, `Error editing message: ${errorMessage}`);
-    }
+    await dispatchPrompt({
+      sessionId,
+      text: newText.trim(),
+      agent,
+      messageID: newMessageID,
+      errorPrefix: "Error editing message: ",
+      before: () => revertToMessage(sessionId, messageId),
+    });
   };
 
   const handlePermissionResponse = async (
