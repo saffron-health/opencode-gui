@@ -252,10 +252,10 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         try {
           const sdkMessages =
             await this._openCodeService.getMessages(currentSessionId);
-          // Transform SDK Message[] to IncomingMessage[]
+          // Transform SDK messages ({ info, parts }) to IncomingMessage[]
           messages = sdkMessages.map((msg) => ({
-            id: msg.id,
-            role: msg.role,
+            id: msg.info.id,
+            role: msg.info.role,
           }));
         } catch (error) {
           console.error("Error loading session messages:", error);

@@ -57,11 +57,11 @@ export const AgentSchema = z.object({
 export type Agent = z.infer<typeof AgentSchema>;
 
 export const FileDiffSchema = z.object({
-  file: z.string(),
-  before: z.string(),
-  after: z.string(),
+  file: z.string().optional(),
+  patch: z.string().optional(),
   additions: z.number(),
   deletions: z.number(),
+  status: z.enum(["added", "deleted", "modified"]).optional(),
 });
 export type FileDiff = z.infer<typeof FileDiffSchema>;
 

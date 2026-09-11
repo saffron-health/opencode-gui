@@ -97,7 +97,7 @@
   },
   "dependencies": {
     "@floating-ui/dom": "^1.7.5",
-    "@opencode-ai/sdk": "^1.2.14",
+    "@opencode-ai/sdk": "^1.18.30",
     "@tiptap/core": "^2.27.2",
     "@tiptap/extension-document": "^2.27.2",
     "@tiptap/extension-mention": "^2.27.2",
