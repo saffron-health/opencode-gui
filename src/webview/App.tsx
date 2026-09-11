@@ -43,19 +43,47 @@ import {
 
 const NEW_SESSION_KEY = "__new__";
 
+/**
+ * A selection with a global default plus per-session overrides. New-session mode
+ * (no active session) writes the global default; an active session writes an
+ * override. Used for both the agent and model pickers.
+ */
+function createSessionPreference<T>(currentSessionId: () => string | null) {
+  const [defaultValue, setDefaultValue] = createSignal<T | null>(null);
+  const [overrides, setOverrides] = createSignal<Map<string, T>>(new Map());
+
+  const selected = () => {
+    const sessionId = currentSessionId();
+    const override = sessionId ? overrides().get(sessionId) : undefined;
+    return override ?? defaultValue();
+  };
+
+  const select = (value: T) => {
+    const sessionId = currentSessionId();
+    if (!sessionId) {
+      setDefaultValue(() => value);
+      return;
+    }
+    setOverrides((prev) => new Map(prev).set(sessionId, value));
+  };
+
+  return { selected, select, defaultValue, setDefaultValue };
+}
+
 function App() {
   // Use the sync context for server-owned state
   const sync = useSync();
   
   // Local UI-only state
-  const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
-  const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
   const [models, setModels] = createSignal<ModelOption[]>([]);
-  // Selected model, mirroring agent selection: per-session override, else the default.
-  const [defaultModel, setDefaultModel] = createSignal<{ providerID: string; modelID: string } | null>(null);
-  const [sessionModels, setSessionModels] = createSignal<Map<string, { providerID: string; modelID: string }>>(new Map());
+
+  // Agent and model selection share the same default + per-session-override shape.
+  const agentPref = createSessionPreference<string>(() => sync.currentSessionId());
+  const modelPref = createSessionPreference<{ providerID: string; modelID: string }>(
+    () => sync.currentSessionId(),
+  );
   const [selectionAttachmentsBySession, setSelectionAttachmentsBySession] = createSignal<
     Map<string, SelectionAttachment[]>
   >(new Map());
@@ -179,44 +207,19 @@ function App() {
     }
   };
 
-  // Current agent for the active session.
-  // New-session mode always uses the global default; existing sessions can override it.
-  const selectedAgent = () => {
-    const sessionId = sync.currentSessionId();
-    return sessionId ? sessionAgents().get(sessionId) || defaultAgent() : defaultAgent();
-  };
+  // Current agent for the active session (global default unless overridden).
+  const selectedAgent = agentPref.selected;
   const setSelectedAgent = (agent: string | null) => {
-    if (!agent) return;
-    const sessionId = sync.currentSessionId();
-    if (!sessionId) {
-      // In new-session mode, agent choice defines the default for subsequent sessions.
-      setDefaultAgent(agent);
-      return;
-    }
-    setSessionAgents((prev) => {
-      const next = new Map(prev);
-      next.set(sessionId, agent);
-      return next;
-    });
+    if (agent) agentPref.select(agent);
   };
+  const defaultAgent = agentPref.defaultValue;
+  const setDefaultAgent = agentPref.setDefaultValue;
 
   // Current model for the active session, mirroring agent selection.
-  const selectedModel = () => {
-    const sessionId = sync.currentSessionId();
-    return sessionId ? sessionModels().get(sessionId) || defaultModel() : defaultModel();
-  };
-  const setSelectedModel = (model: { providerID: string; modelID: string }) => {
-    const sessionId = sync.currentSessionId();
-    if (!sessionId) {
-      setDefaultModel(model);
-      return;
-    }
-    setSessionModels((prev) => {
-      const next = new Map(prev);
-      next.set(sessionId, model);
-      return next;
-    });
-  };
+  const selectedModel = modelPref.selected;
+  const setSelectedModel = modelPref.select;
+  const defaultModel = modelPref.defaultValue;
+  const setDefaultModel = modelPref.setDefaultValue;
 
   // Convenience accessors from sync store
   // Use the sync memos directly (not wrapped in functions) to maintain reactivity
