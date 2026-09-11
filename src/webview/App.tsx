@@ -1027,6 +1027,7 @@ function App() {
           models={models()}
           selectedModel={selectedModel()}
           onModelChange={handleModelChange}
+          modelDropdownPlacement="down"
           queuedMessages={messageQueue()}
           onRemoveFromQueue={handleRemoveFromQueue}
           onEditQueuedMessage={handleEditQueuedMessage}

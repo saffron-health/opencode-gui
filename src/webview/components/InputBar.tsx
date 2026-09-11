@@ -21,6 +21,7 @@ interface InputBarProps {
   models: ModelOption[];
   selectedModel: { providerID: string; modelID: string } | null;
   onModelChange: (model: ModelOption) => void;
+  modelDropdownPlacement?: "up" | "down";
   queuedMessages: QueuedMessage[];
   onRemoveFromQueue: (id: string) => void;
   onEditQueuedMessage: (id: string) => void;
@@ -189,6 +190,7 @@ export function InputBar(props: InputBarProps) {
               models={props.models}
               selectedModel={props.selectedModel}
               onModelChange={props.onModelChange}
+              dropdownPlacement={props.modelDropdownPlacement}
             />
           </Show>
           <Show when={showStopButton()}>

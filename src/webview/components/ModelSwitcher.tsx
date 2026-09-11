@@ -5,6 +5,9 @@ interface ModelSwitcherProps {
   models: ModelOption[];
   selectedModel: { providerID: string; modelID: string } | null;
   onModelChange: (model: ModelOption) => void;
+  // "up" (default) opens the dropdown above the button (left-aligned);
+  // "down" opens it below the button (right-aligned), used when the input sits at the top.
+  dropdownPlacement?: "up" | "down";
 }
 
 export function ModelSwitcher(props: ModelSwitcherProps) {
@@ -74,7 +77,10 @@ export function ModelSwitcher(props: ModelSwitcherProps) {
         <span class="model-switcher-button__caret">▾</span>
       </button>
       <Show when={open()}>
-        <div class="model-switcher-dropdown" role="listbox">
+        <div
+          class={`model-switcher-dropdown${props.dropdownPlacement === "down" ? " model-switcher-dropdown--down" : ""}`}
+          role="listbox"
+        >
           <Show
             when={props.models.length > 0}
             fallback={<div class="model-switcher-empty">No models available</div>}
