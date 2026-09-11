@@ -3,10 +3,9 @@ import { For, Show, createMemo, type Accessor } from "solid-js";
 import type { Message, Permission, MessagePart } from "../types";
 import { MessagePartRenderer } from "./MessagePartRenderer";
 import { isRenderablePart } from "./MessagePartRenderer";
-import { Streamdown } from "../lib/streamdown";
 import { vscode } from "../utils/vscode";
 import { useSync } from "../state/sync";
-import { messageMarkdownComponents } from "./markdownComponents";
+import { extractTextFromParts } from "../state/utils";
 
 interface MessageItemProps {
   message: Message;
@@ -25,22 +24,8 @@ export function MessageItem(props: MessageItemProps) {
   const renderableParts = createMemo(() => props.parts.filter(isRenderablePart));
   const hasRenderableParts = () => renderableParts().length > 0;
   
-  // Derive user message text from parts (text parts only, excluding synthetic/ignored)
-  const userText = createMemo(() => {
-    if (!isUser()) return props.message.text ?? "";
-    // Prefer message.text if set, otherwise derive from parts
-    if (props.message.text) return props.message.text;
-    return props.parts
-      .filter(
-        (p) =>
-          p?.type === "text" &&
-          typeof p.text === "string" &&
-          !(p as { synthetic?: boolean }).synthetic &&
-          !(p as { ignored?: boolean }).ignored
-      )
-      .map((p) => p.text as string)
-      .join("\n");
-  });
+  // Message text is derived from parts (text parts only, excluding synthetic/ignored).
+  const userText = createMemo(() => extractTextFromParts(props.parts));
   
   const userAttachments = createMemo(() => {
     return props.parts
@@ -86,9 +71,8 @@ export function MessageItem(props: MessageItemProps) {
       });
   });
 
-  const assistantText = createMemo(() => (props.message.text ?? "").trim());
   const shouldRenderAssistantMessage = createMemo(
-    () => isUser() || hasAnyParts() || assistantText().length > 0
+    () => isUser() || hasAnyParts()
   );
 
   return (
@@ -125,24 +109,8 @@ export function MessageItem(props: MessageItemProps) {
               <div class="message-text user-message-text">{userText()}</div>
             </Show>
           </Show>
-          <Show
-            when={!isUser()}
-            fallback={null}
-          >
-            <Show 
-              when={hasRenderableParts()} 
-              fallback={
-                <Show when={props.message.text}>
-                  <Streamdown
-                    mode={props.isStreaming ? "streaming" : "static"}
-                    components={messageMarkdownComponents}
-                    class="message-text"
-                  >
-                    {props.message.text!}
-                  </Streamdown>
-                </Show>
-              }
-            >
+          <Show when={!isUser()}>
+            <Show when={hasRenderableParts()}>
               <For each={renderableParts()}>
                 {(part) => <MessagePartRenderer part={part} workspaceRoot={props.workspaceRoot} pendingPermissions={props.pendingPermissions} onPermissionResponse={props.onPermissionResponse} isStreaming={props.isStreaming} />}
               </For>

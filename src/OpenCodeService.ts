@@ -1,5 +1,5 @@
 import { createOpencode, type OpencodeClient } from "@opencode-ai/sdk/v2";
-import type { Message } from "@opencode-ai/sdk/v2/client";
+import type { Message, Part } from "@opencode-ai/sdk/v2/client";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -150,7 +150,7 @@ export class OpenCodeService {
 
   async getMessages(
     sessionId: string,
-  ): Promise<Message[]> {
+  ): Promise<Array<{ info: Message; parts: Part[] }>> {
     if (!this.opencode) {
       throw new Error("OpenCode not initialized");
     }

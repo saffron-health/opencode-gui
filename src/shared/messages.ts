@@ -33,12 +33,12 @@ export type MessagePart = z.infer<typeof MessagePartSchema>;
 export const MessageSchema = z.object({
   id: z.string(),
   type: z.enum(["user", "assistant"]),
-  text: z.string().optional(),
   time: z.object({
     created: z.number(),
     completed: z.number().optional(),
   }).optional(),
-  // Note: parts are stored separately in store.part[messageID], not on Message
+  // Note: message text and parts are stored separately in store.part[messageID].
+  // Text is derived from parts at render time; Message carries no text field.
 });
 export type Message = z.infer<typeof MessageSchema>;
 
@@ -57,11 +57,11 @@ export const AgentSchema = z.object({
 export type Agent = z.infer<typeof AgentSchema>;
 
 export const FileDiffSchema = z.object({
-  file: z.string(),
-  before: z.string(),
-  after: z.string(),
+  file: z.string().optional(),
+  patch: z.string().optional(),
   additions: z.number(),
   deletions: z.number(),
+  status: z.enum(["added", "deleted", "modified"]).optional(),
 });
 export type FileDiff = z.infer<typeof FileDiffSchema>;
 
@@ -134,6 +134,7 @@ export const HostMessageSchema = z.discriminatedUnion("type", [
       currentSessionTitle: z.string().optional(),
       currentSessionMessages: z.array(IncomingMessageSchema).optional(),
       defaultAgent: z.string().optional(),
+      defaultModel: z.string().optional(),
     })
     .transform((v) => ({
       ...v,
@@ -209,6 +210,10 @@ export const WebviewMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("agent-changed"),
     agent: z.string(),
+  }),
+  z.object({
+    type: z.literal("model-changed"),
+    model: z.string(),
   }),
   z.object({
     type: z.literal("open-file"),

@@ -9,7 +9,12 @@ import type {
 } from "@opencode-ai/sdk/v2/client";
 import type { Message, MessagePart, Session, Permission } from "../types";
 import type { SyncState } from "./types";
-import { binarySearch, findById, extractTextFromParts } from "./utils";
+import { binarySearch, findById } from "./utils";
+import {
+  deriveContextInfo,
+  deriveFileChangesFromDiff,
+  deriveFileChangesFromSummary,
+} from "./derive";
 import { logger } from "../utils/logger";
 
 export interface EventHandlerContext {
@@ -17,7 +22,6 @@ export interface EventHandlerContext {
   setStore: SetStoreFunction<SyncState>;
   currentSessionId: () => string | null;
   messageToSession: Map<string, string>;
-  sessionIdleCallbacks: Set<(sessionId: string) => void>;
 }
 
 /** Convert SDK Part to our internal MessagePart type */
@@ -72,15 +76,31 @@ function applyFieldDelta(obj: Record<string, unknown>, field: string, delta: str
   target[lastKey] = ((target[lastKey] as string) ?? "") + delta;
 }
 
-/** Prefer extracted text, but keep prior text when parts exist with no extractable text. */
-function resolveMessageText(parts: MessagePart[] | undefined, fallbackText: string | undefined): string {
-  if (!parts || parts.length === 0) return fallbackText ?? "";
-  const extracted = extractTextFromParts(parts);
-  return extracted.length > 0 ? extracted : (fallbackText ?? "");
+/**
+ * Ensure a message entry exists for the session. Message text is derived from
+ * store.part at render time, so entries carry no text field here.
+ */
+function ensureMessage(
+  ctx: EventHandlerContext,
+  sessionId: string,
+  messageId: string,
+  role: "user" | "assistant",
+): void {
+  const { store, setStore, messageToSession } = ctx;
+  messageToSession.set(messageId, sessionId);
+  const messages = store.message[sessionId];
+  if (!messages) {
+    setStore("message", sessionId, [{ id: messageId, type: role }]);
+    return;
+  }
+  if (!findById(messages, messageId, (m) => m.id).found) {
+    // Replace the array (not in-place) so downstream subscribers see a new ref.
+    setStore("message", sessionId, [...messages, { id: messageId, type: role }]);
+  }
 }
 
 export function applyEvent(event: Event, ctx: EventHandlerContext): void {
-  const { store, setStore, currentSessionId, messageToSession, sessionIdleCallbacks } = ctx;
+  const { store, setStore, currentSessionId, messageToSession } = ctx;
   
   logger.debug("Applying event", { type: event.type });
 
@@ -97,17 +117,10 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       const messages = store.message[sessionId] ?? [];
       // Use linear search for messages (client and server IDs have incompatible sort orders)
       const result = findById(messages, info.id, (m) => m.id);
-      const prev = result.found ? messages[result.index] : undefined;
-
-      // Compute text from existing parts in the store.
-      // Keep previous text if current part snapshot has no extractable text yet.
-      const partsForText = store.part[info.id];
-      const nextText = resolveMessageText(partsForText, prev?.text);
 
       const msg: Message = {
         id: info.id,
         type: info.role,
-        text: nextText,
         time: info.time,
       };
 
@@ -141,21 +154,20 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       // This ensures we show cumulative context for the session being viewed
       const viewingSessionId = currentSessionId();
       if (viewingSessionId && sessionId === viewingSessionId && info.role === "assistant") {
-        const assistantInfo = info as AssistantMessage;
-        const tokens = assistantInfo.tokens;
-        const usedTokens =
-          tokens.input +
-          tokens.output +
-          tokens.reasoning +
-          tokens.cache.read +
-          tokens.cache.write;
-        if (usedTokens > 0) {
-          const limit = 200000; // Default context limit, could be fetched from config
-          setStore("contextInfo", {
-            usedTokens,
-            limitTokens: limit,
-            percentage: Math.min(100, (usedTokens / limit) * 100),
-          });
+        const context = deriveContextInfo(info as AssistantMessage);
+        if (context) setStore("contextInfo", context);
+      }
+
+      // Self-healing: clear the "thinking" state when the session's latest
+      // assistant message finishes. session.idle is the primary signal, but it
+      // can be missed (SSE timing, reconnects); relying on the completed message
+      // as a fallback prevents the UI from being stuck in a busy/"steering"
+      // state after a reply has already arrived. Only act when the completed
+      // message is the newest one, so a queued/steered follow-up still shows busy.
+      if (info.role === "assistant" && info.time?.completed) {
+        const latest = store.message[sessionId];
+        if (latest && latest.length > 0 && latest[latest.length - 1].id === info.id) {
+          setStore("thinking", sessionId, false);
         }
       }
       break;
@@ -238,40 +250,9 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
           }
         }
 
-        // Ensure message exists
+        // Ensure the message exists (text is derived from parts at render time)
         if (dSessionId) {
-          messageToSession.set(dMessageID, dSessionId);
-          const messages = store.message[dSessionId];
-          if (!messages) {
-            setStore("message", dSessionId, [{
-              id: dMessageID,
-              type: "assistant" as const,
-              text: "",
-            } as Message]);
-          } else {
-            const msgResult = findById(messages, dMessageID, (m) => m.id);
-            if (!msgResult.found) {
-              setStore("message", dSessionId, [...messages, {
-                id: dMessageID,
-                type: "assistant" as const,
-                text: "",
-              } as Message]);
-            }
-          }
-
-          // Update message text from parts when text field changes
-          if (dField === "text") {
-            const updatedParts = store.part[dMessageID] ?? [];
-            const msgs = store.message[dSessionId];
-            if (msgs) {
-              const msgResult = findById(msgs, dMessageID, (m) => m.id);
-              if (msgResult.found) {
-                const prevText = msgs[msgResult.index]?.text;
-                const newText = resolveMessageText(updatedParts, prevText);
-                setStore("message", dSessionId, msgResult.index, "text", newText);
-              }
-            }
-          }
+          ensureMessage(ctx, dSessionId, dMessageID, "assistant");
         }
       });
       break;
@@ -324,37 +305,10 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
           }
         }
 
-        // Ensure the message exists (part may arrive before message.updated)
+        // Ensure the message exists (part may arrive before message.updated).
+        // Text is derived from parts at render time, so no text bookkeeping here.
         if (sessionId) {
-          messageToSession.set(sdkPart.messageID, sessionId);
-
-          const messages = store.message[sessionId];
-          if (!messages) {
-            const newMsg: Message = {
-              id: sdkPart.messageID,
-              type: "assistant",
-              text: resolveMessageText(store.part[sdkPart.messageID], ""),
-            };
-            setStore("message", sessionId, [newMsg]);
-          } else {
-            const msgResult = findById(messages, sdkPart.messageID, (m) => m.id);
-            if (!msgResult.found) {
-              const newMsg: Message = {
-                id: sdkPart.messageID,
-                type: "assistant",
-                text: resolveMessageText(store.part[sdkPart.messageID], ""),
-              };
-              // Replace array (not in-place mutate) so messages memo propagates
-              setStore("message", sessionId, [...messages, newMsg]);
-            } else {
-              // Update the message's text from the updated parts
-              // This triggers reactivity so UI re-renders when parts stream in
-              const updatedParts = store.part[sdkPart.messageID] ?? [];
-              const prevText = messages[msgResult.index]?.text;
-              const newText = resolveMessageText(updatedParts, prevText);
-              setStore("message", sessionId, msgResult.index, "text", newText);
-            }
-          }
+          ensureMessage(ctx, sessionId, sdkPart.messageID, "assistant");
         }
       });
       break;
@@ -391,24 +345,8 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
           }));
         }
 
-        if (session.summary) {
-          if (session.summary.diffs && session.summary.diffs.length > 0) {
-            // Use detailed diffs if available
-            const diffs = session.summary.diffs;
-            setStore("fileChanges", {
-              fileCount: diffs.length,
-              additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
-              deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
-            });
-          } else if (session.summary.files > 0) {
-            // Fallback to summary-level aggregates
-            setStore("fileChanges", {
-              fileCount: session.summary.files,
-              additions: session.summary.additions,
-              deletions: session.summary.deletions,
-            });
-          }
-        }
+        const fileChanges = deriveFileChangesFromSummary(session.summary);
+        if (fileChanges) setStore("fileChanges", fileChanges);
       });
       break;
     }
@@ -428,12 +366,7 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
 
     case "session.idle": {
       const { sessionID } = event.properties;
-      
       if (sessionID) {
-        // Fire callbacks first to clear inFlightMessage
-        for (const callback of sessionIdleCallbacks) {
-          callback(sessionID);
-        }
         setStore("thinking", sessionID, false);
       }
       break;
@@ -452,10 +385,6 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       });
       
       if (sessionID) {
-        // Fire callbacks to clear inFlightMessage so queue can drain after errors
-        for (const callback of sessionIdleCallbacks) {
-          callback(sessionID);
-        }
         batch(() => {
           setStore("thinking", sessionID, false);
           setStore("sessionError", produce((draft: Record<string, string>) => {
@@ -471,12 +400,7 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       const sessionId = sessionID ?? currentSessionId();
       if (!sessionId || !diff) break;
 
-      // Aggregate file changes from diff array
-      setStore("fileChanges", {
-        fileCount: diff.length,
-        additions: diff.reduce((sum, d) => sum + (d.additions || 0), 0),
-        deletions: diff.reduce((sum, d) => sum + (d.deletions || 0), 0),
-      });
+      setStore("fileChanges", deriveFileChangesFromDiff(diff));
       break;
     }
 

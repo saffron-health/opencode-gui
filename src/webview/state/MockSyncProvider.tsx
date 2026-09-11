@@ -9,8 +9,15 @@ import { type ParentProps, createSignal, createMemo } from "solid-js";
 import type { Message, MessagePart, Permission, Session, Agent, ContextInfo, FileChangesInfo } from "../types";
 import { SyncContext, type SyncContextValue } from "./sync";
 
+/**
+ * Mock messages may be authored with a convenience `text` field and/or explicit
+ * `parts`. The real Message type carries neither (text is derived from parts),
+ * so the mock layer synthesizes a text part from `text` when no parts are given.
+ */
+export type MockMessage = Message & { text?: string; parts?: MessagePart[] };
+
 interface MockSyncProviderProps extends ParentProps {
-  messages?: Message[];
+  messages?: MockMessage[];
   sessions?: Session[];
   agents?: Agent[];
   isThinking?: boolean;
@@ -35,8 +42,12 @@ export function MockSyncProvider(props: MockSyncProviderProps) {
   const partsMap = createMemo(() => {
     const map = new Map<string, MessagePart[]>();
     for (const msg of messages()) {
-      if (msg.parts) {
+      if (msg.parts && msg.parts.length > 0) {
         map.set(msg.id, msg.parts);
+      } else if (msg.text) {
+        map.set(msg.id, [
+          { id: `${msg.id}-text`, type: "text", text: msg.text, messageID: msg.id } as MessagePart,
+        ]);
       }
     }
     return map;

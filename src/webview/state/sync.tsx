@@ -34,7 +34,6 @@ function createSync() {
   const inflight = new Map<string, Promise<void>>();
   let bootstrapToken = 0;
   const messageToSession = new Map<string, string>();
-  const sessionIdleCallbacks = new Set<(sessionId: string) => void>();
 
   // Event batching: queue events and flush every 30ms
   const EVENT_BATCH_MS = 30;
@@ -46,7 +45,6 @@ function createSync() {
     setStore,
     currentSessionId,
     messageToSession,
-    sessionIdleCallbacks,
   };
 
   function flushEventQueue() {
@@ -150,6 +148,11 @@ function createSync() {
     return sessionId ? store.thinking[sessionId] ?? false : false;
   });
 
+  // Reactive per-session thinking accessor (tracks store.thinking[id] when read
+  // inside a tracking scope). Used to drain the queue when a specific session
+  // finishes, without a separate idle-callback registry.
+  const isSessionThinking = (sessionId: string) => store.thinking[sessionId] ?? false;
+
   const sessionError = createMemo(() => {
     const sessionId = currentSessionId();
     return sessionId ? store.sessionError[sessionId] ?? null : null;
@@ -170,12 +173,17 @@ function createSync() {
     }
   }
 
-  async function bootstrap(): Promise<void> {
+  async function bootstrap(opts: { full?: boolean } = {}): Promise<void> {
     const client = sdk.client();
     if (!client) {
       console.warn("[Sync] Cannot bootstrap: SDK client not ready");
       return;
     }
+
+    // Fetch workspace-global data (agents/sessions/status) on full bootstraps
+    // (connect/reconnect) or when it hasn't been loaded yet; session switches
+    // only refetch session-scoped data.
+    const includeGlobal = opts.full !== false || store.agents.length === 0;
 
     const sessionId = currentSessionId();
     const workspaceRoot = sdk.workspaceRoot();
@@ -195,6 +203,7 @@ function createSync() {
           client: client as Parameters<typeof fetchBootstrapData>[0]["client"],
           sessionId,
           workspaceRoot,
+          includeGlobal,
         });
 
         if (thisToken !== bootstrapToken) {
@@ -284,11 +293,6 @@ function createSync() {
     setBootstrapCount((c) => c + 1);
   }
 
-  function onSessionIdle(callback: (sessionId: string) => void): () => void {
-    sessionIdleCallbacks.add(callback);
-    return () => sessionIdleCallbacks.delete(callback);
-  }
-
   // SSE startup
   let sseStarted = false;
   createEffect(() => {
@@ -303,7 +307,7 @@ function createSync() {
     const count = bootstrapCount();
     if (count === 0) return;
     if (!sdk.isReady()) return;
-    await bootstrap();
+    await bootstrap({ full: true });
   });
 
   // Initialize from SDK init data
@@ -332,6 +336,7 @@ function createSync() {
     permissions,
     aggregatedPermissions,
     isThinking,
+    isSessionThinking,
     sessionError,
     sessionStatus,
     contextInfo,
@@ -346,7 +351,6 @@ function createSync() {
     setSessionError,
     bootstrap,
     reconnect,
-    onSessionIdle,
 
     isReady: sdk.isReady,
     workspaceRoot: sdk.workspaceRoot,

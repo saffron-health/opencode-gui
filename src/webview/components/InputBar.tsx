@@ -1,7 +1,9 @@
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import type { Agent } from "../types";
 import type { QueuedMessage } from "../App";
+import type { ModelOption } from "../hooks/useOpenCode";
 import { AgentSwitcher } from "./AgentSwitcher";
+import { ModelSwitcher } from "./ModelSwitcher";
 import { TiptapEditor, type TiptapEditorMethods } from "./TiptapEditor";
 import { vscode } from "../utils/vscode";
 
@@ -16,6 +18,10 @@ interface InputBarProps {
   selectedAgent: string | null;
   agents: Agent[];
   onAgentChange: (agentName: string) => void;
+  models: ModelOption[];
+  selectedModel: { providerID: string; modelID: string } | null;
+  onModelChange: (model: ModelOption) => void;
+  modelDropdownPlacement?: "up" | "down";
   queuedMessages: QueuedMessage[];
   onRemoveFromQueue: (id: string) => void;
   onEditQueuedMessage: (id: string) => void;
@@ -98,6 +104,7 @@ export function InputBar(props: InputBarProps) {
     if (
       !target.closest("button") &&
       !target.closest(".agent-switcher-button") &&
+      !target.closest(".model-switcher") &&
       !target.closest(".queued-message")
     ) {
       editorMethods?.focus();
@@ -176,6 +183,14 @@ export function InputBar(props: InputBarProps) {
               agents={props.agents}
               selectedAgent={props.selectedAgent}
               onAgentChange={props.onAgentChange}
+            />
+          </Show>
+          <Show when={props.models.length > 0 && !props.isThinking}>
+            <ModelSwitcher
+              models={props.models}
+              selectedModel={props.selectedModel}
+              onModelChange={props.onModelChange}
+              dropdownPlacement={props.modelDropdownPlacement}
             />
           </Show>
           <Show when={showStopButton()}>

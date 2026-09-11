@@ -6,7 +6,7 @@ import { TopBar } from "./components/TopBar";
 import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
 import { PermissionPrompt } from "./components/PermissionPrompt";
-import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
+import { useOpenCode, type PromptPartInput, type ModelOption } from "./hooks/useOpenCode";
 import { useSync } from "./state/sync";
 import type { FilePartInput } from "@opencode-ai/sdk/v2/client";
 import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart } from "./types";
@@ -17,12 +17,6 @@ export interface QueuedMessage {
   text: string;
   agent: string | null;
   attachments: SelectionAttachment[];
-}
-
-// In-flight message tracking for the outbox (used for queue draining)
-interface InFlightMessage {
-  messageID: string;
-  sessionId: string;
 }
 
 interface FileMentionInsertRequest {
@@ -49,15 +43,47 @@ import {
 
 const NEW_SESSION_KEY = "__new__";
 
+/**
+ * A selection with a global default plus per-session overrides. New-session mode
+ * (no active session) writes the global default; an active session writes an
+ * override. Used for both the agent and model pickers.
+ */
+function createSessionPreference<T>(currentSessionId: () => string | null) {
+  const [defaultValue, setDefaultValue] = createSignal<T | null>(null);
+  const [overrides, setOverrides] = createSignal<Map<string, T>>(new Map());
+
+  const selected = () => {
+    const sessionId = currentSessionId();
+    const override = sessionId ? overrides().get(sessionId) : undefined;
+    return override ?? defaultValue();
+  };
+
+  const select = (value: T) => {
+    const sessionId = currentSessionId();
+    if (!sessionId) {
+      setDefaultValue(() => value);
+      return;
+    }
+    setOverrides((prev) => new Map(prev).set(sessionId, value));
+  };
+
+  return { selected, select, defaultValue, setDefaultValue };
+}
+
 function App() {
   // Use the sync context for server-owned state
   const sync = useSync();
   
   // Local UI-only state
-  const [defaultAgent, setDefaultAgent] = createSignal<string | null>(null);
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
-  const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
+  const [models, setModels] = createSignal<ModelOption[]>([]);
+
+  // Agent and model selection share the same default + per-session-override shape.
+  const agentPref = createSessionPreference<string>(() => sync.currentSessionId());
+  const modelPref = createSessionPreference<{ providerID: string; modelID: string }>(
+    () => sync.currentSessionId(),
+  );
   const [selectionAttachmentsBySession, setSelectionAttachmentsBySession] = createSignal<
     Map<string, SelectionAttachment[]>
   >(new Map());
@@ -74,7 +100,9 @@ function App() {
   const [pendingEditorFocus, setPendingEditorFocus] = createSignal(false);
   
   // In-flight message tracking for outbox pattern
-  const [inFlightMessage, setInFlightMessage] = createSignal<InFlightMessage | null>(null);
+  // Session we last dispatched a prompt to; used to drain the queue once it
+  // finishes (replaces the old in-flight object + idle-callback registry).
+  const [pendingSessionId, setPendingSessionId] = createSignal<string | null>(null);
   
   // Editor methods for managing content
   let editorMethods: TiptapEditorMethods | null = null;
@@ -82,9 +110,11 @@ function App() {
   // Get SDK hook for actions only
   const {
     initData,
+    isReady,
     createSession,
     abortSession,
     sendPrompt,
+    getProviders,
     respondToPermission,
     revertToMessage,
     hostError,
@@ -177,27 +207,20 @@ function App() {
     }
   };
 
-  // Current agent for the active session.
-  // New-session mode always uses the global default; existing sessions can override it.
-  const selectedAgent = () => {
-    const sessionId = sync.currentSessionId();
-    return sessionId ? sessionAgents().get(sessionId) || defaultAgent() : defaultAgent();
-  };
+  // Current agent for the active session (global default unless overridden).
+  const selectedAgent = agentPref.selected;
   const setSelectedAgent = (agent: string | null) => {
-    if (!agent) return;
-    const sessionId = sync.currentSessionId();
-    if (!sessionId) {
-      // In new-session mode, agent choice defines the default for subsequent sessions.
-      setDefaultAgent(agent);
-      return;
-    }
-    setSessionAgents((prev) => {
-      const next = new Map(prev);
-      next.set(sessionId, agent);
-      return next;
-    });
+    if (agent) agentPref.select(agent);
   };
-  
+  const defaultAgent = agentPref.defaultValue;
+  const setDefaultAgent = agentPref.setDefaultValue;
+
+  // Current model for the active session, mirroring agent selection.
+  const selectedModel = modelPref.selected;
+  const setSelectedModel = modelPref.select;
+  const defaultModel = modelPref.defaultValue;
+  const setDefaultModel = modelPref.setDefaultValue;
+
   // Convenience accessors from sync store
   // Use the sync memos directly (not wrapped in functions) to maintain reactivity
   const messages = sync.messages;
@@ -465,6 +488,45 @@ function App() {
     }
   });
 
+  // Fetch the list of selectable models once the client is ready.
+  createEffect(() => {
+    if (!isReady()) return;
+    let cancelled = false;
+    getProviders()
+      .then((options) => {
+        if (!cancelled) setModels(options);
+      })
+      .catch((err) => {
+        logger.error("Failed to load models", { error: String(err) });
+      });
+    onCleanup(() => {
+      cancelled = true;
+    });
+  });
+
+  // Initialize the default model from the persisted selection or the first model.
+  createEffect(() => {
+    const modelList = models();
+    if (modelList.length === 0) return;
+
+    const persisted = initData()?.defaultModel;
+    if (persisted) {
+      const [providerID, ...rest] = persisted.split("/");
+      const modelID = rest.join("/");
+      const match = modelList.find(
+        (m) => m.providerID === providerID && m.modelID === modelID,
+      );
+      if (match && !defaultModel()) {
+        setDefaultModel({ providerID: match.providerID, modelID: match.modelID });
+        return;
+      }
+    }
+    if (!defaultModel()) {
+      const first = modelList[0];
+      setDefaultModel({ providerID: first.providerID, modelID: first.modelID });
+    }
+  });
+
   // Restore editor content when session changes
   createEffect(() => {
     const key = sessionKey();
@@ -479,24 +541,76 @@ function App() {
     }
   });
   
-  // Clear inFlightMessage when session becomes idle and trigger queue drain
-  onMount(() => {
-    const cleanup = sync.onSessionIdle((sessionId) => {
-      const inflight = inFlightMessage();
-      
-      if (inflight?.sessionId !== sessionId) {
-        return;
-      }
-      
-      setInFlightMessage(null);
-      
-      // Schedule queue drain in a microtask to avoid interleaving with SSE batch
-      queueMicrotask(() => {
-        void processNextQueuedMessage();
-      });
+  // Drain the queue once the session we dispatched to finishes (goes idle).
+  // Tracks store.thinking for that session reactively, so session.idle/error
+  // (which flip thinking to false) trigger the next send.
+  createEffect(() => {
+    const pending = pendingSessionId();
+    if (!pending) return;
+    if (sync.isSessionThinking(pending)) return; // still running
+    setPendingSessionId(null);
+    // Defer to a microtask to avoid interleaving with the SSE event batch.
+    queueMicrotask(() => {
+      void processNextQueuedMessage();
     });
-    onCleanup(cleanup);
   });
+
+  // Shared prompt dispatch used by submit / queue-drain / edit paths.
+  // Returns true on success, false when the send errored.
+  const dispatchPrompt = async (opts: {
+    sessionId: string;
+    text: string;
+    agent: string | null;
+    messageID: string;
+    parts?: PromptPartInput[];
+    errorPrefix?: string;
+    before?: () => Promise<unknown>;
+  }): Promise<boolean> => {
+    const { sessionId, text, agent, messageID, parts = [], errorPrefix, before } = opts;
+
+    sync.setThinking(sessionId, true);
+    setPendingSessionId(sessionId);
+
+    const fail = (message: string) => {
+      sync.setThinking(sessionId, false);
+      setPendingSessionId(null);
+      sync.setSessionError(sessionId, errorPrefix ? `${errorPrefix}${message}` : message);
+    };
+
+    try {
+      if (before) await before();
+      const result = await sendPrompt({
+        sessionId,
+        text,
+        agent,
+        parts,
+        messageID,
+        model: selectedModel(),
+      });
+      if (result?.error) {
+        const errorMessage = getSdkErrorMessage(result.error);
+        logger.error("sendPrompt returned error", {
+          sessionId,
+          messageID,
+          responseStatus: getResponseStatus(result),
+          errorMessage,
+          error: result.error,
+        });
+        fail(errorMessage);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      logger.error("sendPrompt exception", {
+        sessionId,
+        messageID,
+        error: String(err),
+        stack: (err as Error).stack,
+      });
+      fail((err as Error).message);
+      return false;
+    }
+  };
 
   // Handlers
   const handleSubmit = async () => {
@@ -583,120 +697,40 @@ function App() {
       next.delete(key);
       return next;
     });
-    sync.setThinking(sessionId, true);
-
-    // Track this message as in-flight
-    setInFlightMessage({ messageID, sessionId });
 
     logger.info("Sending prompt", { sessionId, messageID, textLen: text.length });
 
-    try {
-      const result = await sendPrompt(sessionId, text, agent, extraParts, messageID);
-      
-      // Log the full result for debugging
-      const responseStatus = getResponseStatus(result);
-      logger.info("sendPrompt result", { 
-        hasError: !!result?.error, 
-        hasData: !!result?.data,
-        responseStatus,
-      });
-      
-      // Check for SDK error in result (SDK doesn't throw by default)
-      if (result?.error) {
-        const errorMessage = getSdkErrorMessage(result.error);
-
-        // Log full error structure for debugging
-        logger.error("sendPrompt returned error", { 
-          sessionId,
-          messageID,
-          responseStatus,
-          errorMessage,
-          error: result.error,
-          response: result?.response,
-        });
-
-        sync.setThinking(sessionId, false);
-        setInFlightMessage(null);
-        sync.setSessionError(sessionId, errorMessage);
-        return;
-      }
-      
-      if (attachments.length > 0) {
-        setSelectionAttachmentsForKey(attachmentsKey, []);
-      }
-    } catch (err) {
-      logger.error("sendPrompt exception", { error: String(err), stack: (err as Error).stack });
-      const errorMessage = (err as Error).message;
-      
-      // Show all errors inline and clear in-flight
-      sync.setThinking(sessionId, false);
-      setInFlightMessage(null);
-      sync.setSessionError(sessionId, errorMessage);
+    const ok = await dispatchPrompt({ sessionId, text, agent, messageID, parts: extraParts });
+    if (ok && attachments.length > 0) {
+      setSelectionAttachmentsForKey(attachmentsKey, []);
     }
   };
 
   const processNextQueuedMessage = async () => {
     const queue = messageQueue();
-    const inflight = inFlightMessage();
     const sessionId = sync.currentSessionId();
-    
-    if (queue.length === 0) {
-      return;
-    }
-    
-    // Don't process if there's already an in-flight message
-    if (inflight) {
-      return;
-    }
-    
-    if (!sessionId || !sync.isReady()) {
-      return;
-    }
-    
-    const [next, ...rest] = queue;
-    
-    // Generate a FRESH messageID right before sending to ensure it's newer than the last assistant message
-    // This is critical - IDs generated earlier (when queueing) will be older than assistant responses
-    const messageID = Id.ascending("message");
-    
-    setMessageQueue(rest);
-    sync.setThinking(sessionId, true);
-    
-    // Track this queued message as in-flight using the fresh messageID
-    setInFlightMessage({ messageID, sessionId });
 
-    try {
-      const extraParts = buildSelectionParts(next.attachments);
-      
-      const result = await sendPrompt(sessionId, next.text, next.agent, extraParts, messageID);
-      const responseStatus = getResponseStatus(result);
-      
-      // Check for SDK error in result (SDK doesn't throw by default)
-      if (result?.error) {
-        const errorMessage = getSdkErrorMessage(result.error);
-        logger.error("queue sendPrompt returned error", {
-          sessionId,
-          messageID,
-          responseStatus,
-          errorMessage,
-          error: result.error,
-        });
-        sync.setThinking(sessionId, false);
-        setInFlightMessage(null);
-        setMessageQueue([]);
-        sync.setSessionError(sessionId, errorMessage);
-        return;
-      }
-    } catch (err) {
-      console.error("[App] Queue sendPrompt failed:", err);
-      const errorMessage = (err as Error).message;
-      
-      // Show all errors inline and clear queue + in-flight
-      sync.setThinking(sessionId, false);
-      setInFlightMessage(null);
-      setMessageQueue([]);
-      sync.setSessionError(sessionId, errorMessage);
-    }
+    if (queue.length === 0) return;
+    // Don't process while a send is still in flight for the current session.
+    if (sync.isThinking()) return;
+    if (!sessionId || !sync.isReady()) return;
+
+    const [next, ...rest] = queue;
+
+    // Generate a FRESH messageID right before sending so it sorts after the last
+    // assistant message (IDs made at queue time would be older).
+    const messageID = Id.ascending("message");
+    setMessageQueue(rest);
+
+    const ok = await dispatchPrompt({
+      sessionId,
+      text: next.text,
+      agent: next.agent,
+      messageID,
+      parts: buildSelectionParts(next.attachments),
+    });
+    // On failure, drop the rest of the queue (matches prior behavior).
+    if (!ok) setMessageQueue([]);
   };
 
   const handleQueueMessage = () => {
@@ -767,13 +801,13 @@ function App() {
     
     // Clear local UI state
     setMessageQueue([]);
-    setInFlightMessage(null);
+    setPendingSessionId(null);
     setEditingMessageId(null);
     setEditingText("");
     
-    // Set session and bootstrap to load messages
+    // Set session and bootstrap to load messages (session-scoped only)
     sync.setCurrentSessionId(sessionId);
-    await sync.bootstrap();
+    await sync.bootstrap({ full: false });
   };
 
   const handleNewSession = async () => {
@@ -785,13 +819,13 @@ function App() {
 
       // Clear local UI state
       setMessageQueue([]);
-      setInFlightMessage(null);
+      setPendingSessionId(null);
       setEditingMessageId(null);
       setEditingText("");
       
-      // Set new session and bootstrap
+      // Set new session and bootstrap (session-scoped only)
       sync.setCurrentSessionId(newSession.id);
-      await sync.bootstrap();
+      await sync.bootstrap({ full: false });
     } catch (err) {
       console.error("[App] Failed to create session:", err);
     }
@@ -804,7 +838,7 @@ function App() {
       await abortSession(sessionId);
     } finally {
       sync.setThinking(sessionId, false);
-      setInFlightMessage(null);
+      setPendingSessionId(null);
     }
   };
 
@@ -813,6 +847,17 @@ function App() {
     // Persist as global default for new sessions
     if (agent && !sync.currentSessionId()) {
       vscode.postMessage({ type: "agent-changed", agent });
+    }
+  };
+
+  const handleModelChange = (model: ModelOption) => {
+    setSelectedModel({ providerID: model.providerID, modelID: model.modelID });
+    // Persist as global default for new sessions
+    if (!sync.currentSessionId()) {
+      vscode.postMessage({
+        type: "model-changed",
+        model: `${model.providerID}/${model.modelID}`,
+      });
     }
   };
 
@@ -838,43 +883,17 @@ function App() {
     // Generate sortable client-side messageID for the new prompt
     const newMessageID = Id.ascending("message");
 
-    sync.setThinking(sessionId, true);
     setEditingMessageId(null);
     setEditingText("");
 
-    // Track this as in-flight
-    setInFlightMessage({ messageID: newMessageID, sessionId });
-
-    try {
-      await revertToMessage(sessionId, messageId);
-      const result = await sendPrompt(sessionId, newText.trim(), agent, [], newMessageID);
-      const responseStatus = getResponseStatus(result);
-      
-      // Check for SDK error in result (SDK doesn't throw by default)
-      if (result?.error) {
-        const errorMessage = getSdkErrorMessage(result.error);
-        logger.error("edit sendPrompt returned error", {
-          sessionId,
-          messageId,
-          newMessageID,
-          responseStatus,
-          errorMessage,
-          error: result.error,
-        });
-        sync.setThinking(sessionId, false);
-        setInFlightMessage(null);
-        sync.setSessionError(sessionId, `Error editing message: ${errorMessage}`);
-        return;
-      }
-    } catch (err) {
-      console.error("[App] Failed to edit message:", err);
-      const errorMessage = (err as Error).message;
-      
-      // Show all errors inline and clear in-flight
-      sync.setThinking(sessionId, false);
-      setInFlightMessage(null);
-      sync.setSessionError(sessionId, `Error editing message: ${errorMessage}`);
-    }
+    await dispatchPrompt({
+      sessionId,
+      text: newText.trim(),
+      agent,
+      messageID: newMessageID,
+      errorPrefix: "Error editing message: ",
+      before: () => revertToMessage(sessionId, messageId),
+    });
   };
 
   const handlePermissionResponse = async (
@@ -950,6 +969,10 @@ function App() {
           selectedAgent={selectedAgent()}
           agents={agents()}
           onAgentChange={handleAgentChange}
+          models={models()}
+          selectedModel={selectedModel()}
+          onModelChange={handleModelChange}
+          modelDropdownPlacement="down"
           queuedMessages={messageQueue()}
           onRemoveFromQueue={handleRemoveFromQueue}
           onEditQueuedMessage={handleEditQueuedMessage}
@@ -1007,6 +1030,9 @@ function App() {
           selectedAgent={selectedAgent()}
           agents={agents()}
           onAgentChange={handleAgentChange}
+          models={models()}
+          selectedModel={selectedModel()}
+          onModelChange={handleModelChange}
           queuedMessages={messageQueue()}
           onRemoveFromQueue={handleRemoveFromQueue}
           onEditQueuedMessage={handleEditQueuedMessage}
