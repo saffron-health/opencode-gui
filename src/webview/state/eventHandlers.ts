@@ -157,6 +157,19 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
         const context = deriveContextInfo(info as AssistantMessage);
         if (context) setStore("contextInfo", context);
       }
+
+      // Self-healing: clear the "thinking" state when the session's latest
+      // assistant message finishes. session.idle is the primary signal, but it
+      // can be missed (SSE timing, reconnects); relying on the completed message
+      // as a fallback prevents the UI from being stuck in a busy/"steering"
+      // state after a reply has already arrived. Only act when the completed
+      // message is the newest one, so a queued/steered follow-up still shows busy.
+      if (info.role === "assistant" && info.time?.completed) {
+        const latest = store.message[sessionId];
+        if (latest && latest.length > 0 && latest[latest.length - 1].id === info.id) {
+          setStore("thinking", sessionId, false);
+        }
+      }
       break;
     }
 
@@ -353,7 +366,6 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
 
     case "session.idle": {
       const { sessionID } = event.properties;
-      
       if (sessionID) {
         setStore("thinking", sessionID, false);
       }
