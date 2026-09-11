@@ -24,6 +24,19 @@ if ! grep -q 'opencode/bin' "$HOME/.profile" 2>/dev/null; then
   echo 'export PATH="$HOME/.opencode/bin:$PATH"' >> "$HOME/.profile"
 fi
 
+echo "==> Restoring OpenCode credentials (if OPENCODE_AUTH_JSON secret is set)"
+# Cloud agent VMs are ephemeral, so opencode's OAuth credentials
+# (~/.local/share/opencode/auth.json) are restored from a Cursor secret.
+# Add the secret named OPENCODE_AUTH_JSON with the contents of that file.
+if [ -n "${OPENCODE_AUTH_JSON:-}" ]; then
+  mkdir -p "$HOME/.local/share/opencode"
+  printf '%s' "$OPENCODE_AUTH_JSON" > "$HOME/.local/share/opencode/auth.json"
+  chmod 600 "$HOME/.local/share/opencode/auth.json"
+  echo "Restored ~/.local/share/opencode/auth.json from OPENCODE_AUTH_JSON"
+else
+  echo "OPENCODE_AUTH_JSON not set; skipping. Run 'opencode auth login' or add the secret to persist credentials."
+fi
+
 echo "==> Installing VS Code (best-effort, requires apt + sudo)"
 if ! command -v code >/dev/null 2>&1; then
   if command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
