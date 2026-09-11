@@ -677,6 +677,9 @@ function UIKit() {
               selectedAgent={selectedAgent()}
               agents={agents()}
               onAgentChange={setSelectedAgent}
+              models={[]}
+              selectedModel={null}
+              onModelChange={() => {}}
               queuedMessages={queuedMessages()}
               onRemoveFromQueue={(id) => setQueuedMessages((prev) => prev.filter((m) => m.id !== id))}
               onEditQueuedMessage={() => {}}
@@ -711,6 +714,9 @@ function UIKit() {
                 selectedAgent={selectedAgent()}
                 agents={agents()}
                 onAgentChange={setSelectedAgent}
+                models={[]}
+                selectedModel={null}
+                onModelChange={() => {}}
                 queuedMessages={queuedMessages()}
                 onRemoveFromQueue={(id) => setQueuedMessages((prev) => prev.filter((m) => m.id !== id))}
                 onEditQueuedMessage={() => {}}

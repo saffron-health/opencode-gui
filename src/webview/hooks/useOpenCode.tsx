@@ -38,6 +38,14 @@ export interface InitData {
   currentSessionTitle?: string;
   currentSessionMessages?: Array<{ id: string; role: string }>;
   defaultAgent?: string;
+  defaultModel?: string;
+}
+
+export interface ModelOption {
+  providerID: string;
+  modelID: string;
+  name: string;
+  providerName: string;
 }
 
 function createOpenCode() {
@@ -102,6 +110,7 @@ function createOpenCode() {
             currentSessionTitle: data.currentSessionTitle,
             currentSessionMessages: data.currentSessionMessages,
             defaultAgent: data.defaultAgent,
+            defaultModel: data.defaultModel,
           });
         }
       }
@@ -124,7 +133,8 @@ function createOpenCode() {
     text: string,
     agent?: string | null,
     extraParts: PromptPartInput[] = [],
-    messageID?: string
+    messageID?: string,
+    model?: { providerID: string; modelID: string } | null
   ) {
     const c = client();
     if (!c) throw new Error("Not connected");
@@ -134,7 +144,30 @@ function createOpenCode() {
       parts: [{ type: "text", text }, ...extraParts],
       ...(agent ? { agent } : {}),
       ...(messageID ? { messageID } : {}),
+      ...(model ? { model } : {}),
     });
+  }
+
+  // Fetch configured providers and flatten to a list of selectable models.
+  async function getProviders(): Promise<ModelOption[]> {
+    const c = client();
+    if (!c) throw new Error("Not connected");
+    const dir = workspaceRoot();
+    const res = await c.config.providers(dir ? { directory: dir } : undefined);
+    const providers = res.data?.providers ?? [];
+    const options: ModelOption[] = [];
+    for (const provider of providers) {
+      const models = Object.values(provider.models ?? {});
+      for (const model of models) {
+        options.push({
+          providerID: provider.id,
+          modelID: model.id,
+          name: model.name || model.id,
+          providerName: provider.name || provider.id,
+        });
+      }
+    }
+    return options;
   }
 
   // Subscribe to events for the workspace through the extension proxy
@@ -224,6 +257,7 @@ function createOpenCode() {
     abortSession: (id: string) => client()?.session.abort({ sessionID: id }),
     // High-level helpers
     sendPrompt,
+    getProviders,
     subscribeToEvents,
     respondToPermission,
     revertToMessage,

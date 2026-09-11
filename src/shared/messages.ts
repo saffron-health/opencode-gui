@@ -134,6 +134,7 @@ export const HostMessageSchema = z.discriminatedUnion("type", [
       currentSessionTitle: z.string().optional(),
       currentSessionMessages: z.array(IncomingMessageSchema).optional(),
       defaultAgent: z.string().optional(),
+      defaultModel: z.string().optional(),
     })
     .transform((v) => ({
       ...v,
@@ -209,6 +210,10 @@ export const WebviewMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("agent-changed"),
     agent: z.string(),
+  }),
+  z.object({
+    type: z.literal("model-changed"),
+    model: z.string(),
   }),
   z.object({
     type: z.literal("open-file"),

@@ -17,6 +17,7 @@ import {
 } from "./transport/SseClient";
 
 const LAST_AGENT_KEY = "opencode.lastUsedAgent";
+const LAST_MODEL_KEY = "opencode.lastUsedModel";
 
 interface DevServerConfig {
   origin: string;
@@ -140,6 +141,9 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         break;
       case "agent-changed":
         await this._handleAgentChanged(message.agent);
+        break;
+      case "model-changed":
+        await this._handleModelChanged(message.model);
         break;
       case "open-file":
         await this._handleOpenFile(
@@ -275,6 +279,7 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
         currentSessionTitle,
         currentSessionMessages: messages,
         defaultAgent: this._globalState.get<string>(LAST_AGENT_KEY),
+        defaultModel: this._globalState.get<string>(LAST_MODEL_KEY),
       });
       this._webviewReady = true;
       this._flushPendingMessages();
@@ -300,6 +305,12 @@ export class OpenCodeViewProvider implements vscode.WebviewViewProvider {
     await this._globalState.update(LAST_AGENT_KEY, agent);
     const logger = getLogger();
     logger.info("[ViewProvider] Agent selection persisted:", agent);
+  }
+
+  private async _handleModelChanged(model: string) {
+    await this._globalState.update(LAST_MODEL_KEY, model);
+    const logger = getLogger();
+    logger.info("[ViewProvider] Model selection persisted:", model);
   }
 
   // SSE Proxy handlers using resilient SseClient

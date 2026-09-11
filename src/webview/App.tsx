@@ -6,7 +6,7 @@ import { TopBar } from "./components/TopBar";
 import { ContextIndicator } from "./components/ContextIndicator";
 import { FileChangesSummary } from "./components/FileChangesSummary";
 import { PermissionPrompt } from "./components/PermissionPrompt";
-import { useOpenCode, type PromptPartInput } from "./hooks/useOpenCode";
+import { useOpenCode, type PromptPartInput, type ModelOption } from "./hooks/useOpenCode";
 import { useSync } from "./state/sync";
 import type { FilePartInput } from "@opencode-ai/sdk/v2/client";
 import type { Message, Agent, Session, Permission, FileChangesInfo, MessagePart } from "./types";
@@ -58,6 +58,10 @@ function App() {
   const [drafts, setDrafts] = createSignal<Map<string, string>>(new Map());
   const [draftContents, setDraftContents] = createSignal<Map<string, any>>(new Map()); // TipTap JSON content
   const [sessionAgents, setSessionAgents] = createSignal<Map<string, string>>(new Map());
+  const [models, setModels] = createSignal<ModelOption[]>([]);
+  // Selected model, mirroring agent selection: per-session override, else the default.
+  const [defaultModel, setDefaultModel] = createSignal<{ providerID: string; modelID: string } | null>(null);
+  const [sessionModels, setSessionModels] = createSignal<Map<string, { providerID: string; modelID: string }>>(new Map());
   const [selectionAttachmentsBySession, setSelectionAttachmentsBySession] = createSignal<
     Map<string, SelectionAttachment[]>
   >(new Map());
@@ -82,9 +86,11 @@ function App() {
   // Get SDK hook for actions only
   const {
     initData,
+    isReady,
     createSession,
     abortSession,
     sendPrompt,
+    getProviders,
     respondToPermission,
     revertToMessage,
     hostError,
@@ -197,7 +203,25 @@ function App() {
       return next;
     });
   };
-  
+
+  // Current model for the active session, mirroring agent selection.
+  const selectedModel = () => {
+    const sessionId = sync.currentSessionId();
+    return sessionId ? sessionModels().get(sessionId) || defaultModel() : defaultModel();
+  };
+  const setSelectedModel = (model: { providerID: string; modelID: string }) => {
+    const sessionId = sync.currentSessionId();
+    if (!sessionId) {
+      setDefaultModel(model);
+      return;
+    }
+    setSessionModels((prev) => {
+      const next = new Map(prev);
+      next.set(sessionId, model);
+      return next;
+    });
+  };
+
   // Convenience accessors from sync store
   // Use the sync memos directly (not wrapped in functions) to maintain reactivity
   const messages = sync.messages;
@@ -465,6 +489,45 @@ function App() {
     }
   });
 
+  // Fetch the list of selectable models once the client is ready.
+  createEffect(() => {
+    if (!isReady()) return;
+    let cancelled = false;
+    getProviders()
+      .then((options) => {
+        if (!cancelled) setModels(options);
+      })
+      .catch((err) => {
+        logger.error("Failed to load models", { error: String(err) });
+      });
+    onCleanup(() => {
+      cancelled = true;
+    });
+  });
+
+  // Initialize the default model from the persisted selection or the first model.
+  createEffect(() => {
+    const modelList = models();
+    if (modelList.length === 0) return;
+
+    const persisted = initData()?.defaultModel;
+    if (persisted) {
+      const [providerID, ...rest] = persisted.split("/");
+      const modelID = rest.join("/");
+      const match = modelList.find(
+        (m) => m.providerID === providerID && m.modelID === modelID,
+      );
+      if (match && !defaultModel()) {
+        setDefaultModel({ providerID: match.providerID, modelID: match.modelID });
+        return;
+      }
+    }
+    if (!defaultModel()) {
+      const first = modelList[0];
+      setDefaultModel({ providerID: first.providerID, modelID: first.modelID });
+    }
+  });
+
   // Restore editor content when session changes
   createEffect(() => {
     const key = sessionKey();
@@ -591,7 +654,7 @@ function App() {
     logger.info("Sending prompt", { sessionId, messageID, textLen: text.length });
 
     try {
-      const result = await sendPrompt(sessionId, text, agent, extraParts, messageID);
+      const result = await sendPrompt(sessionId, text, agent, extraParts, messageID, selectedModel());
       
       // Log the full result for debugging
       const responseStatus = getResponseStatus(result);
@@ -668,7 +731,7 @@ function App() {
     try {
       const extraParts = buildSelectionParts(next.attachments);
       
-      const result = await sendPrompt(sessionId, next.text, next.agent, extraParts, messageID);
+      const result = await sendPrompt(sessionId, next.text, next.agent, extraParts, messageID, selectedModel());
       const responseStatus = getResponseStatus(result);
       
       // Check for SDK error in result (SDK doesn't throw by default)
@@ -816,6 +879,17 @@ function App() {
     }
   };
 
+  const handleModelChange = (model: ModelOption) => {
+    setSelectedModel({ providerID: model.providerID, modelID: model.modelID });
+    // Persist as global default for new sessions
+    if (!sync.currentSessionId()) {
+      vscode.postMessage({
+        type: "model-changed",
+        model: `${model.providerID}/${model.modelID}`,
+      });
+    }
+  };
+
   const handleStartEdit = (messageId: string, text: string) => {
     setEditingMessageId(messageId);
     setEditingText(text);
@@ -847,7 +921,7 @@ function App() {
 
     try {
       await revertToMessage(sessionId, messageId);
-      const result = await sendPrompt(sessionId, newText.trim(), agent, [], newMessageID);
+      const result = await sendPrompt(sessionId, newText.trim(), agent, [], newMessageID, selectedModel());
       const responseStatus = getResponseStatus(result);
       
       // Check for SDK error in result (SDK doesn't throw by default)
@@ -950,6 +1024,9 @@ function App() {
           selectedAgent={selectedAgent()}
           agents={agents()}
           onAgentChange={handleAgentChange}
+          models={models()}
+          selectedModel={selectedModel()}
+          onModelChange={handleModelChange}
           queuedMessages={messageQueue()}
           onRemoveFromQueue={handleRemoveFromQueue}
           onEditQueuedMessage={handleEditQueuedMessage}
@@ -1007,6 +1084,9 @@ function App() {
           selectedAgent={selectedAgent()}
           agents={agents()}
           onAgentChange={handleAgentChange}
+          models={models()}
+          selectedModel={selectedModel()}
+          onModelChange={handleModelChange}
           queuedMessages={messageQueue()}
           onRemoveFromQueue={handleRemoveFromQueue}
           onEditQueuedMessage={handleEditQueuedMessage}
