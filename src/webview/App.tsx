@@ -805,9 +805,9 @@ function App() {
     setEditingMessageId(null);
     setEditingText("");
     
-    // Set session and bootstrap to load messages
+    // Set session and bootstrap to load messages (session-scoped only)
     sync.setCurrentSessionId(sessionId);
-    await sync.bootstrap();
+    await sync.bootstrap({ full: false });
   };
 
   const handleNewSession = async () => {
@@ -823,9 +823,9 @@ function App() {
       setEditingMessageId(null);
       setEditingText("");
       
-      // Set new session and bootstrap
+      // Set new session and bootstrap (session-scoped only)
       sync.setCurrentSessionId(newSession.id);
-      await sync.bootstrap();
+      await sync.bootstrap({ full: false });
     } catch (err) {
       console.error("[App] Failed to create session:", err);
     }

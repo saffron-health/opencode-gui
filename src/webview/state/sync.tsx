@@ -173,12 +173,17 @@ function createSync() {
     }
   }
 
-  async function bootstrap(): Promise<void> {
+  async function bootstrap(opts: { full?: boolean } = {}): Promise<void> {
     const client = sdk.client();
     if (!client) {
       console.warn("[Sync] Cannot bootstrap: SDK client not ready");
       return;
     }
+
+    // Fetch workspace-global data (agents/sessions/status) on full bootstraps
+    // (connect/reconnect) or when it hasn't been loaded yet; session switches
+    // only refetch session-scoped data.
+    const includeGlobal = opts.full !== false || store.agents.length === 0;
 
     const sessionId = currentSessionId();
     const workspaceRoot = sdk.workspaceRoot();
@@ -198,6 +203,7 @@ function createSync() {
           client: client as Parameters<typeof fetchBootstrapData>[0]["client"],
           sessionId,
           workspaceRoot,
+          includeGlobal,
         });
 
         if (thisToken !== bootstrapToken) {
@@ -301,7 +307,7 @@ function createSync() {
     const count = bootstrapCount();
     if (count === 0) return;
     if (!sdk.isReady()) return;
-    await bootstrap();
+    await bootstrap({ full: true });
   });
 
   // Initialize from SDK init data

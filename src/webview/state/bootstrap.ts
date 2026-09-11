@@ -41,15 +41,22 @@ export interface BootstrapContext {
   };
   sessionId: string | null;
   workspaceRoot: string | undefined;
+  /**
+   * When false, skip the workspace-global fetches (agents, session list, session
+   * status) and load only session-scoped data. Used on session switches, where
+   * the global data is already loaded and kept fresh via SSE. Defaults to true.
+   */
+  includeGlobal?: boolean;
 }
 
 export interface BootstrapResult {
-  agents: Agent[];
-  sessions: Session[];
+  // Undefined when the global fetches were skipped (see includeGlobal).
+  agents?: Agent[];
+  sessions?: Session[];
+  sessionStatusMap?: { [sessionID: string]: SessionStatus };
   messageList: Message[];
   partMap: { [messageID: string]: MessagePart[] };
   permissionMap: { [sessionID: string]: Permission[] };
-  sessionStatusMap: { [sessionID: string]: SessionStatus };
   contextInfo: ContextInfo | null;
   fileChanges: FileChangesInfo | null;
 }
@@ -107,36 +114,45 @@ function toPermission(sdkPerm: SDKPermission): Permission {
 const HIDDEN_AGENTS = new Set(["compaction", "title", "summary"]);
 
 export async function fetchBootstrapData(ctx: BootstrapContext): Promise<BootstrapResult> {
-  const { client, sessionId, workspaceRoot } = ctx;
+  const { client, sessionId, workspaceRoot, includeGlobal = true } = ctx;
 
-  const sessionStatusPromise =
-    typeof client.session.status === "function"
-      ? client.session.status(workspaceRoot ? { directory: workspaceRoot } : undefined)
-      : Promise.resolve<{ data?: { [key: string]: any } }>({ data: {} });
+  // Workspace-global data (agents, session list, session status). Fetched on the
+  // initial/reconnect bootstrap; skipped on session switches (kept fresh by SSE).
+  let agents: Agent[] | undefined;
+  let sessions: Session[] | undefined;
+  let sessionStatusMap: { [sessionID: string]: SessionStatus } | undefined;
 
-  const [agentsRes, sessionsRes, sessionStatusRes] = await Promise.all([
-    client.app.agents(),
-    client.session.list(workspaceRoot ? { directory: workspaceRoot } : undefined),
-    sessionStatusPromise,
-  ]);
+  if (includeGlobal) {
+    const sessionStatusPromise =
+      typeof client.session.status === "function"
+        ? client.session.status(workspaceRoot ? { directory: workspaceRoot } : undefined)
+        : Promise.resolve<{ data?: { [key: string]: any } }>({ data: {} });
 
-  const agents = (agentsRes?.data ?? [])
-    .filter((a): a is SDKAgent => 
-      (a.mode === "primary" || a.mode === "all") && !HIDDEN_AGENTS.has(a.name)
-    )
-    .map(toAgent);
+    const [agentsRes, sessionsRes, sessionStatusRes] = await Promise.all([
+      client.app.agents(),
+      client.session.list(workspaceRoot ? { directory: workspaceRoot } : undefined),
+      sessionStatusPromise,
+    ]);
 
-  const sessions = (sessionsRes?.data ?? [])
-    .filter((s): s is SDKSession => !!s?.id && !s.parentID)
-    .map(toSession)
-    .sort((a, b) => a.id.localeCompare(b.id));
+    agents = (agentsRes?.data ?? [])
+      .filter((a): a is SDKAgent =>
+        (a.mode === "primary" || a.mode === "all") && !HIDDEN_AGENTS.has(a.name)
+      )
+      .map(toAgent);
+
+    sessions = (sessionsRes?.data ?? [])
+      .filter((s): s is SDKSession => !!s?.id && !s.parentID)
+      .map(toSession)
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    sessionStatusMap = sessionStatusRes?.data ?? {};
+  }
 
   let messageList: Message[] = [];
   let contextInfo: ContextInfo | null = null;
   let fileChanges: FileChangesInfo | null = null;
   const partMap: { [messageID: string]: MessagePart[] } = {};
   const permissionMap: { [sessionID: string]: Permission[] } = {};
-  const sessionStatusMap: { [sessionID: string]: SessionStatus } = sessionStatusRes?.data ?? {};
 
   // Fetch pending permissions
   try {
@@ -216,11 +232,12 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
     }
   }
 
-  console.log("[Bootstrap] Returning data", { 
-    agentCount: agents.length, 
-    sessionCount: sessions.length, 
+  console.log("[Bootstrap] Returning data", {
+    agentCount: agents?.length,
+    sessionCount: sessions?.length,
     messageCount: messageList.length,
-    sessionId 
+    includeGlobal,
+    sessionId
   });
   return { agents, sessions, messageList, partMap, permissionMap, sessionStatusMap, contextInfo, fileChanges };
 }
@@ -236,8 +253,9 @@ export function commitBootstrapData(
     firstMsgId: data.messageList[0]?.id 
   });
   batch(() => {
-    setStore("agents", data.agents);
-    setStore("sessions", data.sessions);
+    // Global fields are undefined on session-only bootstraps; leave the store as-is then.
+    if (data.agents) setStore("agents", data.agents);
+    if (data.sessions) setStore("sessions", data.sessions);
     if (sessionId) {
       setStore("message", sessionId, data.messageList);
       console.log("[Bootstrap] Committed messages to store for session", sessionId);
@@ -258,7 +276,7 @@ export function commitBootstrapData(
       setStore("part", messageId, parts);
     }
     setStore("permission", reconcile(data.permissionMap));
-    setStore("sessionStatus", reconcile(data.sessionStatusMap));
+    if (data.sessionStatusMap) setStore("sessionStatus", reconcile(data.sessionStatusMap));
     setStore("contextInfo", data.contextInfo);
     setStore("fileChanges", data.fileChanges);
     setStore("status", { status: "connected" });
