@@ -10,6 +10,11 @@ import type {
 import type { Message, MessagePart, Session, Permission } from "../types";
 import type { SyncState } from "./types";
 import { binarySearch, findById } from "./utils";
+import {
+  deriveContextInfo,
+  deriveFileChangesFromDiff,
+  deriveFileChangesFromSummary,
+} from "./derive";
 import { logger } from "../utils/logger";
 
 export interface EventHandlerContext {
@@ -150,22 +155,8 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       // This ensures we show cumulative context for the session being viewed
       const viewingSessionId = currentSessionId();
       if (viewingSessionId && sessionId === viewingSessionId && info.role === "assistant") {
-        const assistantInfo = info as AssistantMessage;
-        const tokens = assistantInfo.tokens;
-        const usedTokens =
-          tokens.input +
-          tokens.output +
-          tokens.reasoning +
-          tokens.cache.read +
-          tokens.cache.write;
-        if (usedTokens > 0) {
-          const limit = 200000; // Default context limit, could be fetched from config
-          setStore("contextInfo", {
-            usedTokens,
-            limitTokens: limit,
-            percentage: Math.min(100, (usedTokens / limit) * 100),
-          });
-        }
+        const context = deriveContextInfo(info as AssistantMessage);
+        if (context) setStore("contextInfo", context);
       }
       break;
     }
@@ -342,24 +333,8 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
           }));
         }
 
-        if (session.summary) {
-          if (session.summary.diffs && session.summary.diffs.length > 0) {
-            // Use detailed diffs if available
-            const diffs = session.summary.diffs;
-            setStore("fileChanges", {
-              fileCount: diffs.length,
-              additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
-              deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
-            });
-          } else if (session.summary.files > 0) {
-            // Fallback to summary-level aggregates
-            setStore("fileChanges", {
-              fileCount: session.summary.files,
-              additions: session.summary.additions,
-              deletions: session.summary.deletions,
-            });
-          }
-        }
+        const fileChanges = deriveFileChangesFromSummary(session.summary);
+        if (fileChanges) setStore("fileChanges", fileChanges);
       });
       break;
     }
@@ -422,12 +397,7 @@ export function applyEvent(event: Event, ctx: EventHandlerContext): void {
       const sessionId = sessionID ?? currentSessionId();
       if (!sessionId || !diff) break;
 
-      // Aggregate file changes from diff array
-      setStore("fileChanges", {
-        fileCount: diff.length,
-        additions: diff.reduce((sum, d) => sum + (d.additions || 0), 0),
-        deletions: diff.reduce((sum, d) => sum + (d.deletions || 0), 0),
-      });
+      setStore("fileChanges", deriveFileChangesFromDiff(diff));
       break;
     }
 

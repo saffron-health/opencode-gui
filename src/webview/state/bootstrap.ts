@@ -18,6 +18,7 @@ import type {
   FileChangesInfo,
 } from "../types";
 import type { SyncState, SessionStatus } from "./types";
+import { deriveContextInfo, deriveFileChangesFromSummary } from "./derive";
 
 /** API response for session.messages endpoint */
 interface MessageWithParts {
@@ -198,26 +199,9 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
         .filter((m) => !!m.id);
 
       const session = sessionRes?.data;
-      
+
       // Extract file changes from session summary
-      if (session?.summary) {
-        if (session.summary.diffs && session.summary.diffs.length > 0) {
-          // Use detailed diffs if available
-          const diffs = session.summary.diffs;
-          fileChanges = {
-            fileCount: diffs.length,
-            additions: diffs.reduce((sum, d) => sum + (d.additions || 0), 0),
-            deletions: diffs.reduce((sum, d) => sum + (d.deletions || 0), 0),
-          };
-        } else if (session.summary.files > 0) {
-          // Fallback to summary-level aggregates
-          fileChanges = {
-            fileCount: session.summary.files,
-            additions: session.summary.additions,
-            deletions: session.summary.deletions,
-          };
-        }
-      }
+      fileChanges = deriveFileChangesFromSummary(session?.summary);
 
       // Extract context info from the last assistant message
       const lastAssistant = [...rawMessages]
@@ -225,22 +209,7 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
         .find((raw) => raw.info.role === "assistant");
 
       if (lastAssistant && lastAssistant.info.role === "assistant") {
-        const assistantMsg = lastAssistant.info as AssistantMessage;
-        const tokens = assistantMsg.tokens;
-        const usedTokens =
-          tokens.input + 
-          tokens.output + 
-          tokens.reasoning +
-          tokens.cache.read + 
-          tokens.cache.write;
-        if (usedTokens > 0) {
-          const limit = 200000;
-          contextInfo = {
-            usedTokens,
-            limitTokens: limit,
-            percentage: Math.min(100, (usedTokens / limit) * 100),
-          };
-        }
+        contextInfo = deriveContextInfo(lastAssistant.info as AssistantMessage);
       }
     } catch (err) {
       console.error("[Sync] Failed to load session messages:", err);
