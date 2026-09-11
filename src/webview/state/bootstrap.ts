@@ -18,7 +18,6 @@ import type {
   FileChangesInfo,
 } from "../types";
 import type { SyncState, SessionStatus } from "./types";
-import { extractTextFromParts } from "./utils";
 
 /** API response for session.messages endpoint */
 interface MessageWithParts {
@@ -171,7 +170,6 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
         .map((raw) => {
           const msgInfo = raw.info;
           const parts = raw.parts;
-          const text = extractTextFromParts(parts.map(toPart));
           const messageId = msgInfo.id;
           const role = msgInfo.role;
 
@@ -194,7 +192,6 @@ export async function fetchBootstrapData(ctx: BootstrapContext): Promise<Bootstr
           return {
             id: messageId,
             type: role,
-            text,
             time: msgInfo.time,
           } as Message;
         })

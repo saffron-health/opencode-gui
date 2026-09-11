@@ -10,7 +10,7 @@ import { MessageList } from "./components/MessageList";
 import { TopBar } from "./components/TopBar";
 import { TiptapEditorTest } from "./components/TiptapEditorTest";
 import { FileMentionDropdown, type FileItem } from "./components/FileMentionDropdown";
-import { MockSyncProvider } from "./state/MockSyncProvider";
+import { MockSyncProvider, type MockMessage } from "./state/MockSyncProvider";
 import type { QueuedMessage } from "./App";
 import type {
   Agent,
@@ -81,7 +81,7 @@ const fakeSessions: Session[] = [
   },
 ];
 
-const fakeMessages: Message[] = [
+const fakeMessages: MockMessage[] = [
   {
     id: "msg-1",
     type: "user",
@@ -367,7 +367,7 @@ validators.ts:12:  return password === user.hashedPassword;`,
 
 function UIKit() {
   const [input, setInput] = createSignal("");
-  const [messages, setMessages] = createSignal<Message[]>(fakeMessages);
+  const [messages, setMessages] = createSignal<MockMessage[]>(fakeMessages);
   const [isThinking, setIsThinking] = createSignal(false);
   const [agents] = createSignal<Agent[]>(fakeAgents);
   const [selectedAgent, setSelectedAgent] = createSignal<string | null>(

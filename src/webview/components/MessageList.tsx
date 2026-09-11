@@ -5,6 +5,7 @@ import { MessageItem } from "./MessageItem";
 import { EditableUserMessage } from "./EditableUserMessage";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { useSync } from "../state/sync";
+import { extractTextFromParts } from "../state/utils";
 
 interface MessageListProps {
   messages: Message[];
@@ -115,7 +116,7 @@ export function MessageList(props: MessageListProps) {
               }`
           )
           .join("|")
-      : `text:${last.text?.length ?? 0}`;
+      : "";
     
     // Access sig to create reactive dependency
     void sig;
@@ -215,23 +216,8 @@ export function MessageList(props: MessageListProps) {
     const isQueued = () => isMessageQueued(message.id);
     const isDimmed = () => isQueued() || isMessageDimmed(message.id);
     
-    // Get the text content of the message for editing
-    const messageText = () => {
-      if (message.text) return message.text;
-      const msgParts = sync.getParts(message.id);
-      if (msgParts.length > 0) {
-        return msgParts
-          .filter(
-            (p) =>
-              p.type === "text" &&
-              p.text &&
-              !(p as { synthetic?: boolean }).synthetic
-          )
-          .map(p => p.text)
-          .join("\n");
-      }
-      return "";
-    };
+    // Get the text content of the message for editing (derived from parts)
+    const messageText = () => extractTextFromParts(sync.getParts(message.id));
     
     return (
       <Show 

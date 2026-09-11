@@ -33,12 +33,12 @@ export type MessagePart = z.infer<typeof MessagePartSchema>;
 export const MessageSchema = z.object({
   id: z.string(),
   type: z.enum(["user", "assistant"]),
-  text: z.string().optional(),
   time: z.object({
     created: z.number(),
     completed: z.number().optional(),
   }).optional(),
-  // Note: parts are stored separately in store.part[messageID], not on Message
+  // Note: message text and parts are stored separately in store.part[messageID].
+  // Text is derived from parts at render time; Message carries no text field.
 });
 export type Message = z.infer<typeof MessageSchema>;
 
